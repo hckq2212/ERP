@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
-import { PartnerLinks } from "./PartnerLink.entity";
+import { ReferralPartners } from "./ReferralPartner.entity";
 import { Contracts } from "./Contract.entity";
 import { Opportunities } from "./Opportunity.entity";
 
@@ -36,8 +36,8 @@ export class Customers extends BaseEntity {
     })
     source: CustomerSource;
 
-    @ManyToOne(() => PartnerLinks, (partnerLink) => partnerLink.customers)
-    partnerLink: PartnerLinks;
+    @ManyToOne(() => ReferralPartners, (referralPartner) => referralPartner.customers)
+    referralPartner: ReferralPartners;
 
     @OneToMany(() => Contracts, (contract) => contract.customer)
     contracts: Contracts[];

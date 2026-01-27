@@ -1,11 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Opportunities } from "./Opportunity.entity";
+import { QuotationDetails } from "./QuotationDetail.entity";
 
 export enum QuotationStatus {
-    ACTIVE = "ACTIVE",
-    ARCHIVED = "ARCHIVED",
-    REJECTED = "REJECTED"
+    DRAFT = "DRAFT",
+    PENDING_APPROVAL = "PENDING_APPROVAL", // Chờ BOD duyệt
+    APPROVED = "APPROVED", // Đã duyệt (Official)
+    REJECTED = "REJECTED",
+    ARCHIVED = "ARCHIVED"
 }
 
 @Entity()
@@ -22,10 +25,16 @@ export class Quotations extends BaseEntity {
     @Column({
         type: "enum",
         enum: QuotationStatus,
-        default: QuotationStatus.ACTIVE
+        default: QuotationStatus.DRAFT
     })
     status: QuotationStatus;
 
+    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    totalAmount: number;
+
     @ManyToOne(() => Opportunities, (opportunity) => opportunity.quotations)
     opportunity: Opportunities;
+
+    @OneToMany(() => QuotationDetails, (detail) => detail.quotation)
+    details: QuotationDetails[];
 }

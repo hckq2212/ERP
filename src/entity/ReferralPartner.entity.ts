@@ -1,14 +1,11 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
-import { Jobs } from "./Job.entity";
-
-export enum PartnerType {
-    INDIVIDUAL = "INDIVIDUAL",
-    BUSINESS = "BUSINESS"
-}
+import { PartnerType } from "./Venture.entity";
+import { Customers } from "./Customer.entity";
+import { Opportunities } from "./Opportunity.entity";
 
 @Entity()
-export class Partners extends BaseEntity {
+export class ReferralPartners extends BaseEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
@@ -34,6 +31,9 @@ export class Partners extends BaseEntity {
     })
     type: PartnerType;
 
-    @OneToMany(() => Jobs, (job) => job.partner)
-    jobs: Jobs[];
+    @OneToMany(() => Customers, (customer) => customer.referralPartner)
+    customers: Customers[];
+
+    @OneToMany(() => Opportunities, (opportunity) => opportunity.referralPartner)
+    opportunities: Opportunities[];
 }

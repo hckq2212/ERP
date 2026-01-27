@@ -1,7 +1,7 @@
 import { AppDataSource } from "../data-source";
 import { Jobs } from "../entity/Job.entity";
 import { Services } from "../entity/Service.entity";
-import { Partners } from "../entity/Partner.entity";
+import { Ventures } from "../entity/Venture.entity";
 import { In } from "typeorm";
 
 export class JobService {
@@ -9,21 +9,21 @@ export class JobService {
 
     async getAll() {
         return await this.jobRepository.find({
-            relations: ["partner", "services"]
+            relations: ["venture", "services"]
         });
     }
 
     async getOne(id: number) {
         const job = await this.jobRepository.findOne({
             where: { id },
-            relations: ["partner", "services"]
+            relations: ["venture", "services"]
         });
         if (!job) throw new Error("Không tìm thấy công việc");
         return job;
     }
 
     async create(data: any = {}) {
-        const { serviceIds, partnerId, ...jobData } = data;
+        const { serviceIds, ventureId, ...jobData } = data;
         const job = this.jobRepository.create(jobData) as any;
 
         if (serviceIds && Array.isArray(serviceIds)) {
@@ -31,16 +31,16 @@ export class JobService {
             job.services = await serviceRepository.findBy({ id: In(serviceIds) });
         }
 
-        if (partnerId) {
-            const partnerRepository = AppDataSource.getRepository(Partners);
-            job.partner = await partnerRepository.findOneBy({ id: partnerId });
+        if (ventureId) {
+            const ventureRepository = AppDataSource.getRepository(Ventures);
+            job.venture = await ventureRepository.findOneBy({ id: ventureId });
         }
 
         return await this.jobRepository.save(job);
     }
 
     async update(id: number, data: any = {}) {
-        const { serviceIds, partnerId, ...jobData } = data;
+        const { serviceIds, ventureId, ...jobData } = data;
         const job = await this.getOne(id) as any;
 
         Object.assign(job, jobData);
@@ -50,9 +50,9 @@ export class JobService {
             job.services = await serviceRepository.findBy({ id: In(serviceIds) });
         }
 
-        if (partnerId) {
-            const partnerRepository = AppDataSource.getRepository(Partners);
-            job.partner = await partnerRepository.findOneBy({ id: partnerId });
+        if (ventureId) {
+            const ventureRepository = AppDataSource.getRepository(Ventures);
+            job.venture = await ventureRepository.findOneBy({ id: ventureId });
         }
 
         return await this.jobRepository.save(job);
