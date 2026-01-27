@@ -35,6 +35,9 @@ export class PaymentMilestones extends BaseEntity {
     @Column({ type: "text", nullable: true })
     description: string;
 
+    @Column({ type: "date", nullable: true })
+    dueDate: Date;
+
     @OneToOne(() => Debts, (debt) => debt.milestone)
     debt: Debts;
 }

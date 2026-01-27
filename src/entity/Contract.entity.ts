@@ -7,10 +7,26 @@ import { PaymentMilestones } from "./PaymentMilestone.entity";
 import { Debts } from "./Debt.entity";
 import { ContractServices } from "./ContractService.entity";
 
+export enum ContractStatus {
+    DRAFT = "DRAFT",
+    PROPOSAL_UPLOADED = "PROPOSAL_UPLOADED",
+    PROPOSAL_APPROVED = "PROPOSAL_APPROVED",
+    SIGNED = "SIGNED",
+    COMPLETED = "COMPLETED",
+    CANCELLED = "CANCELLED"
+}
+
 @Entity()
 export class Contracts extends BaseEntity {
     @PrimaryGeneratedColumn()
     id: number;
+
+    @Column({
+        type: "enum",
+        enum: ContractStatus,
+        default: ContractStatus.DRAFT
+    })
+    status: ContractStatus;
 
     @Column({ unique: true })
     contractCode: string;
@@ -31,10 +47,13 @@ export class Contracts extends BaseEntity {
     sellingPrice: number;
 
     @Column({ nullable: true })
-    templateFile: string; // Cloudinary URL
+    proposal_contract: string; // Cloudinary URL
 
     @Column({ nullable: true })
-    signedFile: string; // Cloudinary URL
+    signed_contract: string; // Cloudinary URL
+
+    @Column({ type: "json", nullable: true })
+    attachments: { type: string, name: string, url: string, size?: number, publicId?: string }[];
 
     @OneToMany(() => PaymentMilestones, (milestone) => milestone.contract)
     milestones: PaymentMilestones[];

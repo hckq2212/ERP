@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, ManyToMany, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
-import { Ventures } from "./Venture.entity";
+import { Vendors } from "./Vendor.entity";
 import { Services } from "./Service.entity";
 import { Tasks } from "./Task.entity";
 
@@ -27,8 +27,8 @@ export class Jobs extends BaseEntity {
     })
     performerType: PerformerType;
 
-    @ManyToOne(() => Ventures, (venture) => venture.jobs, { nullable: true })
-    venture: Ventures;
+    @ManyToOne(() => Vendors, (vendor) => vendor.jobs, { nullable: true })
+    vendor: Vendors;
 
     @Column({ nullable: true })
     code: string;

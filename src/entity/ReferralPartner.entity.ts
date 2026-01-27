@@ -1,8 +1,14 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
-import { PartnerType } from "./Venture.entity";
+
+
 import { Customers } from "./Customer.entity";
 import { Opportunities } from "./Opportunity.entity";
+
+export enum PartnerType {
+    BUSINESS = "BUSINESS",
+    INDIVIDUAL = "INDIVIDUAL"
+}
 
 @Entity()
 export class ReferralPartners extends BaseEntity {

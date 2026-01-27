@@ -8,6 +8,9 @@ import serviceRoute from "./routes/Service.Route"
 import jobRoute from "./routes/Job.Route"
 import contractRoute from "./routes/Contract.Route"
 import quotationRoute from "./routes/Quotation.Route"
+import paymentMilestoneRoute from "./routes/PaymentMilestone.Route"
+import projectRoute from "./routes/Project.Route"
+import taskRoute from "./routes/Task.Route"
 
 const app = express()
 const port = 3000
@@ -22,6 +25,9 @@ app.use("/api/services", serviceRoute)
 app.use("/api/jobs", jobRoute)
 app.use("/api/contracts", contractRoute)
 app.use("/api/quotations", quotationRoute)
+app.use("/api/payment-milestones", paymentMilestoneRoute)
+app.use("/api/projects", projectRoute)
+app.use("/api/tasks", taskRoute)
 
 AppDataSource.initialize().then(async () => {
 

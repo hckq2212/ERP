@@ -1,7 +1,7 @@
 import { AppDataSource } from "../data-source";
 import { Jobs } from "../entity/Job.entity";
 import { Services } from "../entity/Service.entity";
-import { Ventures } from "../entity/Venture.entity";
+import { Vendors } from "../entity/Vendor.entity";
 import { In } from "typeorm";
 
 export class JobService {
@@ -32,7 +32,7 @@ export class JobService {
         }
 
         if (ventureId) {
-            const ventureRepository = AppDataSource.getRepository(Ventures);
+            const ventureRepository = AppDataSource.getRepository(Vendors);
             job.venture = await ventureRepository.findOneBy({ id: ventureId });
         }
 
@@ -51,7 +51,7 @@ export class JobService {
         }
 
         if (ventureId) {
-            const ventureRepository = AppDataSource.getRepository(Ventures);
+            const ventureRepository = AppDataSource.getRepository(Vendors);
             job.venture = await ventureRepository.findOneBy({ id: ventureId });
         }
 

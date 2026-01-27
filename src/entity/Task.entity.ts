@@ -4,6 +4,7 @@ import { Projects } from "./Project.entity";
 import { Jobs } from "./Job.entity";
 import { Users } from "./User.entity";
 import { ContractServices } from "./ContractService.entity";
+import { Vendors } from "./Vendor.entity";
 
 export enum TaskStatus {
     PENDING = "PENDING",
@@ -30,8 +31,18 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => ContractServices, (contractService) => contractService.tasks)
     contractService: ContractServices;
 
-    @ManyToOne(() => Users, (user) => user.tasks)
+    @ManyToOne(() => Users, (user) => user.tasks, { nullable: true })
     assignee: Users;
+
+    @Column({
+        type: "enum",
+        enum: ["INTERNAL", "VENTURE"],
+        default: "INTERNAL"
+    })
+    performerType: "INTERNAL" | "VENTURE";
+
+    @ManyToOne(() => Vendors, { nullable: true })
+    vendor: Vendors;
 
     @Column({
         type: "enum",
@@ -54,4 +65,11 @@ export class Tasks extends BaseEntity {
 
     @Column({ type: "date", nullable: true })
     actualEndDate: Date;
+
+    @Column({ type: "text", nullable: true })
+    description: string;
+
+    @Column({ type: "json", nullable: true })
+    attachments: { type: string, name: string, url: string, size?: number, publicId?: string }[];
+
 }

@@ -4,7 +4,7 @@ import { Accounts } from "./entity/Account.entity"
 import { Users } from "./entity/User.entity"
 import { ProjectTeams } from "./entity/ProjectTeam.entity"
 import { TeamMembers } from "./entity/TeamMember.entity"
-import { Ventures } from "./entity/Venture.entity"
+import { Vendors } from "./entity/Vendor.entity"
 import { ReferralPartners } from "./entity/ReferralPartner.entity"
 import { Customers } from "./entity/Customer.entity"
 import { Opportunities } from "./entity/Opportunity.entity"
@@ -38,7 +38,7 @@ export const AppDataSource = new DataSource({
         Users,
         ProjectTeams,
         TeamMembers,
-        Ventures,
+        Vendors,
         ReferralPartners,
         Customers,
         Opportunities,

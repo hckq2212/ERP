@@ -4,11 +4,14 @@ import { Customers, CustomerSource } from "../entity/Customer.entity";
 import { Opportunities, CustomerType, OpportunityStatus } from "../entity/Opportunity.entity";
 import { ReferralPartners } from "../entity/ReferralPartner.entity";
 import { Like } from "typeorm";
+import { PaymentMilestones, MilestoneStatus } from "../entity/PaymentMilestone.entity";
+import { ContractStatus } from "../entity/Contract.entity";
 
 export class ContractService {
     private contractRepository = AppDataSource.getRepository(Contracts);
     private customerRepository = AppDataSource.getRepository(Customers);
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
+    private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
 
     async getAll() {
         return await this.contractRepository.find({
@@ -136,10 +139,11 @@ export class ContractService {
         const contract = this.contractRepository.create({
             ...contractData,
             customer: customer,
-            opportunity: opportunity
+            opportunity: opportunity,
+            attachments: opportunity?.attachments || [] // Copy attachments
         });
 
-        const savedContract = await this.contractRepository.save(contract);
+        const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
 
         // Update Opportunity Status
         if (opportunity) {
@@ -147,7 +151,94 @@ export class ContractService {
             await this.opportunityRepository.save(opportunity);
         }
 
+        // Create default milestone (100%)
+        const defaultMilestone = this.milestoneRepository.create({
+            contract: savedContract,
+            name: "Thanh toán đợt 1",
+            percentage: 100,
+            amount: savedContract.sellingPrice,
+            status: MilestoneStatus.PENDING,
+            dueDate: new Date(new Date().setDate(new Date().getDate() + 30)) // Default 30 days
+        });
+        await this.milestoneRepository.save(defaultMilestone);
+
         return savedContract;
+    }
+
+    async uploadProposal(id: number, fileUrl: string) {
+        const contract = await this.getOne(id);
+        contract.proposal_contract = fileUrl;
+        contract.status = ContractStatus.PROPOSAL_UPLOADED;
+        return await this.contractRepository.save(contract);
+    }
+
+    async approveProposal(id: number) {
+        const contract = await this.getOne(id);
+        if (contract.status !== ContractStatus.PROPOSAL_UPLOADED) {
+            throw new Error("Cần upload dự thảo hợp đồng trước khi duyệt");
+        }
+        contract.status = ContractStatus.PROPOSAL_APPROVED;
+        return await this.contractRepository.save(contract);
+    }
+
+    async uploadSigned(id: number, fileUrl: string) {
+        const contract = await this.getOne(id);
+        if (contract.status !== ContractStatus.PROPOSAL_APPROVED) {
+            throw new Error("Hợp đồng cần được duyệt trước khi upload bản ký");
+        }
+        contract.signed_contract = fileUrl;
+        contract.status = ContractStatus.SIGNED;
+        return await this.contractRepository.save(contract);
+    }
+
+    async addMilestone(contractId: number, data: { name: string, percentage: number, amount?: number, dueDate: Date }) {
+        const contract = await this.getOne(contractId);
+
+        // Validate percentage
+        const currentMilestones = await this.milestoneRepository.find({ where: { contract: { id: contractId } } });
+        const totalPercentage = currentMilestones.reduce((sum, m) => sum + Number(m.percentage), 0);
+
+        if (totalPercentage + Number(data.percentage) > 100) {
+            throw new Error(`Tổng phần trăm thanh toán không được vượt quá 100%. Hiện tại: ${totalPercentage}%`);
+        }
+
+        const amount = data.amount || (contract.sellingPrice * data.percentage / 100);
+
+        const milestone = this.milestoneRepository.create({
+            ...data,
+            contract: contract,
+            amount: amount,
+            status: MilestoneStatus.PENDING
+        });
+
+        return await this.milestoneRepository.save(milestone);
+    }
+
+    async updateMilestone(id: number, data: Partial<PaymentMilestones>) {
+        const milestone = await this.milestoneRepository.findOne({ where: { id }, relations: ["contract"] });
+        if (!milestone) throw new Error("Không tìm thấy đợt thanh toán");
+
+        if (data.percentage) {
+            const currentMilestones = await this.milestoneRepository.find({ where: { contract: { id: milestone.contract.id } } });
+            const otherMilestonesTotal = currentMilestones
+                .filter(m => m.id !== id)
+                .reduce((sum, m) => sum + Number(m.percentage), 0);
+
+            if (otherMilestonesTotal + Number(data.percentage) > 100) {
+                throw new Error(`Tổng phần trăm thanh toán không được vượt quá 100%. Hiện tại: ${otherMilestonesTotal}%`);
+            }
+            // Recalculate amount if percentage changes
+            milestone.amount = milestone.contract.sellingPrice * Number(data.percentage) / 100;
+        }
+
+        Object.assign(milestone, data);
+        return await this.milestoneRepository.save(milestone);
+    }
+
+    async deleteMilestone(id: number) {
+        const milestone = await this.milestoneRepository.findOne({ where: { id } });
+        if (!milestone) throw new Error("Không tìm thấy đợt thanh toán");
+        return await this.milestoneRepository.remove(milestone);
     }
 
     // ... Update/Delete methods can be basic for now

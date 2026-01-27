@@ -8,7 +8,7 @@ export enum PartnerType {
 }
 
 @Entity()
-export class Ventures extends BaseEntity {
+export class Vendors extends BaseEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
@@ -34,6 +34,6 @@ export class Ventures extends BaseEntity {
     })
     type: PartnerType;
 
-    @OneToMany(() => Jobs, (job) => job.venture)
+    @OneToMany(() => Jobs, (job) => job.vendor)
     jobs: Jobs[];
 }

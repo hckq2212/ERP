@@ -39,4 +39,60 @@ export class ContractController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    uploadProposal = async (req: Request, res: Response) => {
+        try {
+            const { fileUrl } = req.body;
+            const contract = await this.contractService.uploadProposal(Number(req.params.id), fileUrl);
+            res.status(200).json(contract);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    approveProposal = async (req: Request, res: Response) => {
+        try {
+            const contract = await this.contractService.approveProposal(Number(req.params.id));
+            res.status(200).json(contract);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    uploadSigned = async (req: Request, res: Response) => {
+        try {
+            const { fileUrl } = req.body;
+            const contract = await this.contractService.uploadSigned(Number(req.params.id), fileUrl);
+            res.status(200).json(contract);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    addMilestone = async (req: Request, res: Response) => {
+        try {
+            const milestone = await this.contractService.addMilestone(Number(req.params.id), req.body);
+            res.status(201).json(milestone);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    updateMilestone = async (req: Request, res: Response) => {
+        try {
+            const milestone = await this.contractService.updateMilestone(Number(req.params.id), req.body);
+            res.status(200).json(milestone);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    deleteMilestone = async (req: Request, res: Response) => {
+        try {
+            const result = await this.contractService.deleteMilestone(Number(req.params.id));
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 }

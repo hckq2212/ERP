@@ -108,6 +108,9 @@ export class Opportunities extends BaseEntity {
     @Column({ nullable: true })
     leadTaxId: string;
 
+    @Column({ type: "json", nullable: true })
+    attachments: { type: string, name: string, url: string, size?: number, publicId?: string }[];
+
     // Relations
     @ManyToOne(() => Customers, (customer) => customer.opportunities, { nullable: true })
     customer: Customers;
