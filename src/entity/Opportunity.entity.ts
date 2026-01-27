@@ -7,10 +7,10 @@ import { Contracts } from "./Contract.entity";
 import { ReferralPartners } from "./ReferralPartner.entity";
 
 export enum Region {
-    NATIONAL = "TOÀN QUỐC",
-    NORTH = "BẮC",
-    CENTRAL = "TRUNG",
-    SOUTH = "NAM"
+    NATIONAL = "NATIONAL",
+    NORTH = "NORTH",
+    CENTRAL = "CENTRAL",
+    SOUTH = "SOUTH"
 }
 
 export enum CustomerType {

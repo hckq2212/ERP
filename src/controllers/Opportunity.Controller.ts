@@ -50,17 +50,43 @@ export class OpportunityController {
             if (files && files.length > 0) {
                 const uploadPromises = files.map(file => {
                     return new Promise((resolve, reject) => {
+                        // Extract file extension and name without extension
+                        const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
+                        const fileNameWithoutExt = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
+                        // Create a safe filename (remove special characters, keep Vietnamese)
+                        const safeFileName = fileNameWithoutExt.replace(/[^a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ_-]/g, '_');
+                        // Add extension to public_id to preserve file type
+                        const publicIdWithExtension = fileExtension ? `${safeFileName}.${fileExtension}` : safeFileName;
+
                         const uploadStream = cloudinary.uploader.upload_stream(
-                            { resource_type: "auto", folder: "opportunities" },
+                            {
+                                resource_type: "auto",
+                                folder: "GETVINI/ERP/opportunities",
+                                public_id: publicIdWithExtension, // Include extension in public_id
+                                use_filename: true,
+                                unique_filename: true // Add timestamp to avoid duplicates
+                            },
                             (error, result) => {
                                 if (error) reject(error);
-                                else resolve({
-                                    type: "FILE",
-                                    name: file.originalname,
-                                    url: result?.secure_url,
-                                    size: file.size,
-                                    publicId: result?.public_id
-                                });
+                                else {
+                                    // Generate download URL with attachment flag and original filename
+                                    const downloadUrl = cloudinary.url(result!.public_id, {
+                                        resource_type: result!.resource_type,
+                                        flags: `attachment:${file.originalname}`,
+                                        secure: true
+                                    });
+
+                                    resolve({
+                                        type: "FILE",
+                                        name: file.originalname,
+                                        extension: fileExtension,
+                                        mimeType: file.mimetype,
+                                        url: result?.secure_url,
+                                        downloadUrl: downloadUrl,
+                                        size: file.size,
+                                        publicId: result?.public_id
+                                    });
+                                }
                             }
                         );
                         uploadStream.end(file.buffer);
@@ -124,13 +150,26 @@ export class OpportunityController {
                             { resource_type: "auto", folder: "opportunities" },
                             (error, result) => {
                                 if (error) reject(error);
-                                else resolve({
-                                    type: "FILE",
-                                    name: file.originalname,
-                                    url: result?.secure_url,
-                                    size: file.size,
-                                    publicId: result?.public_id
-                                });
+                                else {
+                                    const downloadUrl = cloudinary.url(result!.public_id, {
+                                        resource_type: result!.resource_type,
+                                        flags: 'attachment',
+                                        secure: true
+                                    });
+
+                                    const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
+
+                                    resolve({
+                                        type: "FILE",
+                                        name: file.originalname,
+                                        extension: fileExtension,
+                                        mimeType: file.mimetype,
+                                        url: result?.secure_url,
+                                        downloadUrl: downloadUrl,
+                                        size: file.size,
+                                        publicId: result?.public_id
+                                    });
+                                }
                             }
                         );
                         uploadStream.end(file.buffer);

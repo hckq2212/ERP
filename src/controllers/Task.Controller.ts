@@ -93,13 +93,26 @@ export class TaskController {
                             { resource_type: "auto", folder: "tasks" },
                             (error, result) => {
                                 if (error) reject(error);
-                                else resolve({
-                                    type: "FILE",
-                                    name: file.originalname,
-                                    url: result?.secure_url,
-                                    size: file.size,
-                                    publicId: result?.public_id
-                                });
+                                else {
+                                    const downloadUrl = cloudinary.url(result!.public_id, {
+                                        resource_type: result!.resource_type,
+                                        flags: 'attachment',
+                                        secure: true
+                                    });
+
+                                    const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
+
+                                    resolve({
+                                        type: "FILE",
+                                        name: file.originalname,
+                                        extension: fileExtension,
+                                        mimeType: file.mimetype,
+                                        url: result?.secure_url,
+                                        downloadUrl: downloadUrl,
+                                        size: file.size,
+                                        publicId: result?.public_id
+                                    });
+                                }
                             }
                         );
                         uploadStream.end(file.buffer);
