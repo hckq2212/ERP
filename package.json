@@ -1,0 +1,24 @@
+{
+   "name": "ERP",
+   "version": "0.0.1",
+   "description": "Awesome project developed with TypeORM.",
+   "type": "commonjs",
+   "dependencies": {
+      "@types/bcrypt": "^6.0.0",
+      "@types/express": "^5.0.6",
+      "@types/jsonwebtoken": "^9.0.10",
+      "bcrypt": "^6.0.0",
+      "cloudinary": "^2.9.0",
+      "cors": "^2.8.6",
+      "dotenv": "^17.2.3",
+      "express": "^5.2.1",
+      "jsonwebtoken": "^9.0.3",
+      "pg": "^8.17.2",
+      "ts-node": "^10.9.2",
+      "typeorm": "^0.3.28"
+   },
+   "scripts": {
+      "start": "ts-node src/index.ts",
+      "dev": "nodemon --exec ts-node src/index.ts"
+   }
+}
