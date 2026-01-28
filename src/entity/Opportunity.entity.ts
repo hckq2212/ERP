@@ -5,6 +5,7 @@ import { Quotations } from "./Quotation.entity";
 import { OpportunityServices } from "./OpportunityService.entity";
 import { Contracts } from "./Contract.entity";
 import { ReferralPartners } from "./ReferralPartner.entity";
+import { Users } from "./User.entity";
 
 export enum Region {
     NATIONAL = "NATIONAL",
@@ -126,4 +127,7 @@ export class Opportunities extends BaseEntity {
 
     @OneToMany(() => Contracts, (contract) => contract.opportunity)
     contracts: Contracts[];
+
+    @ManyToOne(() => Users, (user) => user.opportunities)
+    createdBy: Users;
 }

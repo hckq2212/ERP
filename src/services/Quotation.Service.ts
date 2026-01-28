@@ -97,31 +97,40 @@ export class QuotationService {
             throw new Error("Không thể chỉnh sửa báo giá đã được duyệt");
         }
 
-        if (data.note) quotation.note = data.note;
+        if (data.note !== undefined) quotation.note = data.note;
         if (data.status && data.status !== QuotationStatus.APPROVED) quotation.status = data.status;
 
         // If details provided, update them
         if (data.details && Array.isArray(data.details)) {
             let total = 0;
-            // Clear old details? Or update? Let's assume full replace for simplicity or update by ID
-            // For simplicity in this context, let's wipe and recreate details if provided
+
+            // 1. Clear old details from database
             await this.quotationDetailRepository.delete({ quotation: { id: quotation.id } });
+
+            // 2. Clear old details from memory object to avoid TypeORM sync issues
+            quotation.details = [];
 
             const serviceRepository = AppDataSource.getRepository(Services);
 
             for (const item of data.details) {
                 const service = await serviceRepository.findOneBy({ id: item.serviceId });
-                if (service) {
-                    const detail = this.quotationDetailRepository.create({
-                        quotation,
-                        service,
-                        quantity: item.quantity || 1,
-                        sellingPrice: item.sellingPrice || 0,
-                        costAtSale: item.costAtSale || 0
-                    });
-                    await this.quotationDetailRepository.save(detail);
-                    total += Number(detail.sellingPrice) * detail.quantity;
+                if (!service) {
+                    throw new Error(`Không tìm thấy dịch vụ với ID: ${item.serviceId}`);
                 }
+
+                const detail = this.quotationDetailRepository.create({
+                    quotation,
+                    service,
+                    quantity: item.quantity || 1,
+                    sellingPrice: item.sellingPrice || 0,
+                    costAtSale: item.costAtSale || 0
+                });
+
+                await this.quotationDetailRepository.save(detail);
+                total += Number(detail.sellingPrice) * detail.quantity;
+
+                // Keep in memory for the final return
+                quotation.details.push(detail);
             }
             quotation.totalAmount = total;
         }

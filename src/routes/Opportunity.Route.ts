@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { OpportunityController } from "../controllers/Opportunity.Controller";
 import multer from "multer";
+import { authMiddleware } from "../middlewares/Auth.Middleware";
 
 const router = Router();
 const opportunityController = new OpportunityController();
@@ -15,10 +16,10 @@ const upload = multer({
     }
 });
 
-router.get("/", opportunityController.getAll);
+router.get("/", authMiddleware, opportunityController.getAll);
 router.get("/:id", opportunityController.getOne);
-router.post("/", upload.array('files', 5), opportunityController.create);
-router.patch("/:id", upload.array('files', 5), opportunityController.update);
-router.delete("/:id", opportunityController.delete);
+router.post("/", authMiddleware, upload.array('files', 5), opportunityController.create);
+router.patch("/:id", authMiddleware, upload.array('files', 5), opportunityController.update);
+router.delete("/:id", authMiddleware, opportunityController.delete);
 
 export default router;

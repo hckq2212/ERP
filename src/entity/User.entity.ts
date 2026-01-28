@@ -4,6 +4,7 @@ import { Accounts } from "./Account.entity"
 import { TeamMembers } from "./TeamMember.entity"
 import { ProjectTeams } from "./ProjectTeam.entity"
 import { Tasks } from "./Task.entity"
+import { Opportunities } from "./Opportunity.entity"
 
 @Entity()
 export class Users extends BaseEntity {
@@ -29,4 +30,7 @@ export class Users extends BaseEntity {
 
     @OneToMany(() => Tasks, (task) => task.assignee)
     tasks: Tasks[]
+
+    @OneToMany(() => Opportunities, (opportunity) => opportunity.createdBy)
+    opportunities: Opportunities[]
 }

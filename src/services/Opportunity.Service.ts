@@ -1,26 +1,28 @@
 import { AppDataSource } from "../data-source";
 import { Opportunities, CustomerType } from "../entity/Opportunity.entity";
-import { Customers, CustomerSource } from "../entity/Customer.entity";
+import { Customers } from "../entity/Customer.entity";
 import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { Services } from "../entity/Service.entity";
 import { ReferralPartners } from "../entity/ReferralPartner.entity";
+import { Users } from "../entity/User.entity";
 import { Like } from "typeorm";
 
 export class OpportunityService {
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
     private customerRepository = AppDataSource.getRepository(Customers);
     private referralPartnerRepository = AppDataSource.getRepository(ReferralPartners);
+    private userRepository = AppDataSource.getRepository(Users);
 
     async getAll() {
         return await this.opportunityRepository.find({
-            relations: ["customer", "referralPartner"]
+            relations: ["customer", "referralPartner", "createdBy"]
         });
     }
 
     async getOne(id: number) {
         const opportunity = await this.opportunityRepository.findOne({
             where: { id },
-            relations: ["customer", "referralPartner", "services", "quotations", "contracts"]
+            relations: ["customer", "referralPartner", "services", "quotations", "contracts", "createdBy"]
         });
         if (!opportunity) {
             throw new Error("Không tìm thấy cơ hội kinh doanh");
@@ -57,6 +59,7 @@ export class OpportunityService {
             leadAddress,
             leadTaxId,
             services,
+            accountId,
             ...opportunityData
         } = data;
 
@@ -105,6 +108,16 @@ export class OpportunityService {
                 throw new Error("Không tìm thấy đối tác giới thiệu");
             }
             opportunity.referralPartner = partner;
+        }
+
+        // Handle CreatedBy Logic
+        if (accountId) {
+            const user = await this.userRepository.findOne({
+                where: { account: { id: parseInt(accountId) } }
+            });
+            if (user) {
+                opportunity.createdBy = user;
+            }
         }
 
         const savedOpportunity = await this.opportunityRepository.save(opportunity);

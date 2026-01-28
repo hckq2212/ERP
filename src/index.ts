@@ -12,6 +12,7 @@ import paymentMilestoneRoute from "./routes/PaymentMilestone.Route"
 import projectRoute from "./routes/Project.Route"
 import taskRoute from "./routes/Task.Route"
 import opportunityServiceRoute from "./routes/OpportunityService.Route"
+import userRoute from "./routes/User.Route"
 
 const app = express()
 const port = 3000
@@ -30,6 +31,7 @@ app.use("/api/payment-milestones", paymentMilestoneRoute)
 app.use("/api/projects", projectRoute)
 app.use("/api/tasks", taskRoute)
 app.use("/api/opportunity-services", opportunityServiceRoute)
+app.use("/api/users", userRoute)
 
 AppDataSource.initialize().then(async () => {
 

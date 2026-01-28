@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { OpportunityService } from "../services/Opportunity.Service";
+import { AuthRequest } from "../middlewares/Auth.Middleware";
 import cloudinary from "../config/cloudinary";
 
 export class OpportunityController {
@@ -26,6 +27,9 @@ export class OpportunityController {
 
     create = async (req: Request, res: Response) => {
         try {
+            const authReq = req as AuthRequest;
+            const accountId = authReq.user?.id;
+
             console.log(req.body);
             const files = req.files as Express.Multer.File[];
 
@@ -102,7 +106,8 @@ export class OpportunityController {
             const result = await this.opportunityService.create({
                 ...req.body,
                 services,
-                attachments
+                attachments,
+                accountId
             });
             res.status(201).json(result);
 
