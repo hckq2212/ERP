@@ -20,6 +20,9 @@ export class Tasks extends BaseEntity {
     id: number;
 
     @Column()
+    code: string;
+
+    @Column()
     name: string;
 
     @ManyToOne(() => Projects, (project) => project.tasks)

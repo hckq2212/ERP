@@ -18,7 +18,7 @@ const upload = multer({
 router.get("/", opportunityController.getAll);
 router.get("/:id", opportunityController.getOne);
 router.post("/", upload.array('files', 5), opportunityController.create);
-router.put("/:id", upload.array('files', 5), opportunityController.update);
+router.patch("/:id", upload.array('files', 5), opportunityController.update);
 router.delete("/:id", opportunityController.delete);
 
 export default router;

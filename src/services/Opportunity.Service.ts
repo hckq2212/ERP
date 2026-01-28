@@ -41,7 +41,7 @@ export class OpportunityService {
             }
         });
 
-        const sequence = (count + 1).toString().padStart(4, '0');
+        const sequence = (count + 1).toString().padStart(3, '0');
         return `${prefix}-${sequence}`;
     }
 

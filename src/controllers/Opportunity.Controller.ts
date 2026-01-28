@@ -28,7 +28,11 @@ export class OpportunityController {
         try {
             console.log(req.body);
             const files = req.files as Express.Multer.File[];
+
+            // Handle multipart/form-data stringified fields
             const links = req.body.links ? JSON.parse(req.body.links) : [];
+            const services = req.body.services ? JSON.parse(req.body.services) : [];
+            const attachments = [...links];
 
             // 1. Files validation
             // Multer 'limits' option handles max count (5), but let's be safe
@@ -43,8 +47,6 @@ export class OpportunityController {
                     return res.status(400).json({ message: "Tổng dung lượng file không được vượt quá 25MB" });
                 }
             }
-
-            const attachments = [...links];
 
             // 3. Upload to Cloudinary
             if (files && files.length > 0) {
@@ -99,6 +101,7 @@ export class OpportunityController {
 
             const result = await this.opportunityService.create({
                 ...req.body,
+                services,
                 attachments
             });
             res.status(201).json(result);
@@ -113,17 +116,37 @@ export class OpportunityController {
             const id = parseInt(req.params.id as string);
             const files = req.files as Express.Multer.File[];
 
-            // Existing attachments logic is tricky. 
-            // Simplified: User sends new list of links + new files. 
-            // If they want to keep old files, they should send them in 'attachments' body or handle separate delete API.
-            // For now, let's assume 'attachments' in body contains EVERYTHING to keep (links + old files refs) 
-            // AND 'files' contains NEW files to add.
+            // Fetch existing opportunity to preserve attachments if not provided
+            const existingOpportunity = await this.opportunityService.getOne(id);
 
-            const currentAttachments = req.body.attachments ? JSON.parse(req.body.attachments) : [];
-            const links = req.body.links ? JSON.parse(req.body.links) : [];
+            let currentAttachments = [];
+            if (req.body.attachments) {
+                try {
+                    currentAttachments = JSON.parse(req.body.attachments);
+                } catch (e) {
+                    currentAttachments = [];
+                }
+            } else {
+                currentAttachments = existingOpportunity.attachments || [];
+            }
 
-            // Merge existing and new links
-            // Let's rely on what front-end sends. If front-end sends existing files in 'attachments', we keep them.
+            let links = [];
+            if (req.body.links) {
+                try {
+                    links = JSON.parse(req.body.links);
+                } catch (e) {
+                    links = [];
+                }
+            }
+
+            let services = [];
+            if (req.body.services) {
+                try {
+                    services = JSON.parse(req.body.services);
+                } catch (e) {
+                    services = [];
+                }
+            }
 
             let finalAttachments = [...currentAttachments, ...links];
 
@@ -179,10 +202,16 @@ export class OpportunityController {
                 finalAttachments.push(...uploadedFiles);
             }
 
-            const result = await this.opportunityService.update(id, {
+            const updateData: any = {
                 ...req.body,
                 attachments: finalAttachments
-            });
+            };
+
+            if (req.body.services) {
+                updateData.services = services;
+            }
+
+            const result = await this.opportunityService.update(id, updateData);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });
