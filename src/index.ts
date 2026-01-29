@@ -13,6 +13,10 @@ import projectRoute from "./routes/Project.Route"
 import taskRoute from "./routes/Task.Route"
 import opportunityServiceRoute from "./routes/OpportunityService.Route"
 import userRoute from "./routes/User.Route"
+import projectTeamRoute from "./routes/ProjectTeam.Route"
+import notificationRoute from "./routes/Notification.Route"
+
+
 
 const app = express()
 const port = 3000
@@ -32,6 +36,9 @@ app.use("/api/projects", projectRoute)
 app.use("/api/tasks", taskRoute)
 app.use("/api/opportunity-services", opportunityServiceRoute)
 app.use("/api/users", userRoute)
+app.use("/api/teams", projectTeamRoute)
+app.use("/api/notifications", notificationRoute)
+
 
 AppDataSource.initialize().then(async () => {
 

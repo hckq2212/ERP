@@ -9,6 +9,8 @@ import { ContractStatus } from "../entity/Contract.entity";
 import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { ContractServices } from "../entity/ContractService.entity";
 import { QuotationStatus } from "../entity/Quotation.entity";
+import { ProjectService } from "./Project.Service";
+
 
 export class ContractService {
     private contractRepository = AppDataSource.getRepository(Contracts);
@@ -17,6 +19,8 @@ export class ContractService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
     private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
     private contractServiceRepository = AppDataSource.getRepository(ContractServices);
+    private projectService = new ProjectService();
+
 
     async getAll() {
         return await this.contractRepository.find({
@@ -230,8 +234,14 @@ export class ContractService {
             throw new Error("Cần upload dự thảo hợp đồng trước khi duyệt");
         }
         contract.status = ContractStatus.PROPOSAL_APPROVED;
-        return await this.contractRepository.save(contract);
+        const savedContract = await this.contractRepository.save(contract);
+
+        // Auto create project
+        await this.projectService.createFromContract(savedContract);
+
+        return savedContract;
     }
+
 
     async uploadSigned(id: number, fileUrl: string) {
         const contract = await this.getOne(id);

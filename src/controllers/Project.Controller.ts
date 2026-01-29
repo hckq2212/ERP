@@ -22,6 +22,16 @@ export class ProjectController {
         }
     }
 
+    getByContract = async (req: Request, res: Response) => {
+        try {
+            const project = await this.projectService.getByContractId(Number(req.params.contractId));
+            res.status(200).json(project);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+
     assign = async (req: Request, res: Response) => {
         try {
             // body: { contractId, teamId, name? }
