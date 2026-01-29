@@ -19,10 +19,16 @@ export class TaskService {
     private notificationService = new NotificationService();
 
 
-    async getAll() {
-        return await this.taskRepository.find({
+    async getAll(userInfo?: { id: number, role: string }) {
+        const query: any = {
             relations: ["project", "job", "assignee"]
-        });
+        };
+
+        if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
+            query.where = { assignee: { id: userInfo.id } };
+        }
+
+        return await this.taskRepository.find(query);
     }
 
 

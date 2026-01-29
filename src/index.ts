@@ -15,6 +15,8 @@ import opportunityServiceRoute from "./routes/OpportunityService.Route"
 import userRoute from "./routes/User.Route"
 import projectTeamRoute from "./routes/ProjectTeam.Route"
 import notificationRoute from "./routes/Notification.Route"
+import customerRoute from "./routes/Customer.Route"
+
 
 
 
@@ -38,6 +40,8 @@ app.use("/api/opportunity-services", opportunityServiceRoute)
 app.use("/api/users", userRoute)
 app.use("/api/teams", projectTeamRoute)
 app.use("/api/notifications", notificationRoute)
+app.use("/api/customers", customerRoute)
+
 
 
 AppDataSource.initialize().then(async () => {

@@ -5,14 +5,16 @@ import cloudinary from "../config/cloudinary";
 export class TaskController {
     private taskService = new TaskService();
 
-    getAll = async (req: Request, res: Response) => {
+    getAll = async (req: any, res: Response) => {
         try {
-            const tasks = await this.taskService.getAll();
+            const userInfo = (req as any).user;
+            const tasks = await this.taskService.getAll(userInfo);
             res.status(200).json(tasks);
         } catch (error) {
             res.status(500).json({ message: error.message });
         }
     }
+
 
     getOne = async (req: Request, res: Response) => {
         try {
