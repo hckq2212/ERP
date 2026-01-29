@@ -44,35 +44,43 @@ export class TaskController {
     assign = async (req: Request, res: Response) => {
         try {
             const files = req.files as Express.Multer.File[];
-            // links comes as a stringified JSON array if sent as form-data, or just handle if it's parsed. 
-            // Since we use upload.array(), body parsing might depend on complexity.
-            // Usually with FormData, non-file fields are text.
-            let links: any[] = [];
-            if (req.body.links) {
-                try {
-                    links = JSON.parse(req.body.links);
-                } catch (e) {
-                    // Try to handle if it's already an object or simple string? 
-                    // Let's assume it's JSON string as per common FormData patterns
-                    links = [];
+            // Parse links and attachments from body
+            let bodyAttachments: any[] = [];
+
+            const parseField = (field: any) => {
+                if (!field) return [];
+                if (typeof field === 'string') {
+                    try {
+                        return JSON.parse(field);
+                    } catch (e) {
+                        return [{ type: "LINK", name: field, url: field }];
+                    }
                 }
-            }
+                return Array.isArray(field) ? field : [field];
+            };
+
+            const links = parseField(req.body.links);
+            const existingAttachments = parseField(req.body.attachments);
+
+            bodyAttachments = [...links, ...existingAttachments];
 
             const attachments: { type: string, name: string, url: string, size?: number, publicId?: string }[] = [];
 
-            // Add links
-            if (Array.isArray(links)) {
-                links.forEach(link => {
-                    // Assert structure or map?
-                    // Assuming user sends { type: 'LINK', name: '...', url: '...' } or just strings?
-                    // Request says "link", let's standardise.
-                    if (typeof link === 'string') {
-                        attachments.push({ type: "LINK", name: link, url: link });
-                    } else {
-                        attachments.push(link);
-                    }
-                });
-            }
+            // Standardize body attachments
+            bodyAttachments.forEach(item => {
+                if (typeof item === 'string') {
+                    attachments.push({ type: "LINK", name: item, url: item });
+                } else if (item.url) {
+                    attachments.push({
+                        type: item.type || "LINK",
+                        name: item.name || item.url,
+                        url: item.url,
+                        size: item.size,
+                        publicId: item.publicId
+                    });
+                }
+            });
+
 
             // Validations
             if (files) {

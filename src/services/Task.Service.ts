@@ -6,6 +6,8 @@ import { Users } from "../entity/User.entity";
 import { Vendors } from "../entity/Vendor.entity";
 import { VendorServices } from "../entity/VendorService.entity";
 import { Like } from "typeorm";
+import { NotificationService } from "./Notification.Service";
+
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -14,6 +16,8 @@ export class TaskService {
     private userRepository = AppDataSource.getRepository(Users);
     private vendorRepository = AppDataSource.getRepository(Vendors);
     private vendorServiceRepository = AppDataSource.getRepository(VendorServices);
+    private notificationService = new NotificationService();
+
 
     async getAll() {
         return await this.taskRepository.find({
@@ -21,11 +25,13 @@ export class TaskService {
         });
     }
 
+
     async getOne(id: number) {
         const task = await this.taskRepository.findOne({
             where: { id },
             relations: ["project", "job", "assignee"]
         });
+
         if (!task) throw new Error("Không tìm thấy công việc");
         return task;
     }
@@ -70,7 +76,7 @@ export class TaskService {
         });
 
         const sequence = (count + 1).toString().padStart(2, '0'); // "01", "02"...
-        const taskCode = `${contractCode} - ${jobCode} - ${sequence}`;
+        const taskCode = `${contractCode}-${jobCode}-${sequence}`;
 
         const task = this.taskRepository.create({
             code: taskCode,
@@ -84,19 +90,43 @@ export class TaskService {
 
         if (data.assigneeId) {
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-            if (user) task.assignee = user;
+            if (user) {
+                task.assignee = user;
+                await this.notificationService.createNotification({
+                    title: "Công việc mới được giao",
+                    content: `Bạn được giao công việc: ${task.name} (Mã: ${task.code})`,
+                    type: "TASK_ASSIGNED",
+                    recipient: user,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                });
+            }
         }
 
         return await this.taskRepository.save(task);
     }
 
+
     async update(id: number, data: Partial<Tasks> & { assigneeId?: number }) {
         const task = await this.getOne(id);
 
-        if (data.assigneeId) {
+        if (data.assigneeId && (!task.assignee || task.assignee.id !== data.assigneeId)) {
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-            if (user) task.assignee = user;
+            if (user) {
+                task.assignee = user;
+                await this.notificationService.createNotification({
+                    title: "Thay đổi người thực hiện",
+                    content: `Bạn được giao công việc: ${task.name} (Mã: ${task.code})`,
+                    type: "TASK_ASSIGNED",
+                    recipient: user,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                });
+            }
         }
+
 
         // Prevent name update if it's auto-generated? Or allow? 
         // For now, let's just update other fields.
@@ -113,7 +143,8 @@ export class TaskService {
 
     async assign(id: number, data: {
         assigneeId: number;
-        deadline: Date;
+        plannedEndDate: Date;
+        plannedStartDate: Date;
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
     }) {
@@ -123,7 +154,8 @@ export class TaskService {
         if (!user) throw new Error("Người được phân công không tồn tại");
 
         task.assignee = user;
-        task.plannedEndDate = data.deadline;
+        task.plannedEndDate = data.plannedEndDate;
+        task.plannedStartDate = data.plannedStartDate;
         if (data.description) task.description = data.description;
         if (data.attachments) task.attachments = data.attachments;
 
@@ -135,8 +167,22 @@ export class TaskService {
             // Let's just update fields for now.
         }
 
-        return await this.taskRepository.save(task);
+        const savedTask = await this.taskRepository.save(task);
+
+        // Send Notification
+        await this.notificationService.createNotification({
+            title: "Công việc mới được giao",
+            content: `Bạn được giao công việc: ${savedTask.name} (Mã: ${savedTask.code})`,
+            type: "TASK_ASSIGNED",
+            recipient: user,
+            relatedEntityId: savedTask.id.toString(),
+            relatedEntityType: "Task",
+            link: `/tasks/${savedTask.id}`
+        });
+
+        return savedTask;
     }
+
 
     async delete(id: number) {
         const task = await this.getOne(id);

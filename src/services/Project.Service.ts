@@ -15,6 +15,7 @@ export class ProjectService {
     private teamRepository = AppDataSource.getRepository(ProjectTeams);
     private contractServiceRepository = AppDataSource.getRepository(ContractServices);
     private taskRepository = AppDataSource.getRepository(Tasks);
+    private userRepository = AppDataSource.getRepository(Users);
     private notificationService = new NotificationService();
 
 
@@ -28,8 +29,9 @@ export class ProjectService {
     async getOne(id: number) {
         const project = await this.projectRepository.findOne({
             where: { id },
-            relations: ["contract", "team", "team.teamLead", "tasks"]
+            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee"]
         });
+
         if (!project) throw new Error("Không tìm thấy dự án");
         return project;
     }
@@ -37,8 +39,9 @@ export class ProjectService {
     async getByContractId(contractId: number) {
         const project = await this.projectRepository.findOne({
             where: { contract: { id: contractId } },
-            relations: ["contract", "team", "team.teamLead", "tasks"]
+            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee"]
         });
+
         if (!project) throw new Error("Không tìm thấy dự án liên kết với hợp đồng này");
         return project;
     }
@@ -176,26 +179,40 @@ export class ProjectService {
 
 
     async confirm(id: number, userId: number) {
-        // userId should be the team leader's ID
+        // userId should be the team leader's ID (from token)
         const project = await this.getOne(id);
 
         if (project.status !== ProjectStatus.PENDING_CONFIRMATION) {
             throw new Error("Dự án không ở trạng thái chờ xác nhận");
         }
 
-        // Ideally check if userId is the team leader. 
-        // For now assuming the caller has verified permissions or we trust the input.
-        // Let's check:
-        if (project.team.teamLead.id !== userId) {
-            // throw new Error("Chỉ Team Lead mới có quyền xác nhận");
-            // For simplicity, strict check might be annoying if testing with admin. 
-            // Let's skip strict check or assume userId is passed correctly.
-            // Actually, let's just update status.
-        }
+        const userConfirming = await this.userRepository.findOneBy({ id: userId });
+        if (!userConfirming) throw new Error("Không tìm thấy thông tin người xác nhận");
 
         project.status = ProjectStatus.CONFIRMED;
-        return await this.projectRepository.save(project);
+        const savedProject = await this.projectRepository.save(project);
+
+        // Notify BOD members
+        const bodUsers = await this.userRepository.find({
+            relations: ["account"],
+            where: { account: { role: "BOD" as any } } // Using 'as any' if enum import is tricky, but let's try to do it right if possible
+        });
+
+        for (const bod of bodUsers) {
+            await this.notificationService.createNotification({
+                title: "Dự án đã được tiếp nhận",
+                content: `${userConfirming.fullName} đã nhận thông tin dự án ${savedProject.name}`,
+                type: "PROJECT_CONFIRMED",
+                recipient: bod,
+                relatedEntityId: savedProject.id.toString(),
+                relatedEntityType: "Project",
+                link: `/projects/${savedProject.id}`
+            });
+        }
+
+        return savedProject;
     }
+
 
     async start(id: number) {
         const project = await this.getOne(id);

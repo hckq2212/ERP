@@ -6,6 +6,8 @@ const teamController = new ProjectTeamController();
 
 router.get("/", teamController.getAll);
 router.get("/:id", teamController.getOne);
+router.get("/:id/members", teamController.getMembers);
+
 router.post("/", teamController.create);
 router.put("/:id", teamController.update);
 router.delete("/:id", teamController.delete);

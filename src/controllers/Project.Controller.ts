@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { ProjectService } from "../services/Project.Service";
+import { AuthRequest } from "../middlewares/Auth.Middleware";
+
 
 export class ProjectController {
     private projectService = new ProjectService();
@@ -42,18 +44,18 @@ export class ProjectController {
         }
     }
 
-    confirm = async (req: Request, res: Response) => {
+    confirm = async (req: AuthRequest, res: Response) => {
         try {
-            // userId from auth middleware? For now maybe pass in body or hardcode
-            // Assuming req.user exists if auth middleware is used.
-            // But let's just take userId from body for simplicity if auth not fully set up
-            const { userId } = req.body;
+            const userId = Number(req.user?.id);
+            if (!userId) throw new Error("Bạn cần đăng nhập để thực hiện hành động này");
+
             const project = await this.projectService.confirm(Number(req.params.id), userId);
             res.status(200).json(project);
         } catch (error) {
             res.status(500).json({ message: error.message });
         }
     }
+
 
     start = async (req: Request, res: Response) => {
         try {

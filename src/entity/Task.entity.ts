@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Projects } from "./Project.entity";
 import { Jobs } from "./Job.entity";
@@ -34,7 +34,11 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => ContractServices, (contractService) => contractService.tasks)
     contractService: ContractServices;
 
+    @Column({ nullable: true })
+    assigneeId: number;
+
     @ManyToOne(() => Users, (user) => user.tasks, { nullable: true })
+    @JoinColumn({ name: "assigneeId" })
     assignee: Users;
 
     @Column({

@@ -23,6 +23,16 @@ export class ProjectTeamService {
         return team;
     }
 
+    async getMembers(teamId: number) {
+        const team = await this.teamRepository.findOne({
+            where: { id: teamId },
+            relations: ["members", "members.user"]
+        });
+        if (!team) throw new Error("Không tìm thấy team");
+        return team.members;
+    }
+
+
     async create(data: { name: string, teamLeadId: number }) {
         const teamLead = await this.userRepository.findOneBy({ id: data.teamLeadId });
         if (!teamLead) throw new Error("Không tìm thấy team lead");

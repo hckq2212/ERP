@@ -244,14 +244,28 @@ export class ContractService {
 
 
     async uploadSigned(id: number, fileUrl: string) {
-        const contract = await this.getOne(id);
+        const contract = await this.contractRepository.findOne({
+            where: { id },
+            relations: ["project"]
+        });
+        if (!contract) throw new Error("Không tìm thấy hợp đồng");
+
         if (contract.status !== ContractStatus.PROPOSAL_APPROVED) {
             throw new Error("Hợp đồng cần được duyệt trước khi upload bản ký");
         }
+
         contract.signed_contract = fileUrl;
         contract.status = ContractStatus.SIGNED;
-        return await this.contractRepository.save(contract);
+        const savedContract = await this.contractRepository.save(contract);
+
+        // Auto start project if it exists
+        if (contract.project) {
+            await this.projectService.start(contract.project.id);
+        }
+
+        return savedContract;
     }
+
 
     async addMilestone(contractId: number, data: { name: string, percentage: number, amount?: number, dueDate: Date }) {
         const contract = await this.getOne(contractId);

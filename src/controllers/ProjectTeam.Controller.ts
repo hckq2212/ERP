@@ -22,6 +22,16 @@ export class ProjectTeamController {
         }
     }
 
+    getMembers = async (req: Request, res: Response) => {
+        try {
+            const members = await this.teamService.getMembers(Number(req.params.id));
+            res.status(200).json(members);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+
     create = async (req: Request, res: Response) => {
         try {
             const team = await this.teamService.create(req.body);
