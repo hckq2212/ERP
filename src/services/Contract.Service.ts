@@ -6,12 +6,17 @@ import { ReferralPartners } from "../entity/ReferralPartner.entity";
 import { Like } from "typeorm";
 import { PaymentMilestones, MilestoneStatus } from "../entity/PaymentMilestone.entity";
 import { ContractStatus } from "../entity/Contract.entity";
+import { OpportunityServices } from "../entity/OpportunityService.entity";
+import { ContractServices } from "../entity/ContractService.entity";
+import { QuotationStatus } from "../entity/Quotation.entity";
 
 export class ContractService {
     private contractRepository = AppDataSource.getRepository(Contracts);
     private customerRepository = AppDataSource.getRepository(Customers);
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
+    private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
+    private contractServiceRepository = AppDataSource.getRepository(ContractServices);
 
     async getAll() {
         return await this.contractRepository.find({
@@ -70,7 +75,7 @@ export class ContractService {
         if (opportunityId) {
             opportunity = await this.opportunityRepository.findOne({
                 where: { id: opportunityId },
-                relations: ["customer", "referralPartner"]
+                relations: ["customer", "referralPartner", "quotations", "services"]
             });
 
             if (!opportunity) {
@@ -136,14 +141,61 @@ export class ContractService {
             throw new Error("Cần chọn Cơ hội kinh doanh hoặc Khách hàng");
         }
 
+        // CALCULATE Selling Price and Cost if not provided or if from opportunity
+        let finalSellingPrice = contractData.sellingPrice;
+        let finalCost = contractData.cost;
+
+        if (opportunity) {
+            // Price Priority 1: Approved Quotation
+            const approvedQuote = opportunity.quotations?.find(q => q.status === QuotationStatus.APPROVED);
+            if (approvedQuote) {
+                finalSellingPrice = approvedQuote.totalAmount;
+            } else {
+                // Price Priority 2: Sum of Opportunity Services
+                const serviceSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.sellingPrice) * (os.quantity || 1)), 0);
+                if (serviceSum > 0) {
+                    finalSellingPrice = serviceSum;
+                }
+            }
+
+            // Cost calculation: Always sum of Opportunity Services
+            const costSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.costAtSale) * (os.quantity || 1)), 0);
+            if (costSum > 0) {
+                finalCost = costSum;
+            }
+        }
+
         const contract = this.contractRepository.create({
             ...contractData,
+            sellingPrice: finalSellingPrice || 0,
+            cost: finalCost || 0,
             customer: customer,
             opportunity: opportunity,
             attachments: opportunity?.attachments || [] // Copy attachments
         });
 
         const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
+
+        // MAP Opportunity Services to Contract Services
+        if (opportunity) {
+            const oppServices = await this.oppServiceRepository.find({
+                where: { opportunity: { id: opportunity.id } },
+                relations: ["service", "opportunity"]
+            });
+
+            for (const os of oppServices) {
+                const qty = os.quantity || 1;
+                for (let i = 0; i < qty; i++) {
+                    const cs = this.contractServiceRepository.create({
+                        contract: savedContract,
+                        service: os.service,
+                        sellingPrice: os.sellingPrice,
+                        opportunityService: os
+                    });
+                    await this.contractServiceRepository.save(cs);
+                }
+            }
+        }
 
         // Update Opportunity Status
         if (opportunity) {

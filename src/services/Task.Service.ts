@@ -70,11 +70,11 @@ export class TaskService {
         });
 
         const sequence = (count + 1).toString().padStart(2, '0'); // "01", "02"...
-
-        const taskName = `${contractCode} - ${jobCode} - ${sequence}`;
+        const taskCode = `${contractCode} - ${jobCode} - ${sequence}`;
 
         const task = this.taskRepository.create({
-            name: taskName,
+            code: taskCode,
+            name: job.name,
             project: project,
             job: job,
             status: TaskStatus.PENDING,

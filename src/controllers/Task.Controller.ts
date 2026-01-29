@@ -90,7 +90,7 @@ export class TaskController {
                 const uploadPromises = files.map(file => {
                     return new Promise((resolve, reject) => {
                         const uploadStream = cloudinary.uploader.upload_stream(
-                            { resource_type: "auto", folder: "tasks" },
+                            { resource_type: "auto", folder: "GETVINI/ERP/tasks" },
                             (error, result) => {
                                 if (error) reject(error);
                                 else {
