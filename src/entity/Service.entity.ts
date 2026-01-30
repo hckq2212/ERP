@@ -15,6 +15,9 @@ export class Services extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
     costPrice: number;
 
+    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    overheadCost: number;
+
     @ManyToMany(() => Jobs, (job) => job.services)
     @JoinTable({ name: "service_jobs" })
     jobs: Jobs[];

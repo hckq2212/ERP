@@ -45,10 +45,10 @@ export class Tasks extends BaseEntity {
 
     @Column({
         type: "enum",
-        enum: ["INTERNAL", "VENTURE"],
+        enum: ["INTERNAL", "VENDOR"],
         default: "INTERNAL"
     })
-    performerType: "INTERNAL" | "VENTURE";
+    performerType: "INTERNAL" | "VENDOR";
 
     @ManyToOne(() => Vendors, { nullable: true })
     vendor: Vendors;

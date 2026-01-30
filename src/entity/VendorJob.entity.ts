@@ -1,24 +1,21 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Vendors } from "./Vendor.entity";
-import { Services } from "./Service.entity";
+import { Jobs } from "./Job.entity";
 
 @Entity()
-export class VendorServices extends BaseEntity {
+export class VendorJobs extends BaseEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @ManyToOne(() => Vendors, (vendor) => vendor.id)
+    @ManyToOne(() => Vendors, (vendor) => vendor.vendorJobs)
     vendor: Vendors;
 
-    @ManyToOne(() => Services, (service) => service.id)
-    service: Services;
+    @ManyToOne(() => Jobs, (job) => job.vendorJobs)
+    job: Jobs;
 
     @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
     price: number;
-
-    @Column({ default: "VND" })
-    currency: string;
 
     @Column({ type: "text", nullable: true })
     note: string;

@@ -23,6 +23,8 @@ import { DebtPayments } from "./entity/DebtPayment.entity"
 import { Notifications } from "./entity/Notification.entity"
 
 
+import { VendorJobs } from "./entity/VendorJob.entity"
+
 import * as dotenv from "dotenv"
 dotenv.config()
 
@@ -56,7 +58,8 @@ export const AppDataSource = new DataSource({
         PaymentMilestones,
         Debts,
         DebtPayments,
-        Notifications
+        Notifications,
+        VendorJobs
     ],
 
     migrations: [],

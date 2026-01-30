@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Jobs } from "./Job.entity";
+import { VendorJobs } from "./VendorJob.entity";
 
 export enum PartnerType {
     INDIVIDUAL = "INDIVIDUAL",
@@ -34,6 +35,6 @@ export class Vendors extends BaseEntity {
     })
     type: PartnerType;
 
-    @OneToMany(() => Jobs, (job) => job.vendor)
-    jobs: Jobs[];
+    @OneToMany(() => VendorJobs, (vendorJob) => vendorJob.vendor)
+    vendorJobs: VendorJobs[];
 }

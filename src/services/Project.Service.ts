@@ -166,7 +166,7 @@ export class ProjectService {
                     job: job,
                     contractService: cs,
                     status: TaskStatus.PENDING,
-                    performerType: job.performerType === "INTERNAL" ? "INTERNAL" : "VENTURE",
+                    performerType: job.defaultPerformerType === "INTERNAL" ? "INTERNAL" : "VENDOR",
                     attachments: contract.attachments || [] // Inherit attachments from contract
                 });
 

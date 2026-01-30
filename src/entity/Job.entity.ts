@@ -3,9 +3,10 @@ import { BaseEntity } from "./BaseEntity";
 import { Vendors } from "./Vendor.entity";
 import { Services } from "./Service.entity";
 import { Tasks } from "./Task.entity";
+import { VendorJobs } from "./VendorJob.entity";
 
 export enum PerformerType {
-    PARTNER = "PARTNER",
+    VENDOR = "VENDOR",
     INTERNAL = "INTERNAL"
 }
 
@@ -25,10 +26,10 @@ export class Jobs extends BaseEntity {
         enum: PerformerType,
         default: PerformerType.INTERNAL
     })
-    performerType: PerformerType;
+    defaultPerformerType: PerformerType;
 
-    @ManyToOne(() => Vendors, (vendor) => vendor.jobs, { nullable: true })
-    vendor: Vendors;
+    @OneToMany(() => VendorJobs, (vendorJob) => vendorJob.job)
+    vendorJobs: VendorJobs[];
 
     @Column({ nullable: true })
     code: string;

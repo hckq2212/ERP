@@ -4,7 +4,7 @@ import { Projects } from "../entity/Project.entity";
 import { Jobs } from "../entity/Job.entity";
 import { Users } from "../entity/User.entity";
 import { Vendors } from "../entity/Vendor.entity";
-import { VendorServices } from "../entity/VendorService.entity";
+import { VendorJobs } from "../entity/VendorJob.entity";
 import { Like } from "typeorm";
 import { NotificationService } from "./Notification.Service";
 
@@ -15,7 +15,7 @@ export class TaskService {
     private jobRepository = AppDataSource.getRepository(Jobs);
     private userRepository = AppDataSource.getRepository(Users);
     private vendorRepository = AppDataSource.getRepository(Vendors);
-    private vendorServiceRepository = AppDataSource.getRepository(VendorServices);
+    private vendorJobRepository = AppDataSource.getRepository(VendorJobs);
     private notificationService = new NotificationService();
 
 
