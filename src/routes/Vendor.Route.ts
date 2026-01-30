@@ -5,6 +5,7 @@ const router = Router();
 const vendorController = new VendorController();
 
 router.get("/", vendorController.getAll);
+router.get("/by-job/:jobId", vendorController.getByJob);
 router.get("/:id", vendorController.getOne);
 router.post("/", vendorController.create);
 router.patch("/:id", vendorController.update);

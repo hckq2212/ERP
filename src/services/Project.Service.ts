@@ -29,7 +29,7 @@ export class ProjectService {
     async getOne(id: number) {
         const project = await this.projectRepository.findOne({
             where: { id },
-            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee"]
+            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee", "tasks.job"]
         });
 
         if (!project) throw new Error("Không tìm thấy dự án");
@@ -39,7 +39,7 @@ export class ProjectService {
     async getByContractId(contractId: number) {
         const project = await this.projectRepository.findOne({
             where: { contract: { id: contractId } },
-            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee"]
+            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee", "tasks.job"]
         });
 
         if (!project) throw new Error("Không tìm thấy dự án liên kết với hợp đồng này");

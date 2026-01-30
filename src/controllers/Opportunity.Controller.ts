@@ -30,7 +30,6 @@ export class OpportunityController {
             const authReq = req as AuthRequest;
             const accountId = authReq.user?.id;
 
-            console.log(req.body);
             const files = req.files as Express.Multer.File[];
 
             // Handle multipart/form-data stringified fields

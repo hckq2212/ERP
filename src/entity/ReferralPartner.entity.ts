@@ -4,6 +4,7 @@ import { BaseEntity } from "./BaseEntity";
 
 import { Customers } from "./Customer.entity";
 import { Opportunities } from "./Opportunity.entity";
+import { Contracts } from "./Contract.entity";
 
 export enum PartnerType {
     BUSINESS = "BUSINESS",
@@ -42,4 +43,7 @@ export class ReferralPartners extends BaseEntity {
 
     @OneToMany(() => Opportunities, (opportunity) => opportunity.referralPartner)
     opportunities: Opportunities[];
+
+    @OneToMany(() => Contracts, (contract) => contract.referralPartner)
+    contracts: Contracts[];
 }

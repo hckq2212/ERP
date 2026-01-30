@@ -88,7 +88,7 @@ export class OpportunityService {
 
         // Handle Customer Logic
         if (customerId) {
-            const customer = await this.customerRepository.findOneBy({ id: customerId });
+            const customer = await this.customerRepository.findOneBy({ id: Number(customerId) });
             if (!customer) {
                 throw new Error("Không tìm thấy khách hàng");
             }
@@ -102,8 +102,9 @@ export class OpportunityService {
         }
 
         // Handle Referral Logic
-        if (customerType === CustomerType.REFERRAL && referralPartnerId) {
-            const partner = await this.referralPartnerRepository.findOneBy({ id: referralPartnerId });
+        const pId = referralPartnerId ? Number(referralPartnerId) : null;
+        if (customerType === CustomerType.REFERRAL && pId) {
+            const partner = await this.referralPartnerRepository.findOneBy({ id: pId });
             if (!partner) {
                 throw new Error("Không tìm thấy đối tác giới thiệu");
             }
@@ -158,7 +159,7 @@ export class OpportunityService {
 
         // Handle Customer updates
         if (customerId) {
-            const customer = await this.customerRepository.findOneBy({ id: customerId });
+            const customer = await this.customerRepository.findOneBy({ id: Number(customerId) });
             if (!customer) {
                 throw new Error("Không tìm thấy khách hàng");
             }
@@ -178,13 +179,19 @@ export class OpportunityService {
             opportunity.customerType = customerType;
         }
 
-        if (opportunity.customerType === CustomerType.REFERRAL && referralPartnerId) {
-            const partner = await this.referralPartnerRepository.findOneBy({ id: referralPartnerId });
+        const pId = referralPartnerId !== undefined ? (referralPartnerId === null ? null : Number(referralPartnerId)) : undefined;
+
+        if (pId) {
+            const partner = await this.referralPartnerRepository.findOneBy({ id: pId });
             if (!partner) {
                 throw new Error("Không tìm thấy đối tác giới thiệu");
             }
             opportunity.referralPartner = partner;
-        } else if (referralPartnerId === null || opportunity.customerType === CustomerType.DIRECT) {
+            // Nếu có đối tác thì tự động chuyển sang loại REFERRAL nếu chưa là REFERRAL
+            if (opportunity.customerType !== CustomerType.REFERRAL) {
+                opportunity.customerType = CustomerType.REFERRAL;
+            }
+        } else if (pId === null || (customerType === CustomerType.DIRECT)) {
             opportunity.referralPartner = null;
         }
 

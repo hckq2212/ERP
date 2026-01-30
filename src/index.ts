@@ -17,6 +17,7 @@ import projectTeamRoute from "./routes/ProjectTeam.Route"
 import notificationRoute from "./routes/Notification.Route"
 import customerRoute from "./routes/Customer.Route"
 import vendorRoute from "./routes/Vendor.Route"
+import referralPartnerRoute from "./routes/ReferralPartner.Route"
 
 
 
@@ -43,6 +44,7 @@ app.use("/api/teams", projectTeamRoute)
 app.use("/api/notifications", notificationRoute)
 app.use("/api/customers", customerRoute)
 app.use("/api/vendors", vendorRoute)
+app.use("/api/referral-partners", referralPartnerRoute)
 
 
 

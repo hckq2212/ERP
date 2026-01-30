@@ -109,6 +109,13 @@ export class Opportunities extends BaseEntity {
     @Column({ nullable: true })
     leadTaxId: string;
 
+    // Partner Commission Info
+    @Column({ type: "decimal", precision: 5, scale: 2, default: 0 })
+    partnerCommissionRate: number; // Tỷ lệ hoa hồng (%) - mặc định 0%
+
+    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    expectedPartnerCommission: number; // Hoa hồng dự kiến - mặc định 0
+
     @Column({ type: "json", nullable: true })
     attachments: { type: string, name: string, url: string, size?: number, publicId?: string }[];
 

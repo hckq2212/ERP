@@ -84,4 +84,13 @@ export class VendorController {
         }
     }
 
+    getByJob = async (req: Request, res: Response) => {
+        try {
+            const jobId = parseInt(req.params.jobId as string);
+            const result = await this.vendorService.getByJob(jobId);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
 }

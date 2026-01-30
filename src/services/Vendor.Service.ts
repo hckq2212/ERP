@@ -80,4 +80,13 @@ export class VendorService {
             relations: ["job"]
         });
     }
+
+    async getByJob(jobId: number) {
+        const vendorJobs = await this.vendorJobRepository.find({
+            where: { job: { id: jobId } },
+            relations: ["vendor"]
+        });
+        // Map to return unique vendors
+        return vendorJobs.map(vj => vj.vendor);
+    }
 }

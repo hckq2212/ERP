@@ -149,6 +149,7 @@ export class TaskService {
 
     async assign(id: number, data: {
         assigneeId: number;
+        performerType?: "INTERNAL" | "VENDOR";
         plannedEndDate: Date;
         plannedStartDate: Date;
         description?: string;
@@ -156,10 +157,31 @@ export class TaskService {
     }) {
         const task = await this.getOne(id);
 
-        const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-        if (!user) throw new Error("Người được phân công không tồn tại");
+        if (data.performerType === "VENDOR") {
+            const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
+            if (!vendor) throw new Error("Vendor không tồn tại");
+            task.vendor = vendor;
+            task.assignee = null as any;
+            task.performerType = "VENDOR";
+        } else {
+            const user = await this.userRepository.findOneBy({ id: data.assigneeId });
+            if (!user) throw new Error("Người thực hiện không tồn tại");
+            task.assignee = user;
+            task.vendor = null as any;
+            task.performerType = "INTERNAL";
 
-        task.assignee = user;
+            // Send Notification to internal user
+            await this.notificationService.createNotification({
+                title: "Công việc mới được giao",
+                content: `Bạn được giao công việc: ${task.name} (Mã: ${task.code})`,
+                type: "TASK_ASSIGNED",
+                recipient: user,
+                relatedEntityId: task.id.toString(),
+                relatedEntityType: "Task",
+                link: `/tasks/${task.id}`
+            });
+        }
+
         task.plannedEndDate = data.plannedEndDate;
         task.plannedStartDate = data.plannedStartDate;
         if (data.description) task.description = data.description;
@@ -167,26 +189,10 @@ export class TaskService {
 
         // Auto update status if it is pending
         if (task.status === TaskStatus.PENDING) {
-            task.status = TaskStatus.DOING; // Or remain PENDING until they accept? 
-            // Usually assignment implies it's ready to start. Let's keep it PENDING or make it DOING.
-            // Given the context, let's just leave status or maybe set to PENDING (assigned).
-            // Let's just update fields for now.
+            task.status = TaskStatus.DOING;
         }
 
-        const savedTask = await this.taskRepository.save(task);
-
-        // Send Notification
-        await this.notificationService.createNotification({
-            title: "Công việc mới được giao",
-            content: `Bạn được giao công việc: ${savedTask.name} (Mã: ${savedTask.code})`,
-            type: "TASK_ASSIGNED",
-            recipient: user,
-            relatedEntityId: savedTask.id.toString(),
-            relatedEntityType: "Task",
-            link: `/tasks/${savedTask.id}`
-        });
-
-        return savedTask;
+        return await this.taskRepository.save(task);
     }
 
 
