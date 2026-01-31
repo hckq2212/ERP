@@ -59,11 +59,30 @@ export class ProjectTeamController {
         }
     }
 
+    changeLead = async (req: Request, res: Response) => {
+        try {
+            const { newLeadId } = req.body;
+            const team = await this.teamService.changeLead(Number(req.params.id), newLeadId);
+            res.status(200).json(team);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     addMember = async (req: Request, res: Response) => {
         try {
-            const { userId } = req.body;
-            const member = await this.teamService.addMember(Number(req.params.id), userId);
+            const { userId, role } = req.body;
+            const member = await this.teamService.addMember(Number(req.params.id), userId, role);
             res.status(201).json(member);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    updateMember = async (req: Request, res: Response) => {
+        try {
+            const member = await this.teamService.updateMember(Number(req.params.memberId), req.body);
+            res.status(200).json(member);
         } catch (error) {
             res.status(500).json({ message: error.message });
         }

@@ -41,7 +41,7 @@ export class ContractController {
         }
     }
 
-    private uploadFileToCloudinary = (file: Express.Multer.File, folder: string): Promise<string> => {
+    private uploadFileToCloudinary = (file: Express.Multer.File, folder: string): Promise<any> => {
         return new Promise((resolve, reject) => {
             const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
             const fileNameWithoutExt = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
@@ -58,7 +58,24 @@ export class ContractController {
                 },
                 (error, result) => {
                     if (error) reject(error);
-                    else resolve(result!.secure_url);
+                    else {
+                        const downloadUrl = cloudinary.url(result!.public_id, {
+                            resource_type: result!.resource_type,
+                            flags: `attachment:${file.originalname}`,
+                            secure: true
+                        });
+
+                        resolve({
+                            type: "FILE",
+                            name: file.originalname,
+                            extension: fileExtension,
+                            mimeType: file.mimetype,
+                            url: result?.secure_url,
+                            downloadUrl: downloadUrl,
+                            size: file.size,
+                            publicId: result?.public_id
+                        });
+                    }
                 }
             );
             uploadStream.end(file.buffer);
@@ -72,8 +89,8 @@ export class ContractController {
                 return res.status(400).json({ message: "Không tìm thấy file upload" });
             }
 
-            const fileUrl = await this.uploadFileToCloudinary(file, "GETVINI/ERP/proposal");
-            const contract = await this.contractService.uploadProposal(Number(req.params.id), fileUrl);
+            const fileData = await this.uploadFileToCloudinary(file, "GETVINI/ERP/proposal");
+            const contract = await this.contractService.uploadProposal(Number(req.params.id), fileData);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -96,8 +113,8 @@ export class ContractController {
                 return res.status(400).json({ message: "Không tìm thấy file upload" });
             }
 
-            const fileUrl = await this.uploadFileToCloudinary(file, "GETVINI/ERP/signed");
-            const contract = await this.contractService.uploadSigned(Number(req.params.id), fileUrl);
+            const fileData = await this.uploadFileToCloudinary(file, "GETVINI/ERP/signed");
+            const contract = await this.contractService.uploadSigned(Number(req.params.id), fileData);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });

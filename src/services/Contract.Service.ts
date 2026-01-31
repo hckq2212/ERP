@@ -221,10 +221,21 @@ export class ContractService {
         return savedContract;
     }
 
-    async uploadProposal(id: number, fileUrl: string) {
+    async uploadProposal(id: number, fileData: any) {
         const contract = await this.getOne(id);
-        contract.proposal_contract = fileUrl;
+        contract.proposal_contract = fileData.url;
         contract.status = ContractStatus.PROPOSAL_UPLOADED;
+
+        // Add to attachments if not already there
+        if (!contract.attachments) contract.attachments = [];
+        const exists = contract.attachments.find(a => a.url === fileData.url);
+        if (!exists) {
+            contract.attachments.push({
+                ...fileData,
+                type: "PROPOSAL_CONTRACT"
+            });
+        }
+
         return await this.contractRepository.save(contract);
     }
 
@@ -243,10 +254,10 @@ export class ContractService {
     }
 
 
-    async uploadSigned(id: number, fileUrl: string) {
+    async uploadSigned(id: number, fileData: any) {
         const contract = await this.contractRepository.findOne({
             where: { id },
-            relations: ["project"]
+            relations: ["project", "customer", "opportunity", "milestones", "services", "debts"]
         });
         if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
@@ -254,8 +265,19 @@ export class ContractService {
             throw new Error("Hợp đồng cần được duyệt trước khi upload bản ký");
         }
 
-        contract.signed_contract = fileUrl;
+        contract.signed_contract = fileData.url;
         contract.status = ContractStatus.SIGNED;
+
+        // Add to attachments
+        if (!contract.attachments) contract.attachments = [];
+        const exists = contract.attachments.find(a => a.url === fileData.url);
+        if (!exists) {
+            contract.attachments.push({
+                ...fileData,
+                type: "SIGNED_CONTRACT"
+            });
+        }
+
         const savedContract = await this.contractRepository.save(contract);
 
         // Auto start project if it exists

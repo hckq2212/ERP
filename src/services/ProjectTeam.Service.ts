@@ -1,6 +1,6 @@
 import { AppDataSource } from "../data-source";
 import { ProjectTeams } from "../entity/ProjectTeam.entity";
-import { TeamMembers } from "../entity/TeamMember.entity";
+import { TeamMembers, MemberRole } from "../entity/TeamMember.entity";
 import { Users } from "../entity/User.entity";
 
 export class ProjectTeamService {
@@ -50,11 +50,23 @@ export class ProjectTeamService {
 
         if (data.name) team.name = data.name;
         if (data.teamLeadId) {
-            const teamLead = await this.userRepository.findOneBy({ id: data.teamLeadId });
-            if (!teamLead) throw new Error("Không tìm thấy team lead");
-            team.teamLead = teamLead;
+            await this.changeLead(id, data.teamLeadId);
         }
 
+        return await this.teamRepository.save(team);
+    }
+
+    async changeLead(teamId: number, newLeadId: number) {
+        const team = await this.teamRepository.findOne({
+            where: { id: teamId },
+            relations: ["teamLead"]
+        });
+        if (!team) throw new Error("Không tìm thấy team");
+
+        const newLead = await this.userRepository.findOneBy({ id: newLeadId });
+        if (!newLead) throw new Error("Không tìm thấy người dùng làm team lead mới");
+
+        team.teamLead = newLead;
         return await this.teamRepository.save(team);
     }
 
@@ -66,7 +78,7 @@ export class ProjectTeamService {
         return await this.teamRepository.remove(team);
     }
 
-    async addMember(teamId: number, userId: number) {
+    async addMember(teamId: number, userId: number, role?: MemberRole) {
         const team = await this.getOne(teamId);
         const user = await this.userRepository.findOneBy({ id: userId });
         if (!user) throw new Error("Không tìm thấy người dùng");
@@ -79,15 +91,33 @@ export class ProjectTeamService {
 
         const member = this.memberRepository.create({
             team,
-            user
+            user,
+            role: role || MemberRole.CONTENT_CREATOR
         });
 
         return await this.memberRepository.save(member);
     }
 
-    async removeMember(memberId: number) {
+    async updateMember(memberId: number, data: { role?: MemberRole }) {
         const member = await this.memberRepository.findOneBy({ id: memberId });
         if (!member) throw new Error("Không tìm thấy thành viên");
+
+        if (data.role) member.role = data.role;
+
+        return await this.memberRepository.save(member);
+    }
+
+    async removeMember(memberId: number) {
+        const member = await this.memberRepository.findOne({
+            where: { id: memberId },
+            relations: ["team", "team.teamLead", "user"]
+        });
+        if (!member) throw new Error("Không tìm thấy thành viên");
+
+        if (member.team && member.team.teamLead && member.user.id === member.team.teamLead.id) {
+            throw new Error("Không thể xóa thành viên đang là Team Lead. Vui lòng chỉ định Lead mới trước khi xóa.");
+        }
+
         return await this.memberRepository.remove(member);
     }
 }
