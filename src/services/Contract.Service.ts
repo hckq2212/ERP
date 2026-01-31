@@ -10,6 +10,7 @@ import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { ContractServices } from "../entity/ContractService.entity";
 import { QuotationStatus } from "../entity/Quotation.entity";
 import { ProjectService } from "./Project.Service";
+import { DebtService } from "./Debt.Service";
 
 
 export class ContractService {
@@ -20,6 +21,7 @@ export class ContractService {
     private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
     private contractServiceRepository = AppDataSource.getRepository(ContractServices);
     private projectService = new ProjectService();
+    private debtService = new DebtService();
 
 
     async getAll() {
@@ -279,6 +281,18 @@ export class ContractService {
         }
 
         const savedContract = await this.contractRepository.save(contract);
+
+        // Auto activate all milestones as debts
+        if (contract.milestones && contract.milestones.length > 0) {
+            for (const milestone of contract.milestones) {
+                try {
+                    await this.debtService.createFromMilestone(milestone.id);
+                } catch (error) {
+                    console.error(`Lỗi kích hoạt nợ cho milestone ${milestone.id}:`, error.message);
+                    // Continue to others if one fails (e.g. already activated)
+                }
+            }
+        }
 
         // Auto start project if it exists
         if (contract.project) {

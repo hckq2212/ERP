@@ -4,6 +4,13 @@ import { Contracts } from "./Contract.entity";
 import { PaymentMilestones } from "./PaymentMilestone.entity";
 import { DebtPayments } from "./DebtPayment.entity";
 
+export enum DebtStatus {
+    UNPAID = "UNPAID",
+    PARTIAL = "PARTIAL",
+    PAID = "PAID",
+    OVERDUE = "OVERDUE"
+}
+
 @Entity()
 export class Debts extends BaseEntity {
     @PrimaryGeneratedColumn()
@@ -22,8 +29,12 @@ export class Debts extends BaseEntity {
     @Column({ type: "date" })
     dueDate: Date;
 
-    @Column()
-    status: string;
+    @Column({
+        type: "enum",
+        enum: DebtStatus,
+        default: DebtStatus.UNPAID
+    })
+    status: DebtStatus;
 
     @Column()
     name: string;

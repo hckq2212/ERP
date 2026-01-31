@@ -39,4 +39,13 @@ export class PaymentMilestoneController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    bulkSave = async (req: Request, res: Response) => {
+        try {
+            const result = await this.service.bulkSave(Number(req.params.contractId), req.body.milestones);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 }

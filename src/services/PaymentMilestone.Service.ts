@@ -93,7 +93,7 @@ export class PaymentMilestoneService {
     async delete(id: number) {
         const milestone = await this.milestoneRepository.findOne({
             where: { id },
-            relations: ["debt"] // Check if debt exists?
+            relations: ["debt"]
         });
 
         if (!milestone) throw new Error("Không tìm thấy giai đoạn thanh toán");
@@ -104,5 +104,50 @@ export class PaymentMilestoneService {
 
         await this.milestoneRepository.remove(milestone);
         return { message: "Xóa giai đoạn thanh toán thành công" };
+    }
+
+    async bulkSave(contractId: number, milestones: any[]) {
+        const contract = await this.contractRepository.findOne({
+            where: { id: contractId },
+            relations: ["milestones", "milestones.debt"]
+        });
+
+        if (!contract) throw new Error("Không tìm thấy hợp đồng");
+
+        // 1. Validate Total Percentage
+        const total = milestones.reduce((sum, m) => sum + Number(m.percentage), 0);
+        if (total !== 100) {
+            throw new Error(`Tổng phần trăm thanh toán phải bằng 100% (Hiện tại: ${total}%)`);
+        }
+
+        // 2. Check for active debts
+        const lockedMilestones = contract.milestones.filter(m => m.debt);
+
+        // Simple approach: If any debt is active, we might want to prevent bulk reset 
+        // to avoid inconsistency. Or just protect the ones with debts.
+        // For simplicity, let's allow bulk update ONLY if no debts are active yet.
+        if (lockedMilestones.length > 0) {
+            throw new Error("Không thể cập nhật hàng loạt khi đã có giai đoạn phát sinh công nợ. Vui lòng chỉnh sửa từng đợt.");
+        }
+
+        // 3. Remove old milestones
+        await this.milestoneRepository.remove(contract.milestones);
+
+        // 4. Create new ones
+        const savedMilestones = [];
+        for (const item of milestones) {
+            const amount = (Number(contract.sellingPrice) * Number(item.percentage)) / 100;
+            const milestone = this.milestoneRepository.create({
+                contract,
+                name: item.name,
+                percentage: item.percentage,
+                amount: amount,
+                description: item.description,
+                dueDate: item.dueDate
+            });
+            savedMilestones.push(await this.milestoneRepository.save(milestone));
+        }
+
+        return savedMilestones;
     }
 }

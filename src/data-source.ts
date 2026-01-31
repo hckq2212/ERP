@@ -21,6 +21,7 @@ import { PaymentMilestones } from "./entity/PaymentMilestone.entity"
 import { Debts } from "./entity/Debt.entity"
 import { DebtPayments } from "./entity/DebtPayment.entity"
 import { Notifications } from "./entity/Notification.entity"
+import { ContractAddendums } from "./entity/ContractAddendum.entity"
 
 
 import { VendorJobs } from "./entity/VendorJob.entity"
@@ -59,7 +60,8 @@ export const AppDataSource = new DataSource({
         Debts,
         DebtPayments,
         Notifications,
-        VendorJobs
+        VendorJobs,
+        ContractAddendums
     ],
 
     migrations: [],

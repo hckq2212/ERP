@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToOne } from "typ
 import { BaseEntity } from "./BaseEntity";
 import { Contracts } from "./Contract.entity";
 import { Debts } from "./Debt.entity";
+import { ContractAddendums } from "./ContractAddendum.entity";
 
 export enum MilestoneStatus {
     PENDING = "PENDING",
@@ -40,4 +41,7 @@ export class PaymentMilestones extends BaseEntity {
 
     @OneToOne(() => Debts, (debt) => debt.milestone)
     debt: Debts;
+
+    @ManyToOne(() => ContractAddendums, (addendum) => addendum.milestones, { nullable: true })
+    addendum: ContractAddendums;
 }

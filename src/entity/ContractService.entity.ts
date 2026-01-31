@@ -4,6 +4,12 @@ import { Services } from "./Service.entity";
 import { Contracts } from "./Contract.entity";
 import { OpportunityServices } from "./OpportunityService.entity";
 import { Tasks } from "./Task.entity";
+import { ContractAddendums } from "./ContractAddendum.entity";
+
+export enum ContractServiceStatus {
+    ACTIVE = "ACTIVE",
+    CANCELLED = "CANCELLED"
+}
 
 @Entity()
 export class ContractServices extends BaseEntity {
@@ -24,4 +30,14 @@ export class ContractServices extends BaseEntity {
 
     @OneToMany(() => Tasks, (task) => task.contractService)
     tasks: Tasks[];
+
+    @ManyToOne(() => ContractAddendums, (addendum) => addendum.services, { nullable: true })
+    addendum: ContractAddendums;
+
+    @Column({
+        type: "enum",
+        enum: ContractServiceStatus,
+        default: ContractServiceStatus.ACTIVE
+    })
+    status: ContractServiceStatus;
 }

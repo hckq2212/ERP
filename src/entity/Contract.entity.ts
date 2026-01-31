@@ -7,6 +7,7 @@ import { PaymentMilestones } from "./PaymentMilestone.entity";
 import { Debts } from "./Debt.entity";
 import { ContractServices } from "./ContractService.entity";
 import { ReferralPartners } from "./ReferralPartner.entity";
+import { ContractAddendums } from "./ContractAddendum.entity";
 
 export enum ContractStatus {
     DRAFT = "DRAFT",
@@ -93,4 +94,7 @@ export class Contracts extends BaseEntity {
 
     @OneToMany(() => Debts, (debt) => debt.contract)
     debts: Debts[];
+
+    @OneToMany(() => ContractAddendums, (addendum) => addendum.contract)
+    addendums: ContractAddendums[];
 }
