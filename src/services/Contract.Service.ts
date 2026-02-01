@@ -13,6 +13,7 @@ import { ProjectService } from "./Project.Service";
 import { DebtService } from "./Debt.Service";
 
 
+
 export class ContractService {
     private contractRepository = AppDataSource.getRepository(Contracts);
     private customerRepository = AppDataSource.getRepository(Customers);
@@ -26,7 +27,7 @@ export class ContractService {
 
     async getAll() {
         return await this.contractRepository.find({
-            relations: ["customer", "opportunity", "opportunity.referralPartner"]
+            relations: ["customer", "opportunity", "opportunity.referralPartner", "debts"]
         });
     }
 

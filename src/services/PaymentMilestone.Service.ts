@@ -6,6 +6,13 @@ export class PaymentMilestoneService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
     private contractRepository = AppDataSource.getRepository(Contracts);
 
+    async getAll() {
+        return await this.milestoneRepository.find({
+            relations: ["contract"],
+            order: { id: "ASC" }
+        });
+    }
+
     async getByContract(contractId: number) {
         return await this.milestoneRepository.find({
             where: { contract: { id: contractId } },

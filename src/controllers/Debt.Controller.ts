@@ -32,6 +32,15 @@ export class DebtController {
         }
     }
 
+    getByContract = async (req: Request, res: Response) => {
+        try {
+            const result = await this.debtService.getByContract(Number(req.params.contractId));
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     delete = async (req: Request, res: Response) => {
         try {
             const result = await this.debtService.delete(Number(req.params.id));

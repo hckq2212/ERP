@@ -4,6 +4,15 @@ import { PaymentMilestoneService } from "../services/PaymentMilestone.Service";
 export class PaymentMilestoneController {
     private service = new PaymentMilestoneService();
 
+    getAll = async (req: Request, res: Response) => {
+        try {
+            const result = await this.service.getAll();
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     getByContract = async (req: Request, res: Response) => {
         try {
             const result = await this.service.getByContract(Number(req.params.contractId));

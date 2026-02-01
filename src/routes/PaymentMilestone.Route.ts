@@ -4,6 +4,7 @@ import { PaymentMilestoneController } from "../controllers/PaymentMilestone.Cont
 const router = Router();
 const controller = new PaymentMilestoneController();
 
+router.get("/", controller.getAll);
 router.get("/contract/:contractId", controller.getByContract);
 router.post("/", controller.create);
 router.put("/:id", controller.update);

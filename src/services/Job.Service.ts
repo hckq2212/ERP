@@ -10,14 +10,14 @@ export class JobService {
 
     async getAll() {
         return await this.jobRepository.find({
-            relations: ["vendorJobs", "vendorJobs.vendor", "services"]
+            relations: ["vendorJobs", "vendorJobs.vendor", "services", "criteria"]
         });
     }
 
     async getOne(id: number) {
         const job = await this.jobRepository.findOne({
             where: { id },
-            relations: ["vendorJobs", "vendorJobs.vendor", "services"]
+            relations: ["vendorJobs", "vendorJobs.vendor", "services", "criteria"]
         });
         if (!job) throw new Error("Không tìm thấy công việc");
         return job;

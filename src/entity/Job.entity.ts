@@ -4,6 +4,7 @@ import { Vendors } from "./Vendor.entity";
 import { Services } from "./Service.entity";
 import { Tasks } from "./Task.entity";
 import { VendorJobs } from "./VendorJob.entity";
+import { JobCriterias } from "./JobCriteria.entity";
 
 export enum PerformerType {
     VENDOR = "VENDOR",
@@ -39,4 +40,7 @@ export class Jobs extends BaseEntity {
 
     @OneToMany(() => Tasks, (task) => task.job)
     tasks: Tasks[];
+
+    @OneToMany(() => JobCriterias, (criteria) => criteria.job, { cascade: true })
+    criteria: JobCriterias[];
 }

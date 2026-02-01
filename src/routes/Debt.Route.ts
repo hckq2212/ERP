@@ -9,6 +9,7 @@ const paymentController = new DebtPaymentController();
 // Debts
 router.get("/", debtController.getAll);
 router.get("/:id", debtController.getOne);
+router.get("/contract/:contractId", debtController.getByContract);
 router.post("/activate", debtController.createFromMilestone);
 router.delete("/:id", debtController.delete);
 

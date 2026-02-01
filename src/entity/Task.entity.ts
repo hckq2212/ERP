@@ -1,10 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Projects } from "./Project.entity";
 import { Jobs } from "./Job.entity";
 import { Users } from "./User.entity";
 import { ContractServices } from "./ContractService.entity";
 import { Vendors } from "./Vendor.entity";
+import { TaskReviews } from "./TaskReview.entity";
 
 export enum TaskStatus {
     PENDING = "PENDING",
@@ -80,5 +81,8 @@ export class Tasks extends BaseEntity {
 
     @Column({ type: "json", nullable: true })
     attachments: { type: string, name: string, url: string, size?: number, publicId?: string }[];
+
+    @OneToMany(() => TaskReviews, (review) => review.task)
+    reviews: TaskReviews[];
 
 }

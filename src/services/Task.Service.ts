@@ -7,6 +7,7 @@ import { Vendors } from "../entity/Vendor.entity";
 import { VendorJobs } from "../entity/VendorJob.entity";
 import { Like } from "typeorm";
 import { NotificationService } from "./Notification.Service";
+import { TaskReviewService } from "./TaskReview.Service";
 
 
 export class TaskService {
@@ -17,6 +18,7 @@ export class TaskService {
     private vendorRepository = AppDataSource.getRepository(Vendors);
     private vendorJobRepository = AppDataSource.getRepository(VendorJobs);
     private notificationService = new NotificationService();
+    private reviewService = new TaskReviewService();
 
 
     async getAll(userInfo?: { id: number, role: string }) {
@@ -142,7 +144,33 @@ export class TaskService {
         if (data.plannedEndDate) task.plannedEndDate = data.plannedEndDate;
         if (data.actualStartDate) task.actualStartDate = data.actualStartDate;
         if (data.actualEndDate) task.actualEndDate = data.actualEndDate;
-        if (data.resultFiles) task.resultFiles = data.resultFiles;
+        if (data.resultFiles) {
+            task.resultFiles = data.resultFiles;
+            // If result files are uploaded, move to awaiting review
+            task.status = TaskStatus.AWAITING_REVIEW;
+
+            // Re-fetch task with project and team lead info for notification
+            const taskWithInfo = await this.taskRepository.findOne({
+                where: { id: task.id },
+                relations: ["project", "project.team", "project.team.teamLead"]
+            });
+
+            if (taskWithInfo && taskWithInfo.project?.team?.teamLead) {
+                // Initialize reviews based on job criteria
+                await this.reviewService.initializeReviews(task.id);
+
+                // Notify Team Lead
+                await this.notificationService.createNotification({
+                    title: "Công việc chờ duyệt",
+                    content: `Nhân viên đã upload kết quả cho công việc: ${task.name}. Vui lòng đánh giá.`,
+                    type: "TASK_REVIEW",
+                    recipient: taskWithInfo.project.team.teamLead,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                });
+            }
+        }
 
         return await this.taskRepository.save(task);
     }
