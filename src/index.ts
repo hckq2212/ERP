@@ -34,8 +34,23 @@ const port = 3000
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
+const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : [];
+
 app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:3000", "https://erp-gegn8by1b-quangs-projects-4fcd4940.vercel.app"],
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+
+        if (
+            allowedOrigins.includes(origin) ||
+            origin.endsWith(".vercel.app") ||
+            /^http:\/\/localhost:\d+$/.test(origin)
+        ) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
     credentials: true
 }))
 app.use(passport.initialize())
