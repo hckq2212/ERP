@@ -116,6 +116,39 @@ export class TaskService {
     }
 
 
+    async submitResult(id: number, data: { result: any }) {
+        const task = await this.getOne(id);
+
+        task.result = data.result;
+        task.status = TaskStatus.AWAITING_REVIEW;
+        task.actualEndDate = new Date(); // Record when the result was submitted
+
+        const savedTask = await this.taskRepository.save(task);
+
+        // Notify Team Lead
+        const taskWithInfo = await this.taskRepository.findOne({
+            where: { id: task.id },
+            relations: ["project", "project.team", "project.team.teamLead"]
+        });
+
+        if (taskWithInfo && taskWithInfo.project?.team?.teamLead) {
+            // Initialize reviews based on job criteria
+            await this.reviewService.initializeReviews(task.id);
+
+            await this.notificationService.createNotification({
+                title: "Kết quả công việc đã nộp",
+                content: `Nhân viên đã nộp kết quả cho: ${task.name}. Vui lòng đánh giá.`,
+                type: "TASK_REVIEW",
+                recipient: taskWithInfo.project.team.teamLead,
+                relatedEntityId: task.id.toString(),
+                relatedEntityType: "Task",
+                link: `/tasks/${task.id}` // Link to task detail for review
+            });
+        }
+
+        return savedTask;
+    }
+
     async update(id: number, data: Partial<Tasks> & { assigneeId?: number }) {
         const task = await this.getOne(id);
 
@@ -144,8 +177,8 @@ export class TaskService {
         if (data.plannedEndDate) task.plannedEndDate = data.plannedEndDate;
         if (data.actualStartDate) task.actualStartDate = data.actualStartDate;
         if (data.actualEndDate) task.actualEndDate = data.actualEndDate;
-        if (data.resultFiles) {
-            task.resultFiles = data.resultFiles;
+        if (data.result) {
+            task.result = data.result;
             // If result files are uploaded, move to awaiting review
             task.status = TaskStatus.AWAITING_REVIEW;
 

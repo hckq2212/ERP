@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { TaskService } from "../services/Task.Service";
-import cloudinary from "../config/cloudinary";
+import { uploadToCloudinary } from "../helpers/cloudinary.helper";
 
 export class TaskController {
     private taskService = new TaskService();
@@ -97,38 +97,7 @@ export class TaskController {
 
             // Upload files
             if (files && files.length > 0) {
-                const uploadPromises = files.map(file => {
-                    return new Promise((resolve, reject) => {
-                        const uploadStream = cloudinary.uploader.upload_stream(
-                            { resource_type: "auto", folder: "GETVINI/ERP/tasks" },
-                            (error, result) => {
-                                if (error) reject(error);
-                                else {
-                                    const downloadUrl = cloudinary.url(result!.public_id, {
-                                        resource_type: result!.resource_type,
-                                        flags: 'attachment',
-                                        secure: true
-                                    });
-
-                                    const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
-
-                                    resolve({
-                                        type: "FILE",
-                                        name: file.originalname,
-                                        extension: fileExtension,
-                                        mimeType: file.mimetype,
-                                        url: result?.secure_url,
-                                        downloadUrl: downloadUrl,
-                                        size: file.size,
-                                        publicId: result?.public_id
-                                    });
-                                }
-                            }
-                        );
-                        uploadStream.end(file.buffer);
-                    });
-                });
-
+                const uploadPromises = files.map(file => uploadToCloudinary(file, "GETVINI/ERP/tasks"));
                 const uploadedFiles = await Promise.all(uploadPromises);
                 // @ts-ignore
                 attachments.push(...uploadedFiles);
@@ -138,6 +107,35 @@ export class TaskController {
                 ...req.body,
                 attachments
             });
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    submitResult = async (req: Request, res: Response) => {
+        try {
+            const taskId = Number(req.params.id);
+            const file = req.file as Express.Multer.File;
+            const { link } = req.body;
+            let resultData: any = null;
+
+            if (file) {
+                // Upload file to specific folder: GETVINI/ERP/TASK/{taskId}
+                resultData = await uploadToCloudinary(file, `GETVINI/ERP/TASK/${taskId}`);
+            } else if (link) {
+                resultData = {
+                    type: "LINK",
+                    name: link,
+                    url: link
+                };
+            }
+
+            if (!resultData) {
+                return res.status(400).json({ message: "Vui lòng cung cấp link hoặc file kết quả" });
+            }
+
+            const result = await this.taskService.submitResult(taskId, { result: resultData });
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

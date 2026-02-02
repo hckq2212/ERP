@@ -22,4 +22,25 @@ export class TaskReviewController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    finalize = async (req: Request, res: Response) => {
+        try {
+            const taskId = Number(req.params.taskId);
+            await this.reviewService.checkAndFinalize(taskId);
+            res.status(200).json({ message: "Đã xử lý duyệt công việc" });
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    reject = async (req: Request, res: Response) => {
+        try {
+            const taskId = Number(req.params.taskId);
+            const { note } = req.body;
+            const result = await this.reviewService.rejectTask(taskId, note);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 }

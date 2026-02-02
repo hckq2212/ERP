@@ -14,6 +14,7 @@ export enum TaskStatus {
     AWAITING_ACCEPTANCE = "AWAITING_ACCEPTANCE",
     COMPLETED = "COMPLETED",
     AWAITING_REVIEW = "AWAITING_REVIEW",
+    REJECTED = "REJECTED",
     OVERDUE = "OVERDUE"
 }
 
@@ -61,8 +62,8 @@ export class Tasks extends BaseEntity {
     })
     status: TaskStatus;
 
-    @Column({ type: "text", nullable: true })
-    resultFiles: string; // Store JSON array of Cloudinary URLs
+    @Column({ type: "json", nullable: true })
+    result: { type: string, name: string, url: string, size?: number, publicId?: string }; // Store JSON of result (file or link)
 
     @Column({ type: "date", nullable: true })
     plannedStartDate: Date;

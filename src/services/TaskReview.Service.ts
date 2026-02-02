@@ -50,12 +50,6 @@ export class TaskReviewService {
         if (note !== undefined) review.note = note;
 
         await this.reviewRepository.save(review);
-
-        // Auto finalize if all passed? Or manual? 
-        // User said: "khi các tiêu chí đã check hết thì mới duyệt"
-        // Let's implement a check function
-        await this.checkAndFinalize(review.task.id);
-
         return review;
     }
 
@@ -90,5 +84,32 @@ export class TaskReviewService {
                 }
             }
         }
+    }
+
+    async rejectTask(taskId: number, note: string) {
+        const task = await this.taskRepository.findOne({
+            where: { id: taskId },
+            relations: ["assignee"]
+        });
+
+        if (!task) throw new Error("Không tìm thấy công việc");
+
+        task.status = TaskStatus.REJECTED;
+        await this.taskRepository.save(task);
+
+        // Notify assignee
+        if (task.assignee) {
+            await this.notificationService.createNotification({
+                title: "Công việc cần sửa lại",
+                content: `Công việc "${task.name}" bị từ chối/yêu cầu sửa lại. Lý do: ${note}`,
+                type: "TASK_REJECTED",
+                recipient: task.assignee,
+                relatedEntityId: task.id.toString(),
+                relatedEntityType: "Task",
+                link: `/tasks/${task.id}`
+            });
+        }
+
+        return task;
     }
 }

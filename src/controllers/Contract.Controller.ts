@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { ContractService } from "../services/Contract.Service";
-import cloudinary from "../config/cloudinary";
+import { uploadToCloudinary } from "../helpers/cloudinary.helper";
 
 export class ContractController {
     private contractService = new ContractService();
@@ -41,46 +41,6 @@ export class ContractController {
         }
     }
 
-    private uploadFileToCloudinary = (file: Express.Multer.File, folder: string): Promise<any> => {
-        return new Promise((resolve, reject) => {
-            const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
-            const fileNameWithoutExt = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
-            const safeFileName = fileNameWithoutExt.replace(/[^a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ_-]/g, '_');
-            const publicIdWithExtension = fileExtension ? `${safeFileName}.${fileExtension}` : safeFileName;
-
-            const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    resource_type: "auto",
-                    folder: folder,
-                    public_id: publicIdWithExtension,
-                    use_filename: true,
-                    unique_filename: true
-                },
-                (error, result) => {
-                    if (error) reject(error);
-                    else {
-                        const downloadUrl = cloudinary.url(result!.public_id, {
-                            resource_type: result!.resource_type,
-                            flags: `attachment:${file.originalname}`,
-                            secure: true
-                        });
-
-                        resolve({
-                            type: "FILE",
-                            name: file.originalname,
-                            extension: fileExtension,
-                            mimeType: file.mimetype,
-                            url: result?.secure_url,
-                            downloadUrl: downloadUrl,
-                            size: file.size,
-                            publicId: result?.public_id
-                        });
-                    }
-                }
-            );
-            uploadStream.end(file.buffer);
-        });
-    };
 
     uploadProposal = async (req: Request, res: Response) => {
         try {
@@ -89,7 +49,7 @@ export class ContractController {
                 return res.status(400).json({ message: "Không tìm thấy file upload" });
             }
 
-            const fileData = await this.uploadFileToCloudinary(file, "GETVINI/ERP/proposal");
+            const fileData = await uploadToCloudinary(file, "GETVINI/ERP/proposal");
             const contract = await this.contractService.uploadProposal(Number(req.params.id), fileData);
             res.status(200).json(contract);
         } catch (error) {
@@ -113,7 +73,7 @@ export class ContractController {
                 return res.status(400).json({ message: "Không tìm thấy file upload" });
             }
 
-            const fileData = await this.uploadFileToCloudinary(file, "GETVINI/ERP/signed");
+            const fileData = await uploadToCloudinary(file, "GETVINI/ERP/signed");
             const contract = await this.contractService.uploadSigned(Number(req.params.id), fileData);
             res.status(200).json(contract);
         } catch (error) {
