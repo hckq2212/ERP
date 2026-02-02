@@ -7,7 +7,8 @@ export class ContractController {
 
     getAll = async (req: Request, res: Response) => {
         try {
-            const contracts = await this.contractService.getAll();
+            const userInfo = (req as any).user;
+            const contracts = await this.contractService.getAll(userInfo);
             res.status(200).json(contracts);
         } catch (error) {
             res.status(500).json({ message: error.message });

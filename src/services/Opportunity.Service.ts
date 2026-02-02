@@ -13,10 +13,17 @@ export class OpportunityService {
     private referralPartnerRepository = AppDataSource.getRepository(ReferralPartners);
     private userRepository = AppDataSource.getRepository(Users);
 
-    async getAll() {
-        return await this.opportunityRepository.find({
+    async getAll(userInfo?: { id: string | number, role: string }) {
+        const query: any = {
             relations: ["customer", "referralPartner", "createdBy"]
-        });
+        };
+
+        if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
+            // Filter by createdBy.account.id since accountId is what we have in userInfo
+            query.where = { createdBy: { account: { id: userInfo.id } } };
+        }
+
+        return await this.opportunityRepository.find(query);
     }
 
     async getOne(id: number) {

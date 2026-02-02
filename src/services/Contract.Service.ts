@@ -25,10 +25,17 @@ export class ContractService {
     private debtService = new DebtService();
 
 
-    async getAll() {
-        return await this.contractRepository.find({
+    async getAll(userInfo?: { id: string | number, role: string }) {
+        const query: any = {
             relations: ["customer", "opportunity", "opportunity.referralPartner", "debts"]
-        });
+        };
+
+        if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
+            // Filter by the creator of the associated opportunity
+            query.where = { opportunity: { createdBy: { account: { id: userInfo.id } } } };
+        }
+
+        return await this.contractRepository.find(query);
     }
 
     async getOne(id: number) {
