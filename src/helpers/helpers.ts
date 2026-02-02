@@ -1,4 +1,5 @@
 import * as jwt from "jsonwebtoken";
+import { SignOptions } from "jsonwebtoken";
 import * as bcrypt from "bcrypt";
 import * as dotenv from "dotenv";
 
@@ -12,10 +13,10 @@ export class encrypt {
         return bcrypt.compareSync(password, hashPassword);
     }
 
-    static generateAccessToken(payload: { id: string; role: string }) {
-        return jwt.sign({ id: payload.id, role: payload.role }, JWT_SECRET, { expiresIn: "2h" });
+    static generateAccessToken(payload: { id: string; role: string }, expiresIn: SignOptions["expiresIn"] = "2h") {
+        return jwt.sign({ id: payload.id, role: payload.role }, JWT_SECRET, { expiresIn });
     }
-    static generateRefreshToken(payload: { id: string; role: string }) {
-        return jwt.sign({ id: payload.id, role: payload.role }, JWT_SECRET, { expiresIn: "1d" });
+    static generateRefreshToken(payload: { id: string; role: string }, expiresIn: SignOptions["expiresIn"] = "1d") {
+        return jwt.sign({ id: payload.id, role: payload.role }, JWT_SECRET, { expiresIn });
     }
 }

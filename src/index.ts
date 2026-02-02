@@ -1,6 +1,8 @@
 import { AppDataSource } from "./data-source"
 import express from "express"
 import cors from "cors"
+import cookieParser from "cookie-parser"
+import passport from "./config/passport"
 
 import authRoute from "./routes/Auth.Route"
 import opportunityRoute from "./routes/Opportunity.Route"
@@ -31,7 +33,12 @@ const port = 3000
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
-app.use(cors())
+app.use(cookieParser())
+app.use(cors({
+    origin: ["http://localhost:5173", "http://localhost:3000"],
+    credentials: true
+}))
+app.use(passport.initialize())
 
 app.use("/api/auth", authRoute)
 app.use("/api/opportunities", opportunityRoute)

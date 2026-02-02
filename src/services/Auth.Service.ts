@@ -63,17 +63,41 @@ export class AuthService {
         }
 
         // Generate tokens
-        const accessToken = encrypt.generateAccessToken({ id: account.id.toString(), role: account.role });
-        const refreshToken = encrypt.generateRefreshToken({ id: account.id.toString(), role: account.role });
+        const { rememberMe } = data;
+        const accessTokenExp = rememberMe ? "30d" : "2h";
+        const refreshTokenExp = rememberMe ? "30d" : "1d";
+
+        const accessToken = encrypt.generateAccessToken({ id: account.id.toString(), role: account.role }, accessTokenExp);
+        const refreshToken = encrypt.generateRefreshToken({ id: account.id.toString(), role: account.role }, refreshTokenExp);
 
         return {
             accessToken,
             refreshToken,
+            rememberMe,
             user: {
                 id: account.user?.id,
                 fullName: account.user?.fullName,
                 role: account.role
             }
+        };
+    }
+
+    async getMe(accountId: string) {
+        const account = await this.accountRepository.findOne({
+            where: { id: parseInt(accountId) },
+            relations: ["user"]
+        });
+
+        if (!account) {
+            throw new Error("Không tìm thấy tài khoản");
+        }
+
+        return {
+            id: account.user?.id,
+            fullName: account.user?.fullName,
+            role: account.role,
+            username: account.username,
+            email: account.email
         };
     }
 }

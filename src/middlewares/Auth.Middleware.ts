@@ -1,9 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import * as jwt from "jsonwebtoken";
-import * as dotenv from "dotenv";
-
-dotenv.config();
-const { JWT_SECRET = "" } = process.env;
+import passport from "passport";
 
 export interface AuthRequest extends Request {
     user?: {
@@ -12,20 +8,15 @@ export interface AuthRequest extends Request {
     };
 }
 
-export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        return res.status(401).json({ message: "Không có quyền truy cập. Vui lòng đăng nhập." });
-    }
-
-    const token = authHeader.split(" ")[1];
-
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: string };
-        req.user = decoded;
+export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    passport.authenticate("jwt", { session: false }, (err: any, user: any, info: any) => {
+        if (err) {
+            return next(err);
+        }
+        if (!user) {
+            return res.status(401).json({ message: "Không có quyền truy cập. Vui lòng đăng nhập." });
+        }
+        req.user = user;
         next();
-    } catch (error) {
-        return res.status(401).json({ message: "Phiên đăng nhập hết hạn hoặc không hợp lệ." });
-    }
+    })(req, res, next);
 };
