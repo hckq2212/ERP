@@ -26,6 +26,7 @@
       "@types/pg": "^8.16.0"
    },
    "scripts": {
+      "postinstall": "tsc",
       "build": "tsc",
       "start": "node build/index.js",
       "dev": "nodemon --exec ts-node src/index.ts"
