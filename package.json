@@ -23,12 +23,16 @@
       "typeorm": "^0.3.28"
    },
    "scripts": {
-      "start": "ts-node src/index.ts",
+      "build": "tsc",
+      "start": "node build/index.js",
       "dev": "nodemon --exec ts-node src/index.ts"
    },
    "devDependencies": {
       "@types/cookie-parser": "^1.4.10",
+      "@types/node": "^25.2.0",
       "@types/passport": "^1.0.17",
-      "@types/passport-jwt": "^4.0.1"
+      "@types/passport-jwt": "^4.0.1",
+      "@types/pg": "^8.16.0",
+      "typescript": "^5.9.3"
    }
 }
