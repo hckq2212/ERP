@@ -20,7 +20,10 @@
       "passport-jwt": "^4.0.1",
       "pg": "^8.17.2",
       "ts-node": "^10.9.2",
-      "typeorm": "^0.3.28"
+      "typeorm": "^0.3.28",
+      "typescript": "^5.9.3",
+      "@types/node": "^25.2.0",
+      "@types/pg": "^8.16.0"
    },
    "scripts": {
       "build": "tsc",
@@ -29,10 +32,7 @@
    },
    "devDependencies": {
       "@types/cookie-parser": "^1.4.10",
-      "@types/node": "^25.2.0",
       "@types/passport": "^1.0.17",
-      "@types/passport-jwt": "^4.0.1",
-      "@types/pg": "^8.16.0",
-      "typescript": "^5.9.3"
+      "@types/passport-jwt": "^4.0.1"
    }
 }
