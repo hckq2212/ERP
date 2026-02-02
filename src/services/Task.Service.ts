@@ -1,5 +1,5 @@
 import { AppDataSource } from "../data-source";
-import { Tasks, TaskStatus } from "../entity/Task.entity";
+import { Tasks, TaskStatus, PricingStatus } from "../entity/Task.entity";
 import { Projects } from "../entity/Project.entity";
 import { Jobs } from "../entity/Job.entity";
 import { Users } from "../entity/User.entity";
@@ -45,46 +45,44 @@ export class TaskService {
     }
 
     async create(data: {
-        projectId: number,
+        projectId?: number,
         jobId: number,
         assigneeId?: number,
         performerType?: "INTERNAL" | "VENDOR",
         vendorId?: number,
         description?: string,
         plannedStartDate?: Date,
-        plannedEndDate?: Date
+        plannedEndDate?: Date,
+        isExtra?: boolean
     }) {
-        const project = await this.projectRepository.findOne({
-            where: { id: data.projectId },
-            relations: ["contract"]
-        });
-        if (!project) throw new Error("Không tìm thấy dự án");
-        if (!project.contract) throw new Error("Dự án không có hợp đồng liên kết");
+        let project = null;
+        let taskCode = null;
 
         const job = await this.jobRepository.findOne({ where: { id: data.jobId } });
         if (!job) throw new Error("Không tìm thấy công việc (Job)");
 
-        // Naming Logic: ContractCode - JobCode - Sequence
-        // Example: SMGK-26-01-01 - VID - 01
+        if (data.projectId) {
+            project = await this.projectRepository.findOne({
+                where: { id: data.projectId },
+                relations: ["contract"]
+            });
+            if (!project) throw new Error("Không tìm thấy dự án");
+            if (!project.contract) throw new Error("Dự án không có hợp đồng liên kết");
 
-        // 1. Get Contract Code
-        const contractCode = project.contract.contractCode;
+            // Naming Logic: ContractCode - JobCode - Sequence
+            const contractCode = project.contract.contractCode;
+            const jobCode = job.code || `JOB${job.id}`;
 
-        // 2. Get Job Code
-        // If job doesn't have code, maybe use ID or a default? User said "VID", so assuming job has code.
-        const jobCode = job.code || `JOB${job.id}`;
+            const count = await this.taskRepository.count({
+                where: {
+                    project: { id: data.projectId },
+                    job: { id: data.jobId }
+                }
+            });
 
-        // 3. Calculate Sequence
-        // Count tasks for this Project AND this Job
-        const count = await this.taskRepository.count({
-            where: {
-                project: { id: data.projectId },
-                job: { id: data.jobId }
-            }
-        });
-
-        const sequence = (count + 1).toString().padStart(2, '0'); // "01", "02"...
-        const taskCode = `${contractCode}-${jobCode}-${sequence}`;
+            const sequence = (count + 1).toString().padStart(2, '0');
+            taskCode = `${contractCode}-${jobCode}-${sequence}`;
+        }
 
         const task = this.taskRepository.create({
             code: taskCode,
@@ -93,7 +91,9 @@ export class TaskService {
             job: job,
             status: TaskStatus.PENDING,
             plannedStartDate: data.plannedStartDate,
-            plannedEndDate: data.plannedEndDate
+            plannedEndDate: data.plannedEndDate,
+            isExtra: data.isExtra || false,
+            pricingStatus: data.isExtra ? PricingStatus.PENDING : null
         });
 
         if (data.assigneeId) {
@@ -102,10 +102,10 @@ export class TaskService {
                 task.assignee = user;
                 await this.notificationService.createNotification({
                     title: "Công việc mới được giao",
-                    content: `Bạn được giao công việc: ${task.name} (Mã: ${task.code})`,
+                    content: `Bạn được giao công việc: ${task.name}`,
                     type: "TASK_ASSIGNED",
                     recipient: user,
-                    relatedEntityId: task.id.toString(),
+                    relatedEntityId: task.id?.toString(),
                     relatedEntityType: "Task",
                     link: `/tasks/${task.id}`
                 });
@@ -261,5 +261,32 @@ export class TaskService {
         const task = await this.getOne(id);
         await this.taskRepository.remove(task);
         return { message: "Xóa công việc thành công" };
+    }
+
+    async setExtraTaskPricing(id: number, data: { isBillable: boolean, sellingPrice?: number }) {
+        const task = await this.taskRepository.findOne({
+            where: { id },
+            relations: ["project", "project.contract", "job"]
+        });
+        if (!task) throw new Error("Không tìm thấy công việc");
+        if (!task.isExtra) throw new Error("Đây không phải là công việc phát sinh");
+
+        task.pricingStatus = data.isBillable ? PricingStatus.BILLABLE : PricingStatus.NON_BILLABLE;
+        task.cost = Number(task.job.costPrice || 0);
+
+        if (data.isBillable) {
+            task.sellingPrice = Number(data.sellingPrice || 0);
+            // Revenue update happens via Addendum flow, so we don't update contract.sellingPrice here.
+        } else {
+            task.sellingPrice = 0;
+            // Update Contract Cost immediately for non-billable support tasks
+            if (task.project?.contract) {
+                const contract = task.project.contract;
+                contract.cost = Number(contract.cost || 0) + task.cost;
+                await AppDataSource.getRepository("Contracts").save(contract);
+            }
+        }
+
+        return await this.taskRepository.save(task);
     }
 }

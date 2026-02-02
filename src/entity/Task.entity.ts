@@ -18,24 +18,30 @@ export enum TaskStatus {
     OVERDUE = "OVERDUE"
 }
 
+export enum PricingStatus {
+    PENDING = "PENDING",
+    BILLABLE = "BILLABLE",
+    NON_BILLABLE = "NON_BILLABLE"
+}
+
 @Entity()
 export class Tasks extends BaseEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column()
+    @Column({ nullable: true })
     code: string;
 
     @Column()
     name: string;
 
-    @ManyToOne(() => Projects, (project) => project.tasks)
+    @ManyToOne(() => Projects, (project) => project.tasks, { nullable: true })
     project: Projects;
 
     @ManyToOne(() => Jobs, (job) => job.tasks)
     job: Jobs;
 
-    @ManyToOne(() => ContractServices, (contractService) => contractService.tasks)
+    @ManyToOne(() => ContractServices, (contractService) => contractService.tasks, { nullable: true })
     contractService: ContractServices;
 
     @Column({ nullable: true })
@@ -86,4 +92,19 @@ export class Tasks extends BaseEntity {
     @OneToMany(() => TaskReviews, (review) => review.task)
     reviews: TaskReviews[];
 
+    @Column({ default: false })
+    isExtra: boolean;
+
+    @Column({
+        type: "enum",
+        enum: PricingStatus,
+        nullable: true
+    })
+    pricingStatus: PricingStatus;
+
+    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    sellingPrice: number;
+
+    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    cost: number;
 }

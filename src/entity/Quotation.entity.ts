@@ -11,6 +11,11 @@ export enum QuotationStatus {
     ARCHIVED = "ARCHIVED"
 }
 
+export enum QuotationType {
+    INITIAL = "INITIAL",
+    ADDENDUM = "ADDENDUM"
+}
+
 @Entity()
 export class Quotations extends BaseEntity {
     @PrimaryGeneratedColumn()
@@ -28,6 +33,13 @@ export class Quotations extends BaseEntity {
         default: QuotationStatus.DRAFT
     })
     status: QuotationStatus;
+
+    @Column({
+        type: "enum",
+        enum: QuotationType,
+        default: QuotationType.INITIAL
+    })
+    type: QuotationType;
 
     @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
     totalAmount: number;

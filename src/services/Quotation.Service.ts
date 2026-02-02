@@ -1,15 +1,18 @@
 import { AppDataSource } from "../data-source";
-import { Quotations, QuotationStatus } from "../entity/Quotation.entity";
+import { Quotations, QuotationStatus, QuotationType } from "../entity/Quotation.entity";
 import { QuotationDetails } from "../entity/QuotationDetail.entity";
 import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
 import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { Services } from "../entity/Service.entity";
+import { Tasks, PricingStatus } from "../entity/Task.entity";
+import { ContractAddendums, AddendumStatus } from "../entity/ContractAddendum.entity";
 
 export class QuotationService {
     private quotationRepository = AppDataSource.getRepository(Quotations);
     private quotationDetailRepository = AppDataSource.getRepository(QuotationDetails);
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
     private opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
+    private taskRepository = AppDataSource.getRepository(Tasks);
 
     async getAll() {
         return await this.quotationRepository.find({
@@ -89,6 +92,74 @@ export class QuotationService {
         return await this.quotationRepository.save(savedQuotation);
     }
 
+    async createAddendumQuotation(data: { opportunityId: number, taskIds: number[], note?: string }) {
+        const { opportunityId, taskIds, note } = data;
+
+        const opportunity = await this.opportunityRepository.findOne({
+            where: { id: opportunityId },
+            relations: ["contracts"]
+        });
+        if (!opportunity) throw new Error("Không tìm thấy cơ hội kinh doanh");
+        if (!opportunity.contracts || opportunity.contracts.length === 0) throw new Error("Dự án chưa có hợp đồng để tạo phụ lục");
+
+        const tasks = await this.taskRepository.find({
+            where: taskIds.map(id => ({ id, isExtra: true, PricingStatus: PricingStatus.BILLABLE })),
+            relations: ["job", "job.services"]
+        });
+
+        if (tasks.length !== taskIds.length) {
+            throw new Error("Một số công việc không hợp lệ hoặc chưa được BOD định giá phát sinh");
+        }
+
+        const count = await this.quotationRepository.count({
+            where: { opportunity: { id: opportunityId } }
+        });
+        const version = count + 1;
+
+        const quotation = this.quotationRepository.create({
+            opportunity,
+            version,
+            note,
+            status: QuotationStatus.DRAFT,
+            type: QuotationType.ADDENDUM,
+            totalAmount: 0
+        });
+
+        const savedQuotation = await this.quotationRepository.save(quotation);
+
+        let total = 0;
+        const serviceRepo = AppDataSource.getRepository(Services);
+
+        for (const task of tasks) {
+            // 1. Tìm Service có Job đầu ra khớp với Job của Task
+            let service = await serviceRepo.findOne({
+                where: { outputJob: { id: task.job.id } }
+            });
+
+            // 2. Fallback: Nếu không thấy, lấy Service đầu tiên mà Job này thuộc về
+            if (!service) {
+                service = task.job.services?.[0];
+            }
+
+            if (!service) {
+                throw new Error(`Công việc "${task.name}" không thể quy đổi ra Dịch vụ để báo giá. Vui lòng thiết lập Dịch vụ đầu ra cho Job "${task.job.name}".`);
+            }
+
+            const detail = this.quotationDetailRepository.create({
+                quotation: savedQuotation,
+                service: service,
+                quantity: 1,
+                sellingPrice: task.sellingPrice,
+                costAtSale: task.cost
+            });
+            await this.quotationDetailRepository.save(detail);
+            total += Number(detail.sellingPrice);
+        }
+
+        savedQuotation.totalAmount = total;
+        return await this.quotationRepository.save(savedQuotation);
+    }
+
     // 2. Update Quotation Details (Price, Qty)
     async update(id: number, data: { status?: QuotationStatus, note?: string, details?: any[] }) {
         const quotation = await this.getOne(id);
@@ -150,8 +221,27 @@ export class QuotationService {
         quotation.status = QuotationStatus.APPROVED;
         await this.quotationRepository.save(quotation);
 
-        // 3. SYNC LOGIC: Update Opportunity Services
+        // 3. IF ADDENDUM: Create Contract Addendum and SYNC
+        if (quotation.type === QuotationType.ADDENDUM) {
+            const contract = quotation.opportunity.contracts?.[0];
+            if (!contract) throw new Error("Không tìm thấy hợp đồng để tạo phụ lục");
+
+            const addendumRepo = AppDataSource.getRepository(ContractAddendums);
+            const addendum = addendumRepo.create({
+                name: quotation.note || `Phụ lục phát sinh - Ver ${quotation.version}`,
+                contract: contract,
+                sellingPrice: quotation.totalAmount,
+                cost: quotation.details.reduce((sum, d) => sum + Number(d.costAtSale), 0),
+                status: AddendumStatus.DRAFT
+            });
+
+            await addendumRepo.save(addendum);
+            return { message: "Đã duyệt báo giá phụ lục và tạo Phụ lục hợp đồng nháp", quotation, addendum };
+        }
+
+        // 4. IF INITIAL: SYNC LOGIC: Update Opportunity Services
         const opportunity = quotation.opportunity;
+        // ... (existing initial sync logic)
 
         // Wipe old Opp Services
         await this.opportunityServiceRepository.delete({ opportunity: { id: opportunity.id } });

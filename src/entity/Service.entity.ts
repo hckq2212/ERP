@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, JoinTable, OneToMany } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, JoinTable, OneToMany, ManyToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Jobs } from "./Job.entity";
 import { OpportunityServices } from "./OpportunityService.entity";
@@ -24,6 +24,9 @@ export class Services extends BaseEntity {
     @ManyToMany(() => Jobs, (job) => job.services)
     @JoinTable({ name: "service_jobs" })
     jobs: Jobs[];
+
+    @ManyToOne(() => Jobs)
+    outputJob: Jobs;
 
     @OneToMany(() => OpportunityServices, (oppService) => oppService.service)
     opportunityServices: OpportunityServices[];

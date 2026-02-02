@@ -85,9 +85,10 @@ export class ContractAddendumService {
         addendum.signed_contract = fileData.url;
         addendum.status = AddendumStatus.SIGNED;
 
-        // Update Contract Total
+        // Update Contract Totals (Revenue and Cost)
         const contract = addendum.contract;
         contract.sellingPrice = Number(contract.sellingPrice) + Number(addendum.sellingPrice);
+        contract.cost = Number(contract.cost || 0) + Number(addendum.cost || 0);
         await this.contractRepository.save(contract);
 
         // Activate Debts for addendum milestones

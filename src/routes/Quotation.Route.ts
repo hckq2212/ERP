@@ -8,6 +8,7 @@ router.get("/", quotationController.getAll);
 router.get("/:id", quotationController.getOne);
 router.get("/opportunity/:opportunityId", quotationController.getByOpportunity); // Get all quotes for an opp
 router.post("/", quotationController.create);
+router.post("/addendum", quotationController.createAddendum);
 router.put("/:id", quotationController.update);
 router.post("/:id/approve", quotationController.approve); // Approve endpoint
 router.post("/:id/reject", quotationController.reject); // Reject endpoint

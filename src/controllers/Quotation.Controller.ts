@@ -75,4 +75,13 @@ export class QuotationController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    createAddendum = async (req: Request, res: Response) => {
+        try {
+            const result = await this.quotationService.createAddendumQuotation(req.body);
+            res.status(201).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 }
