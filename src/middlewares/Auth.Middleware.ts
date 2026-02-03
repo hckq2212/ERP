@@ -8,7 +8,7 @@ export interface AuthRequest extends Request {
     };
 }
 
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const authMiddleware = (req: any, res: Response, next: NextFunction) => {
     passport.authenticate("jwt", { session: false }, (err: any, user: any, info: any) => {
         if (err) {
             return next(err);
