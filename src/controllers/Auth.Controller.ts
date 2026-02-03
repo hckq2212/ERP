@@ -24,16 +24,18 @@ export class AuthController {
 
             res.cookie("accessToken", result.accessToken, {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-                maxAge: accessMaxAge
+                secure: true,
+                sameSite: "lax",
+                maxAge: accessMaxAge,
+                path: "/"
             });
 
             res.cookie("refreshToken", result.refreshToken, {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-                maxAge: refreshMaxAge
+                secure: true,
+                sameSite: "lax",
+                maxAge: refreshMaxAge,
+                path: "/"
             });
 
             res.status(200).json({

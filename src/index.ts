@@ -45,6 +45,7 @@ app.use(cors({
         if (
             allowedOrigins.includes(origin) ||
             origin.endsWith(".vercel.app") ||
+            origin.endsWith(".onrender.com") ||
             /^http:\/\/localhost:\d+$/.test(origin)
         ) {
             callback(null, true);
