@@ -9,14 +9,48 @@ export class UserService {
 
     async getAll() {
         return await this.userRepository.find({
-            // relations: [""]
+            relations: ["tasks", "account"],
+            select: {
+                id: true,
+                fullName: true,
+                phoneNumber: true,
+                account: {
+                    id: true,
+                    username: true,
+                    email: true,
+                    role: true
+                },
+                tasks: {
+                    id: true,
+                    code: true,
+                    name: true,
+                    status: true
+                }
+            }
         });
     }
 
     async getOne(id: number) {
         const user = await this.userRepository.findOne({
             where: { id },
-            // relations: [""]
+            relations: ["tasks", "account"],
+            select: {
+                id: true,
+                fullName: true,
+                phoneNumber: true,
+                account: {
+                    id: true,
+                    username: true,
+                    email: true,
+                    role: true
+                },
+                tasks: {
+                    id: true,
+                    code: true,
+                    name: true,
+                    status: true
+                }
+            }
         });
         if (!user) throw new Error("Không tìm thấy người dùng");
         return user;

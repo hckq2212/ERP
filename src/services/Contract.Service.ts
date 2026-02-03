@@ -27,7 +27,7 @@ export class ContractService {
 
     async getAll(userInfo?: { id: string | number, role: string }) {
         const query: any = {
-            relations: ["customer", "opportunity", "opportunity.referralPartner", "debts"]
+            relations: ["customer", "opportunity", "opportunity.referralPartner", "debts", "addendums"]
         };
 
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
@@ -41,7 +41,7 @@ export class ContractService {
     async getOne(id: number) {
         const contract = await this.contractRepository.findOne({
             where: { id },
-            relations: ["customer", "opportunity", "milestones", "services", "debts"]
+            relations: ["customer", "opportunity", "milestones", "services", "debts", "addendums"]
         });
         if (!contract) {
             throw new Error("Không tìm thấy hợp đồng");
