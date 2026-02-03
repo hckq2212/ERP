@@ -29,6 +29,7 @@ import taskReviewRoute from "./routes/TaskReview.Route"
 
 
 const app = express()
+app.set('trust proxy', 1)
 const port = 3000
 
 app.use(express.json())
