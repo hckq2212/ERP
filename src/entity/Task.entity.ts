@@ -6,6 +6,7 @@ import { Users } from "./User.entity";
 import { ContractServices } from "./ContractService.entity";
 import { Vendors } from "./Vendor.entity";
 import { TaskReviews } from "./TaskReview.entity";
+import { Services } from "./Service.entity";
 
 export enum TaskStatus {
     PENDING = "PENDING",
@@ -15,7 +16,8 @@ export enum TaskStatus {
     COMPLETED = "COMPLETED",
     AWAITING_REVIEW = "AWAITING_REVIEW",
     REJECTED = "REJECTED",
-    OVERDUE = "OVERDUE"
+    OVERDUE = "OVERDUE",
+    AWAITING_PRICING = "AWAITING_PRICING"
 }
 
 export enum PricingStatus {
@@ -107,4 +109,10 @@ export class Tasks extends BaseEntity {
 
     @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
     cost: number;
+
+    @ManyToOne(() => Services)
+    mappedService: Services;
+
+    @ManyToOne("Quotations", "tasks", { nullable: true })
+    quotation: any; // Using string and any to avoid circular dependency if not handled elsewhere
 }

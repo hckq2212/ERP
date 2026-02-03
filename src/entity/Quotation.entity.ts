@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "ty
 import { BaseEntity } from "./BaseEntity";
 import { Opportunities } from "./Opportunity.entity";
 import { QuotationDetails } from "./QuotationDetail.entity";
+import { Tasks } from "./Task.entity";
 
 export enum QuotationStatus {
     DRAFT = "DRAFT",
@@ -49,4 +50,7 @@ export class Quotations extends BaseEntity {
 
     @OneToMany(() => QuotationDetails, (detail) => detail.quotation)
     details: QuotationDetails[];
+
+    @OneToMany(() => Tasks, (task) => task.quotation, { nullable: true })
+    tasks: Tasks[];
 }

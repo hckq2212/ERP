@@ -4,7 +4,7 @@ import { QuotationDetails } from "../entity/QuotationDetail.entity";
 import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
 import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { Services } from "../entity/Service.entity";
-import { Tasks, PricingStatus } from "../entity/Task.entity";
+import { Tasks, PricingStatus, TaskStatus } from "../entity/Task.entity";
 import { ContractAddendums, AddendumStatus } from "../entity/ContractAddendum.entity";
 
 export class QuotationService {
@@ -23,7 +23,7 @@ export class QuotationService {
     async getOne(id: number) {
         const quotation = await this.quotationRepository.findOne({
             where: { id },
-            relations: ["opportunity", "details", "details.service"]
+            relations: ["opportunity", "opportunity.contracts", "details", "details.service"]
         });
         if (!quotation) throw new Error("Không tìm thấy báo giá");
         return quotation;
@@ -103,8 +103,8 @@ export class QuotationService {
         if (!opportunity.contracts || opportunity.contracts.length === 0) throw new Error("Dự án chưa có hợp đồng để tạo phụ lục");
 
         const tasks = await this.taskRepository.find({
-            where: taskIds.map(id => ({ id, isExtra: true, PricingStatus: PricingStatus.BILLABLE })),
-            relations: ["job", "job.services"]
+            where: taskIds.map(id => ({ id, isExtra: true, pricingStatus: PricingStatus.BILLABLE })),
+            relations: ["job", "job.services", "mappedService"]
         });
 
         if (tasks.length !== taskIds.length) {
@@ -131,18 +131,23 @@ export class QuotationService {
         const serviceRepo = AppDataSource.getRepository(Services);
 
         for (const task of tasks) {
-            // 1. Tìm Service có Job đầu ra khớp với Job của Task
-            let service = await serviceRepo.findOne({
-                where: { outputJob: { id: task.job.id } }
-            });
+            // 1. Ưu tiên lấy mappedService do BOD chọn tay khi định giá
+            let service = task.mappedService;
 
-            // 2. Fallback: Nếu không thấy, lấy Service đầu tiên mà Job này thuộc về
+            // 2. Nếu không có, tìm Service có Job đầu ra khớp với Job của Task
+            if (!service) {
+                service = await serviceRepo.findOne({
+                    where: { outputJob: { id: task.job.id } }
+                });
+            }
+
+            // 3. Fallback cuối cùng: lấy Service đầu tiên mà Job này thuộc về
             if (!service) {
                 service = task.job.services?.[0];
             }
 
             if (!service) {
-                throw new Error(`Công việc "${task.name}" không thể quy đổi ra Dịch vụ để báo giá. Vui lòng thiết lập Dịch vụ đầu ra cho Job "${task.job.name}".`);
+                throw new Error(`Công việc "${task.name}" không thể quy đổi ra Dịch vụ để báo giá. Vui lòng thiết lập Dịch vụ đầu ra hoặc chọn tay Dịch vụ khi định giá.`);
             }
 
             const detail = this.quotationDetailRepository.create({
@@ -157,6 +162,7 @@ export class QuotationService {
         }
 
         savedQuotation.totalAmount = total;
+        savedQuotation.tasks = tasks; // Link tasks to quotation
         return await this.quotationRepository.save(savedQuotation);
     }
 
@@ -236,7 +242,19 @@ export class QuotationService {
             });
 
             await addendumRepo.save(addendum);
-            return { message: "Đã duyệt báo giá phụ lục và tạo Phụ lục hợp đồng nháp", quotation, addendum };
+
+            // Activate tasks linked to this quotation
+            const tasks = await this.taskRepository.find({
+                where: { quotation: { id: quotation.id } }
+            });
+
+            for (const task of tasks) {
+                task.status = TaskStatus.PENDING;
+                task.pricingStatus = PricingStatus.BILLABLE;
+                await this.taskRepository.save(task);
+            }
+
+            return { message: "Đã duyệt báo giá phụ lục và tạo Phụ lục hợp đồng nháp. Các công việc liên quan đã được kích hoạt.", quotation, addendum };
         }
 
         // 4. IF INITIAL: SYNC LOGIC: Update Opportunity Services

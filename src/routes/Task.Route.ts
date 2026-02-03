@@ -23,7 +23,7 @@ router.put("/:id", authMiddleware, taskController.update);
 router.put("/:id/assign", authMiddleware, upload.array('files', 5), taskController.assign);
 router.patch("/:id/submit-result", authMiddleware, upload.single('file'), taskController.submitResult);
 router.delete("/:id", authMiddleware, taskController.delete);
-router.post("/:id/pricing", authMiddleware, taskController.setExtraTaskPricing);
+router.post("/:id/pricing", authMiddleware, taskController.assessExtraTask);
 
 
 export default router;

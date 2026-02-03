@@ -37,7 +37,7 @@ export class TaskService {
     async getOne(id: number) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "job", "assignee"]
+            relations: ["project", "job", "assignee", "quotation"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
@@ -89,7 +89,7 @@ export class TaskService {
             name: job.name,
             project: project,
             job: job,
-            status: TaskStatus.PENDING,
+            status: data.isExtra ? TaskStatus.AWAITING_PRICING : TaskStatus.PENDING,
             plannedStartDate: data.plannedStartDate,
             plannedEndDate: data.plannedEndDate,
             isExtra: data.isExtra || false,
@@ -263,7 +263,7 @@ export class TaskService {
         return { message: "Xóa công việc thành công" };
     }
 
-    async setExtraTaskPricing(id: number, data: { isBillable: boolean, sellingPrice?: number }) {
+    async assessExtraTask(id: number, data: { isBillable: boolean, isRejected?: boolean, sellingPrice?: number, serviceId?: number }) {
         const task = await this.taskRepository.findOne({
             where: { id },
             relations: ["project", "project.contract", "job"]
@@ -271,12 +271,22 @@ export class TaskService {
         if (!task) throw new Error("Không tìm thấy công việc");
         if (!task.isExtra) throw new Error("Đây không phải là công việc phát sinh");
 
+        if (data.isRejected) {
+            task.status = TaskStatus.REJECTED;
+            return await this.taskRepository.save(task);
+        }
+
         task.pricingStatus = data.isBillable ? PricingStatus.BILLABLE : PricingStatus.NON_BILLABLE;
         task.cost = Number(task.job.costPrice || 0);
 
         if (data.isBillable) {
             task.sellingPrice = Number(data.sellingPrice || 0);
-            // Revenue update happens via Addendum flow, so we don't update contract.sellingPrice here.
+
+            // Manual mapping if serviceId is provided
+            if (data.serviceId) {
+                const service = await AppDataSource.getRepository("Services").findOneBy({ id: data.serviceId }) as any;
+                if (service) task.mappedService = service;
+            }
         } else {
             task.sellingPrice = 0;
             // Update Contract Cost immediately for non-billable support tasks
@@ -285,6 +295,8 @@ export class TaskService {
                 contract.cost = Number(contract.cost || 0) + task.cost;
                 await AppDataSource.getRepository("Contracts").save(contract);
             }
+            // If it's internal cost-only, it can start immediately
+            task.status = TaskStatus.PENDING;
         }
 
         return await this.taskRepository.save(task);
