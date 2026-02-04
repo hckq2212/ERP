@@ -5,7 +5,6 @@ import { Users } from "./User.entity";
 export enum UserRole {
     SALE = "SALE",
     BOD = "BOD",
-    TEAM_LEAD = "TEAM_LEAD",
     MEMBER = "MEMBER",
     ADMIN = "ADMIN"
 }

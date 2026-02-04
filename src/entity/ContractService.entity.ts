@@ -40,4 +40,7 @@ export class ContractServices extends BaseEntity {
         default: ContractServiceStatus.ACTIVE
     })
     status: ContractServiceStatus;
+
+    @Column({ type: "json", nullable: true })
+    result: { type: string, name: string, url: string, size?: number, publicId?: string };
 }

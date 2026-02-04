@@ -53,6 +53,13 @@ export class Tasks extends BaseEntity {
     @JoinColumn({ name: "assigneeId" })
     assignee: Users;
 
+    @Column({ nullable: true })
+    assignerId: number;
+
+    @ManyToOne(() => Users, { nullable: true })
+    @JoinColumn({ name: "assignerId" })
+    assigner: Users;
+
     @Column({
         type: "enum",
         enum: ["INTERNAL", "VENDOR"],

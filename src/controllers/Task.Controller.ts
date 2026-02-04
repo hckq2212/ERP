@@ -27,7 +27,8 @@ export class TaskController {
 
     create = async (req: Request, res: Response) => {
         try {
-            const task = await this.taskService.create(req.body);
+            const user = (req as any).user;
+            const task = await this.taskService.create(req.body, user);
             res.status(201).json(task);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -103,10 +104,11 @@ export class TaskController {
                 attachments.push(...uploadedFiles);
             }
 
+            const user = (req as any).user;
             const result = await this.taskService.assign(Number(req.params.id), {
                 ...req.body,
                 attachments
-            });
+            }, user);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

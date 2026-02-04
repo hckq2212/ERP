@@ -1,7 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Tasks } from "./Task.entity";
 import { JobCriterias } from "./JobCriteria.entity";
+import { Users } from "./User.entity";
 
 @Entity()
 export class TaskReviews extends BaseEntity {
@@ -13,6 +14,13 @@ export class TaskReviews extends BaseEntity {
 
     @ManyToOne(() => JobCriterias)
     criteria: JobCriterias;
+
+    @Column({ nullable: true })
+    reviewerId: number;
+
+    @ManyToOne(() => Users, { nullable: true })
+    @JoinColumn({ name: "reviewerId" })
+    reviewer: Users;
 
     @Column({ default: false })
     isPassed: boolean;

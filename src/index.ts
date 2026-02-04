@@ -17,6 +17,7 @@ import opportunityServiceRoute from "./routes/OpportunityService.Route"
 import userRoute from "./routes/User.Route"
 import projectTeamRoute from "./routes/ProjectTeam.Route"
 import notificationRoute from "./routes/Notification.Route"
+import dashboardRoute from "./routes/Dashboard.Route";
 import customerRoute from "./routes/Customer.Route"
 import vendorRoute from "./routes/Vendor.Route"
 import referralPartnerRoute from "./routes/ReferralPartner.Route"
@@ -70,6 +71,7 @@ app.use("/api/opportunity-services", opportunityServiceRoute)
 app.use("/api/users", userRoute)
 app.use("/api/teams", projectTeamRoute)
 app.use("/api/notifications", notificationRoute)
+app.use("/api/dashboard", dashboardRoute);
 app.use("/api/customers", customerRoute)
 app.use("/api/vendors", vendorRoute)
 app.use("/api/referral-partners", referralPartnerRoute)
