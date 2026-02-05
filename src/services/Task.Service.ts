@@ -23,7 +23,7 @@ export class TaskService {
 
     async getAll(userInfo?: { id: number, role: string }) {
         const query: any = {
-            relations: ["project", "job", "assignee"]
+            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee"]
         };
 
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
@@ -37,7 +37,7 @@ export class TaskService {
     async getOne(id: number) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "job", "assignee", "quotation"]
+            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
@@ -54,7 +54,7 @@ export class TaskService {
         plannedStartDate?: Date,
         plannedEndDate?: Date,
         isExtra?: boolean
-    }) {
+    }, currentUser?: { id: number }) {
         let project = null;
         let taskCode = null;
 
@@ -93,7 +93,8 @@ export class TaskService {
             plannedStartDate: data.plannedStartDate,
             plannedEndDate: data.plannedEndDate,
             isExtra: data.isExtra || false,
-            pricingStatus: data.isExtra ? PricingStatus.PENDING : null
+            pricingStatus: data.isExtra ? PricingStatus.PENDING : null,
+            assignerId: currentUser?.id
         });
 
         if (data.assigneeId) {
@@ -215,7 +216,7 @@ export class TaskService {
         plannedStartDate: Date;
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
-    }) {
+    }, currentUser?: { id: number }) {
         const task = await this.getOne(id);
 
         if (data.performerType === "VENDOR") {
@@ -251,6 +252,10 @@ export class TaskService {
         // Auto update status if it is pending
         if (task.status === TaskStatus.PENDING) {
             task.status = TaskStatus.DOING;
+        }
+
+        if (currentUser) {
+            task.assignerId = currentUser.id;
         }
 
         return await this.taskRepository.save(task);

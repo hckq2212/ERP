@@ -8,14 +8,14 @@ export class ServiceService {
 
     async getAll() {
         return await this.serviceRepository.find({
-            relations: ["jobs"]
+            relations: ["jobs", "outputJob"]
         });
     }
 
     async getOne(id: number) {
         const service = await this.serviceRepository.findOne({
             where: { id },
-            relations: ["jobs"]
+            relations: ["jobs", "outputJob"]
         });
         if (!service) throw new Error("Không tìm thấy dịch vụ");
         return service;
@@ -24,7 +24,7 @@ export class ServiceService {
     async recalculateCost(serviceId: number) {
         const service = await this.serviceRepository.findOne({
             where: { id: serviceId },
-            relations: ["jobs"]
+            relations: ["jobs", "outputJob"]
         });
         if (!service) return;
 
@@ -35,12 +35,18 @@ export class ServiceService {
     }
 
     async create(data: any = {}) {
-        const { jobIds, ...serviceData } = data;
+        const { jobIds, outputJobId, ...serviceData } = data;
         const service = this.serviceRepository.create(serviceData) as any;
 
+        const jobRepository = AppDataSource.getRepository(Jobs);
+
         if (jobIds && Array.isArray(jobIds)) {
-            const jobRepository = AppDataSource.getRepository(Jobs);
             service.jobs = await jobRepository.findBy({ id: In(jobIds) });
+        }
+
+        if (outputJobId) {
+            const outputJob = await jobRepository.findOneBy({ id: outputJobId });
+            if (outputJob) service.outputJob = outputJob;
         }
 
         const savedService = await this.serviceRepository.save(service);
@@ -48,14 +54,20 @@ export class ServiceService {
     }
 
     async update(id: number, data: any = {}) {
-        const { jobIds, ...serviceData } = data;
+        const { jobIds, outputJobId, ...serviceData } = data;
         const service = await this.getOne(id) as any;
 
         Object.assign(service, serviceData);
 
+        const jobRepository = AppDataSource.getRepository(Jobs);
+
         if (jobIds && Array.isArray(jobIds)) {
-            const jobRepository = AppDataSource.getRepository(Jobs);
             service.jobs = await jobRepository.findBy({ id: In(jobIds) });
+        }
+
+        if (outputJobId) {
+            const outputJob = await jobRepository.findOneBy({ id: outputJobId });
+            if (outputJob) service.outputJob = outputJob;
         }
 
         await this.serviceRepository.save(service);
