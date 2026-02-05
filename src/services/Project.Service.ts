@@ -29,10 +29,50 @@ export class ProjectService {
     async getOne(id: number) {
         const project = await this.projectRepository.findOne({
             where: { id },
-            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation"]
+            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation", "contract.services", "contract.services.service"],
+            select: {
+                id: true,
+                name: true,
+                status: true,
+                plannedStartDate: true,
+                plannedEndDate: true,
+                contract: {
+                    id: true,
+                    name: true,
+                    contractCode: true,
+                    attachments: true,
+                    status: true,
+                    services: {
+                        id: true,
+                        sellingPrice: true,
+                        status: true,
+                        result: true,
+                        service: {
+                            id: true,
+                            name: true
+                        }
+                    }
+                },
+                team: {
+                    id: true,
+                    teamLead: {
+                        id: true,
+                        fullName: true,
+                        phoneNumber: true,
+                    }
+                }
+            }
         });
 
         if (!project) throw new Error("Không tìm thấy dự án");
+
+        // Filter out system attachments that handled by separate fields
+        if (project.contract && project.contract.attachments) {
+            project.contract.attachments = project.contract.attachments.filter(
+                att => att.type !== "PROPOSAL_CONTRACT" && att.type !== "SIGNED_CONTRACT"
+            );
+        }
+
         return project;
     }
 
