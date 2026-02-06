@@ -24,6 +24,7 @@ import { Notifications } from "./entity/Notification.entity"
 import { ContractAddendums } from "./entity/ContractAddendum.entity"
 import { TaskReviews } from "./entity/TaskReview.entity"
 import { JobCriterias } from "./entity/JobCriteria.entity"
+import { AcceptanceRequests } from "./entity/AcceptanceRequest.entity"
 
 
 import { VendorJobs } from "./entity/VendorJob.entity"
@@ -67,7 +68,8 @@ export const AppDataSource = new DataSource({
         VendorJobs,
         ContractAddendums,
         TaskReviews,
-        JobCriterias
+        JobCriterias,
+        AcceptanceRequests
     ],
 
     migrations: [],

@@ -25,6 +25,7 @@ import debtRoute from "./routes/Debt.Route"
 import contractAddendumRoute from "./routes/ContractAddendum.Route"
 import jobCriteriaRoute from "./routes/JobCriteria.Route"
 import taskReviewRoute from "./routes/TaskReview.Route"
+import acceptanceRoute from "./routes/Acceptance.Route"
 
 
 
@@ -79,6 +80,7 @@ app.use("/api/debts", debtRoute)
 app.use("/api/contract-addendums", contractAddendumRoute)
 app.use("/api/job-criteria", jobCriteriaRoute)
 app.use("/api/task-reviews", taskReviewRoute)
+app.use("/api/acceptance", acceptanceRoute)
 
 
 

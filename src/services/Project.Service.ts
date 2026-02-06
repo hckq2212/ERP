@@ -55,6 +55,7 @@ export class ProjectService {
                 },
                 team: {
                     id: true,
+                    name: true,
                     teamLead: {
                         id: true,
                         fullName: true,

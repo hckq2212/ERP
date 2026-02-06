@@ -8,7 +8,10 @@ import { ContractAddendums } from "./ContractAddendum.entity";
 
 export enum ContractServiceStatus {
     ACTIVE = "ACTIVE",
-    CANCELLED = "CANCELLED"
+    ACCEPTANCE_REJECTED = "ACCEPTANCE_REJECTED",
+    CANCELLED = "CANCELLED",
+    AWAITING_ACCEPTANCE = "AWAITING_ACCEPTANCE",
+    COMPLETED = "COMPLETED"
 }
 
 @Entity()
@@ -41,6 +44,12 @@ export class ContractServices extends BaseEntity {
     })
     status: ContractServiceStatus;
 
+    @ManyToOne("AcceptanceRequests", "services", { nullable: true })
+    acceptanceRequest: any;
+
     @Column({ type: "json", nullable: true })
     result: { type: string, name: string, url: string, size?: number, publicId?: string };
+
+    @Column({ type: "text", nullable: true })
+    feedback: string;
 }

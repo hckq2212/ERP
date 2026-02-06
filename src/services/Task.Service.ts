@@ -1,11 +1,11 @@
 import { AppDataSource } from "../data-source";
 import { Tasks, TaskStatus, PricingStatus } from "../entity/Task.entity";
+import { ILike, Like } from "typeorm";
 import { Projects } from "../entity/Project.entity";
 import { Jobs } from "../entity/Job.entity";
 import { Users } from "../entity/User.entity";
 import { Vendors } from "../entity/Vendor.entity";
 import { VendorJobs } from "../entity/VendorJob.entity";
-import { Like } from "typeorm";
 import { NotificationService } from "./Notification.Service";
 import { TaskReviewService } from "./TaskReview.Service";
 
@@ -21,16 +21,40 @@ export class TaskService {
     private reviewService = new TaskReviewService();
 
 
-    async getAll(userInfo?: { id: number, role: string }) {
-        const query: any = {
-            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee"]
-        };
+    async getAll(filters: any = {}, userInfo?: { id: number, role: string }) {
+        const where: any = {};
 
+        // 1. Enforce Role-based access
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
-            query.where = { assignee: { id: userInfo.id } };
+            where.assignee = { id: userInfo.id };
         }
 
-        return await this.taskRepository.find(query);
+        // 2. Apply dynamic filters
+        if (filters.status) {
+            where.status = filters.status;
+        }
+
+        if (filters.assigneeId) {
+            where.assignee = { id: filters.assigneeId };
+        }
+
+        if (filters.projectId) {
+            where.project = { id: filters.projectId };
+        }
+
+        // 3. Fuzzy search for name or code
+        if (filters.q) {
+            where.name = ILike(`%${filters.q}%`);
+            // Note: If you want to search by code OR name, 
+            // you'd need an array of where clauses in TypeORM, 
+            // but let's stick to name for now as per requirement.
+        }
+
+        return await this.taskRepository.find({
+            where,
+            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee"],
+            order: { createdAt: "DESC" }
+        });
     }
 
 

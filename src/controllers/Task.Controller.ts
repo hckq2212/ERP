@@ -8,7 +8,8 @@ export class TaskController {
     getAll = async (req: any, res: Response) => {
         try {
             const userInfo = (req as any).user;
-            const tasks = await this.taskService.getAll(userInfo);
+            const filters = req.query;
+            const tasks = await this.taskService.getAll(filters, userInfo);
             res.status(200).json(tasks);
         } catch (error) {
             res.status(500).json({ message: error.message });
