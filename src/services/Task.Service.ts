@@ -23,6 +23,10 @@ export class TaskService {
 
     async getAll(filters: any = {}, userInfo?: { id: number, role: string }) {
         const where: any = {};
+        const page = parseInt(filters.page) || 1;
+        const limit = parseInt(filters.limit) || 10;
+        const sortBy = filters.sortBy || "createdAt";
+        const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
 
         // 1. Enforce Role-based access
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
@@ -30,7 +34,7 @@ export class TaskService {
         }
 
         // 2. Apply dynamic filters
-        if (filters.status) {
+        if (filters.status && filters.status !== 'ALL') {
             where.status = filters.status;
         }
 
@@ -43,18 +47,28 @@ export class TaskService {
         }
 
         // 3. Fuzzy search for name or code
-        if (filters.q) {
-            where.name = ILike(`%${filters.q}%`);
-            // Note: If you want to search by code OR name, 
-            // you'd need an array of where clauses in TypeORM, 
-            // but let's stick to name for now as per requirement.
+        if (filters.q || filters.search) {
+            const query = filters.q || filters.search;
+            where.name = ILike(`%${query}%`);
         }
 
-        return await this.taskRepository.find({
+        const [items, total] = await this.taskRepository.findAndCount({
             where,
             relations: ["project", "project.team", "project.team.teamLead", "job", "assignee"],
-            order: { createdAt: "DESC" }
+            order: { [sortBy]: sortDir },
+            skip: (page - 1) * limit,
+            take: limit
         });
+
+        return {
+            data: items,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
     }
 
 
@@ -162,7 +176,7 @@ export class TaskService {
 
             await this.notificationService.createNotification({
                 title: "Kết quả công việc đã nộp",
-                content: `Nhân viên đã nộp kết quả cho: ${task.name}. Vui lòng đánh giá.`,
+                content: `Nhân viên đã nộp kết quả cho: ${task.code}. Vui lòng đánh giá.`,
                 type: "TASK_REVIEW",
                 recipient: taskWithInfo.project.team.teamLead,
                 relatedEntityId: task.id.toString(),

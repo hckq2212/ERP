@@ -1,4 +1,5 @@
 import { AppDataSource } from "../data-source";
+import { Like } from "typeorm";
 import { Projects, ProjectStatus } from "../entity/Project.entity";
 import { Contracts, ContractStatus } from "../entity/Contract.entity";
 import { ProjectTeams } from "../entity/ProjectTeam.entity";
@@ -20,10 +21,49 @@ export class ProjectService {
 
 
 
-    async getAll() {
-        return await this.projectRepository.find({
-            relations: ["contract", "team", "team.teamLead"]
+    async getAll(filters: any = {}, userInfo?: { id: string | number, role: string }) {
+        const page = parseInt(filters.page) || 1;
+        const limit = parseInt(filters.limit) || 10;
+        const sortBy = filters.sortBy || "createdAt";
+        const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
+
+        const where: any = [];
+        const baseWhere: any = {};
+
+        // Filter by role if necessary (Project usually has role-based filtering too)
+        if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
+            baseWhere.team = { teamLead: { account: { id: userInfo.id } } };
+        }
+
+        if (filters.status && filters.status !== 'ALL') {
+            baseWhere.status = filters.status;
+        }
+
+        if (filters.search) {
+            const searchTerm = `%${filters.search}%`;
+            where.push({ ...baseWhere, name: Like(searchTerm) });
+            where.push({ ...baseWhere, contract: { contractCode: Like(searchTerm) } });
+        } else {
+            where.push(baseWhere);
+        }
+
+        const [items, total] = await this.projectRepository.findAndCount({
+            where: where.length > 1 ? where : where[0],
+            relations: ["contract", "team", "team.teamLead"],
+            order: { [sortBy]: sortDir },
+            skip: (page - 1) * limit,
+            take: limit
         });
+
+        return {
+            data: items,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
     }
 
     async getOne(id: number) {

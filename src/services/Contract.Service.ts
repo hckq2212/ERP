@@ -25,17 +25,47 @@ export class ContractService {
     private debtService = new DebtService();
 
 
-    async getAll(userInfo?: { id: string | number, role: string }) {
-        const query: any = {
-            relations: ["customer", "opportunity", "opportunity.referralPartner", "debts", "addendums"]
-        };
+    async getAll(filters: any = {}, userInfo?: { id: string | number, role: string }) {
+        const page = parseInt(filters.page) || 1;
+        const limit = parseInt(filters.limit) || 10;
+        const sortBy = filters.sortBy || "createdAt";
+        const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
 
+        const where: any = [];
+        const baseWhere: any = {};
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
-            // Filter by the creator of the associated opportunity
-            query.where = { opportunity: { createdBy: { account: { id: userInfo.id } } } };
+            baseWhere.opportunity = { createdBy: { account: { id: userInfo.id } } };
         }
 
-        return await this.contractRepository.find(query);
+        if (filters.status && filters.status !== 'ALL') {
+            baseWhere.status = filters.status;
+        }
+
+        if (filters.search) {
+            const searchTerm = `%${filters.search}%`;
+            where.push({ ...baseWhere, contractCode: Like(searchTerm) });
+            where.push({ ...baseWhere, customer: { name: Like(searchTerm) } });
+        } else {
+            where.push(baseWhere);
+        }
+
+        const [items, total] = await this.contractRepository.findAndCount({
+            where: where.length > 1 ? where : where[0],
+            relations: ["customer", "opportunity", "opportunity.referralPartner", "debts", "addendums"],
+            order: { [sortBy]: sortDir },
+            skip: (page - 1) * limit,
+            take: limit
+        });
+
+        return {
+            data: items,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
     }
 
     async getOne(id: number) {

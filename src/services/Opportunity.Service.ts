@@ -13,17 +13,49 @@ export class OpportunityService {
     private referralPartnerRepository = AppDataSource.getRepository(ReferralPartners);
     private userRepository = AppDataSource.getRepository(Users);
 
-    async getAll(userInfo?: { id: string | number, role: string }) {
-        const query: any = {
-            relations: ["customer", "referralPartner", "createdBy"]
-        };
+    async getAll(filters: any = {}, userInfo?: { id: string | number, role: string }) {
+        const page = parseInt(filters.page) || 1;
+        const limit = parseInt(filters.limit) || 10;
+        const sortBy = filters.sortBy || "createdAt";
+        const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
 
+        const where: any = [];
+        const baseWhere: any = {};
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
             // Filter by createdBy.account.id since accountId is what we have in userInfo
-            query.where = { createdBy: { account: { id: userInfo.id } } };
+            baseWhere.createdBy = { account: { id: userInfo.id } };
         }
 
-        return await this.opportunityRepository.find(query);
+        if (filters.status && filters.status !== 'ALL') {
+            baseWhere.status = filters.status;
+        }
+
+        if (filters.search) {
+            const searchTerm = `%${filters.search}%`;
+            where.push({ ...baseWhere, name: Like(searchTerm) });
+            where.push({ ...baseWhere, leadName: Like(searchTerm) });
+            where.push({ ...baseWhere, customer: { name: Like(searchTerm) } });
+        } else {
+            where.push(baseWhere);
+        }
+
+        const [items, total] = await this.opportunityRepository.findAndCount({
+            where: where.length > 1 ? where : where[0],
+            relations: ["customer", "referralPartner", "createdBy"],
+            order: { [sortBy]: sortDir },
+            skip: (page - 1) * limit,
+            take: limit
+        });
+
+        return {
+            data: items,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
     }
 
     async getOne(id: number) {

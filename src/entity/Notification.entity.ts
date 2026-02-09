@@ -15,7 +15,7 @@ export class Notifications extends BaseEntity {
     content: string
 
     @Column()
-    type: string // e.g., 'TASK', 'CONTRACT', 'SYSTEM', 'MESSAGE'
+    type: string
 
     @Column({ default: false })
     isRead: boolean

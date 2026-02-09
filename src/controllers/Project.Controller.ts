@@ -8,7 +8,9 @@ export class ProjectController {
 
     getAll = async (req: Request, res: Response) => {
         try {
-            const projects = await this.projectService.getAll();
+            const userInfo = (req as any).user;
+            const filters = req.query;
+            const projects = await this.projectService.getAll(filters, userInfo);
             res.status(200).json(projects);
         } catch (error) {
             res.status(500).json({ message: error.message });

@@ -8,7 +8,8 @@ export class ContractController {
     getAll = async (req: Request, res: Response) => {
         try {
             const userInfo = (req as any).user;
-            const contracts = await this.contractService.getAll(userInfo);
+            const filters = req.query;
+            const contracts = await this.contractService.getAll(filters, userInfo);
             res.status(200).json(contracts);
         } catch (error) {
             res.status(500).json({ message: error.message });

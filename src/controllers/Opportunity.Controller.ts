@@ -9,7 +9,8 @@ export class OpportunityController {
     getAll = async (req: Request, res: Response) => {
         try {
             const userInfo = (req as any).user;
-            const result = await this.opportunityService.getAll(userInfo);
+            const filters = req.query;
+            const result = await this.opportunityService.getAll(filters, userInfo);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(500).json({ message: error.message });
