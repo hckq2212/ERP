@@ -35,6 +35,7 @@ export class OpportunityService {
             where.push({ ...baseWhere, name: Like(searchTerm) });
             where.push({ ...baseWhere, leadName: Like(searchTerm) });
             where.push({ ...baseWhere, customer: { name: Like(searchTerm) } });
+            where.push({ ...baseWhere, opportunityCode: { opportunityCode: Like(searchTerm) } });
         } else {
             where.push(baseWhere);
         }

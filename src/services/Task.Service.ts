@@ -22,38 +22,44 @@ export class TaskService {
 
 
     async getAll(filters: any = {}, userInfo?: { id: number, role: string }) {
-        const where: any = {};
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
         const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
 
+        const where: any = [];
+        const baseWhere: any = {};
+
         // 1. Enforce Role-based access
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
-            where.assignee = { id: userInfo.id };
+            baseWhere.assignee = { id: userInfo.id };
         }
 
         // 2. Apply dynamic filters
         if (filters.status && filters.status !== 'ALL') {
-            where.status = filters.status;
+            baseWhere.status = filters.status;
         }
 
         if (filters.assigneeId) {
-            where.assignee = { id: filters.assigneeId };
+            baseWhere.assignee = { id: filters.assigneeId };
         }
 
         if (filters.projectId) {
-            where.project = { id: filters.projectId };
+            baseWhere.project = { id: filters.projectId };
         }
 
         // 3. Fuzzy search for name or code
         if (filters.q || filters.search) {
             const query = filters.q || filters.search;
-            where.name = ILike(`%${query}%`);
+            const searchTerm = `%${query}%`;
+            where.push({ ...baseWhere, name: ILike(searchTerm) });
+            where.push({ ...baseWhere, code: ILike(searchTerm) });
+        } else {
+            where.push(baseWhere);
         }
 
         const [items, total] = await this.taskRepository.findAndCount({
-            where,
+            where: where.length > 1 ? where : where[0],
             relations: ["project", "project.team", "project.team.teamLead", "job", "assignee"],
             order: { [sortBy]: sortDir },
             skip: (page - 1) * limit,
