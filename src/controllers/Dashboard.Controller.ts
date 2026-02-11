@@ -12,7 +12,7 @@ export class DashboardController {
             }
 
             const data = await this.dashboardService.getDashboardData(
-                parseInt(userInfo.id),
+                userInfo.id as string,
                 userInfo.role
             );
 

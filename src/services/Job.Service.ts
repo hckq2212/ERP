@@ -14,7 +14,7 @@ export class JobService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const job = await this.jobRepository.findOne({
             where: { id },
             relations: ["vendorJobs", "vendorJobs.vendor", "services", "criteria"]
@@ -35,7 +35,7 @@ export class JobService {
         return await this.jobRepository.save(job);
     }
 
-    async update(id: number, data: any = {}) {
+    async update(id: string, data: any = {}) {
         const { serviceIds, vendorId, ...jobData } = data;
         const job = await this.getOne(id) as any;
 
@@ -66,7 +66,7 @@ export class JobService {
         return savedJob;
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const job = await this.getOne(id);
         await this.jobRepository.remove(job);
         return { message: "Xóa công việc thành công" };

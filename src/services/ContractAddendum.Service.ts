@@ -14,7 +14,7 @@ export class ContractAddendumService {
     private serviceRepository = AppDataSource.getRepository(Services);
     private debtService = new DebtService();
 
-    async create(data: { contractId: number, name: string, description?: string }) {
+    async create(data: { contractId: string, name: string, description?: string }) {
         const contract = await this.contractRepository.findOneBy({ id: data.contractId });
         if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
@@ -28,7 +28,7 @@ export class ContractAddendumService {
         return await this.addendumRepository.save(addendum);
     }
 
-    async addItems(addendumId: number, data: { services: any[], milestones: any[] }) {
+    async addItems(addendumId: string, data: { services: any[], milestones: any[] }) {
         const addendum = await this.addendumRepository.findOne({
             where: { id: addendumId },
             relations: ["contract"]
@@ -75,7 +75,7 @@ export class ContractAddendumService {
         return await this.addendumRepository.save(addendum);
     }
 
-    async uploadSigned(id: number, fileData: any) {
+    async uploadSigned(id: string, fileData: any) {
         const addendum = await this.addendumRepository.findOne({
             where: { id },
             relations: ["contract", "milestones", "services"]
@@ -99,7 +99,7 @@ export class ContractAddendumService {
         return await this.addendumRepository.save(addendum);
     }
 
-    async scaleDown(addendumId: number, data: { cancelServiceIds: number[], refundAmount: number }) {
+    async scaleDown(addendumId: string, data: { cancelServiceIds: string[], refundAmount: number }) {
         const addendum = await this.addendumRepository.findOne({
             where: { id: addendumId },
             relations: ["contract"]

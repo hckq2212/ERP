@@ -1,12 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
+import { Entity, Column, ManyToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Vendors } from "./Vendor.entity";
 import { Jobs } from "./Job.entity";
 
 @Entity()
 export class VendorJobs extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @ManyToOne(() => Vendors, (vendor) => vendor.vendorJobs)
     vendor: Vendors;

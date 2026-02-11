@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Opportunities } from "./Opportunity.entity";
 import { QuotationDetails } from "./QuotationDetail.entity";
@@ -19,8 +19,6 @@ export enum QuotationType {
 
 @Entity()
 export class Quotations extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column({ type: "text", nullable: true })
     note: string;

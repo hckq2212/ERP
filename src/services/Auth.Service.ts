@@ -67,8 +67,8 @@ export class AuthService {
         const accessTokenExp = rememberMe ? "30d" : "2h";
         const refreshTokenExp = rememberMe ? "30d" : "1d";
 
-        const accessToken = encrypt.generateAccessToken({ id: account.id.toString(), role: account.role }, accessTokenExp);
-        const refreshToken = encrypt.generateRefreshToken({ id: account.id.toString(), role: account.role }, refreshTokenExp);
+        const accessToken = encrypt.generateAccessToken({ id: account.id, role: account.role }, accessTokenExp);
+        const refreshToken = encrypt.generateRefreshToken({ id: account.id, role: account.role }, refreshTokenExp);
 
         return {
             accessToken,
@@ -84,7 +84,7 @@ export class AuthService {
 
     async getMe(accountId: string) {
         const account = await this.accountRepository.findOne({
-            where: { id: parseInt(accountId) },
+            where: { id: accountId },
             relations: ["user"]
         });
 

@@ -15,7 +15,7 @@ export class DebtPaymentController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const result = await this.paymentService.delete(Number(req.params.id));
+            const result = await this.paymentService.delete(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

@@ -15,7 +15,7 @@ export class VendorController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.vendorService.getOne(id);
             res.status(200).json(result);
         } catch (error: any) {
@@ -34,7 +34,7 @@ export class VendorController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.vendorService.update(id, req.body);
             res.status(200).json(result);
         } catch (error: any) {
@@ -44,7 +44,7 @@ export class VendorController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.vendorService.delete(id);
             res.status(200).json(result);
         } catch (error: any) {
@@ -54,8 +54,8 @@ export class VendorController {
 
     addJob = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
-            const jobId = parseInt(req.params.jobId as string);
+            const id = req.params.id as string;
+            const jobId = req.params.jobId as string;
             const result = await this.vendorService.addJob(id, jobId, req.body);
             res.status(200).json(result);
         } catch (error: any) {
@@ -65,8 +65,8 @@ export class VendorController {
 
     removeJob = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
-            const jobId = parseInt(req.params.jobId as string);
+            const id = req.params.id as string;
+            const jobId = req.params.jobId as string;
             const result = await this.vendorService.removeJob(id, jobId);
             res.status(200).json(result);
         } catch (error: any) {
@@ -76,7 +76,7 @@ export class VendorController {
 
     getJobs = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.vendorService.getJobs(id);
             res.status(200).json(result);
         } catch (error: any) {
@@ -86,7 +86,7 @@ export class VendorController {
 
     getByJob = async (req: Request, res: Response) => {
         try {
-            const jobId = parseInt(req.params.jobId as string);
+            const jobId = req.params.jobId as string;
             const result = await this.vendorService.getByJob(jobId);
             res.status(200).json(result);
         } catch (error: any) {

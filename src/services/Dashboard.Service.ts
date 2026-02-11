@@ -16,7 +16,7 @@ export class DashboardService {
     private taskRepo = AppDataSource.getRepository(Tasks);
     private opportunityRepo = AppDataSource.getRepository(Opportunities);
 
-    async getDashboardData(userId: number, role: UserRole) {
+    async getDashboardData(userId: string, role: UserRole) {
         const data: any = {};
 
         // 1. BOD/ADMIN Data

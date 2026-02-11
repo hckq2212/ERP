@@ -13,7 +13,7 @@ export class ReferralPartnerService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const partner = await this.referralPartnerRepository.findOne({
             where: { id },
             relations: ["customers", "opportunities", "contracts"]
@@ -27,13 +27,13 @@ export class ReferralPartnerService {
         return await this.referralPartnerRepository.save(partner);
     }
 
-    async update(id: number, data: any) {
+    async update(id: string, data: any) {
         const partner = await this.getOne(id);
         Object.assign(partner, data);
         return await this.referralPartnerRepository.save(partner);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const partner = await this.getOne(id);
 
         // Check if partner has related data
@@ -46,7 +46,7 @@ export class ReferralPartnerService {
     }
 
     // Get partner statistics
-    async getStatistics(id: number) {
+    async getStatistics(id: string) {
         const partner = await this.getOne(id);
 
         const totalCustomers = partner.customers?.length || 0;

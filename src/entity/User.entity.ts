@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, OneToMany } from "typeorm"
+import { Entity, Column, OneToOne, JoinColumn, OneToMany } from "typeorm"
 import { BaseEntity } from "./BaseEntity"
 import { Accounts } from "./Account.entity"
 import { TeamMembers } from "./TeamMember.entity"
@@ -8,9 +8,6 @@ import { Opportunities } from "./Opportunity.entity"
 
 @Entity()
 export class Users extends BaseEntity {
-
-    @PrimaryGeneratedColumn()
-    id: number
 
     @Column()
     fullName: string

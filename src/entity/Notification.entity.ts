@@ -1,12 +1,9 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, Relation } from "typeorm"
+import { Entity, Column, ManyToOne, Relation } from "typeorm"
 import { BaseEntity } from "./BaseEntity"
 import { Users } from "./User.entity"
 
 @Entity()
 export class Notifications extends BaseEntity {
-
-    @PrimaryGeneratedColumn()
-    id: number
 
     @Column()
     title: string

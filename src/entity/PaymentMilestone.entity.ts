@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToOne } from "typeorm";
+import { Entity, Column, ManyToOne, OneToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Contracts } from "./Contract.entity";
 import { Debts } from "./Debt.entity";
@@ -11,8 +11,6 @@ export enum MilestoneStatus {
 
 @Entity()
 export class PaymentMilestones extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column()
     name: string;

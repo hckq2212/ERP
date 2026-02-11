@@ -15,7 +15,7 @@ export class ReferralPartnerController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const partner = await this.referralPartnerService.getOne(Number(req.params.id));
+            const partner = await this.referralPartnerService.getOne(req.params.id as string);
             res.status(200).json(partner);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -33,7 +33,7 @@ export class ReferralPartnerController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const partner = await this.referralPartnerService.update(Number(req.params.id), req.body);
+            const partner = await this.referralPartnerService.update(req.params.id as string, req.body);
             res.status(200).json(partner);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -42,7 +42,7 @@ export class ReferralPartnerController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const result = await this.referralPartnerService.delete(Number(req.params.id));
+            const result = await this.referralPartnerService.delete(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -51,7 +51,7 @@ export class ReferralPartnerController {
 
     getStatistics = async (req: Request, res: Response) => {
         try {
-            const statistics = await this.referralPartnerService.getStatistics(Number(req.params.id));
+            const statistics = await this.referralPartnerService.getStatistics(req.params.id as string);
             res.status(200).json(statistics);
         } catch (error) {
             res.status(500).json({ message: error.message });

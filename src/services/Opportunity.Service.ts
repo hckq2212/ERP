@@ -13,7 +13,7 @@ export class OpportunityService {
     private referralPartnerRepository = AppDataSource.getRepository(ReferralPartners);
     private userRepository = AppDataSource.getRepository(Users);
 
-    async getAll(filters: any = {}, userInfo?: { id: string | number, role: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
@@ -59,7 +59,7 @@ export class OpportunityService {
         };
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const opportunity = await this.opportunityRepository.findOne({
             where: { id },
             relations: ["customer", "referralPartner", "services", "quotations", "contracts", "createdBy"]
@@ -128,7 +128,7 @@ export class OpportunityService {
 
         // Handle Customer Logic
         if (customerId) {
-            const customer = await this.customerRepository.findOneBy({ id: Number(customerId) });
+            const customer = await this.customerRepository.findOneBy({ id: customerId });
             if (!customer) {
                 throw new Error("Không tìm thấy khách hàng");
             }
@@ -142,7 +142,7 @@ export class OpportunityService {
         }
 
         // Handle Referral Logic
-        const pId = referralPartnerId ? Number(referralPartnerId) : null;
+        const pId = referralPartnerId || null;
         if (customerType === CustomerType.REFERRAL && pId) {
             const partner = await this.referralPartnerRepository.findOneBy({ id: pId });
             if (!partner) {
@@ -154,7 +154,7 @@ export class OpportunityService {
         // Handle CreatedBy Logic
         if (accountId) {
             const user = await this.userRepository.findOne({
-                where: { account: { id: parseInt(accountId) } }
+                where: { account: { id: accountId } }
             });
             if (user) {
                 opportunity.createdBy = user;
@@ -171,7 +171,7 @@ export class OpportunityService {
         return await this.getOne(savedOpportunity.id);
     }
 
-    async update(id: number, data: any = {}) {
+    async update(id: string, data: any = {}) {
         const {
             customerId,
             referralPartnerId,
@@ -199,7 +199,7 @@ export class OpportunityService {
 
         // Handle Customer updates
         if (customerId) {
-            const customer = await this.customerRepository.findOneBy({ id: Number(customerId) });
+            const customer = await this.customerRepository.findOneBy({ id: customerId });
             if (!customer) {
                 throw new Error("Không tìm thấy khách hàng");
             }
@@ -219,7 +219,7 @@ export class OpportunityService {
             opportunity.customerType = customerType;
         }
 
-        const pId = referralPartnerId !== undefined ? (referralPartnerId === null ? null : Number(referralPartnerId)) : undefined;
+        const pId = referralPartnerId !== undefined ? referralPartnerId : undefined;
 
         if (pId) {
             const partner = await this.referralPartnerRepository.findOneBy({ id: pId });
@@ -253,7 +253,7 @@ export class OpportunityService {
         return await this.getOne(savedOpportunity.id);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const opportunity = await this.getOne(id);
         await this.opportunityRepository.remove(opportunity);
         return { message: "Xóa cơ hội kinh doanh thành công" };
@@ -267,7 +267,7 @@ export class OpportunityService {
         await opportunityServiceRepository.delete({ opportunity: { id: opportunity.id } });
 
         for (const item of services) {
-            const serviceId = typeof item === 'number' ? item : item.id;
+            const serviceId = typeof item === 'string' ? item : item.id;
             const quantity = typeof item === 'object' ? (item.quantity || 1) : 1;
             // You might want to pass price overrides too
 

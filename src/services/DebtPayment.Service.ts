@@ -8,7 +8,7 @@ export class DebtPaymentService {
     private debtRepository = AppDataSource.getRepository(Debts);
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
 
-    async create(data: { debtId: number, amount: number, paymentDate: Date, note?: string }) {
+    async create(data: { debtId: string, amount: number, paymentDate: Date, note?: string }) {
         const debt = await this.debtRepository.findOne({
             where: { id: data.debtId },
             relations: ["milestone", "payments"]
@@ -31,7 +31,7 @@ export class DebtPaymentService {
         return savedPayment;
     }
 
-    async updateDebtStatus(debtId: number) {
+    async updateDebtStatus(debtId: string) {
         const debt = await this.debtRepository.findOne({
             where: { id: debtId },
             relations: ["payments", "milestone"]
@@ -63,7 +63,7 @@ export class DebtPaymentService {
         }
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const payment = await this.paymentRepository.findOne({
             where: { id },
             relations: ["debt"]

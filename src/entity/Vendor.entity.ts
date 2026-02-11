@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
+import { Entity, Column, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Jobs } from "./Job.entity";
 import { VendorJobs } from "./VendorJob.entity";
@@ -10,8 +10,6 @@ export enum PartnerType {
 
 @Entity()
 export class Vendors extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column()
     name: string;

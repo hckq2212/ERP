@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Users } from "./User.entity";
 import { TeamMembers } from "./TeamMember.entity";
@@ -6,8 +6,6 @@ import { Projects } from "./Project.entity";
 
 @Entity()
 export class ProjectTeams extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column()
     name: string;

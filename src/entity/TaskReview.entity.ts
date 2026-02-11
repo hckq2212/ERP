@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from "typeorm";
+import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Tasks } from "./Task.entity";
 import { JobCriterias } from "./JobCriteria.entity";
@@ -11,8 +11,6 @@ export enum ReviewerType {
 
 @Entity()
 export class TaskReviews extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column({
         type: "enum",
@@ -27,8 +25,8 @@ export class TaskReviews extends BaseEntity {
     @ManyToOne(() => JobCriterias)
     criteria: JobCriterias;
 
-    @Column({ nullable: true })
-    reviewerId: number;
+    @Column({ type: "varchar", length: 26, nullable: true })
+    reviewerId: string;
 
     @ManyToOne(() => Users, { nullable: true })
     @JoinColumn({ name: "reviewerId" })

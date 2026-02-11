@@ -23,14 +23,14 @@ export class NotificationService {
         return await this.notificationRepository.save(notification);
     }
 
-    async getMyNotifications(userId: number) {
+    async getMyNotifications(userId: string) {
         return await this.notificationRepository.find({
             where: { recipient: { id: userId } },
             order: { createdAt: "DESC" }
         });
     }
 
-    async markAsRead(id: number) {
+    async markAsRead(id: string) {
         const notification = await this.notificationRepository.findOneBy({ id });
         if (notification) {
             notification.isRead = true;

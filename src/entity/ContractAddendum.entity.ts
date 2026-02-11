@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Contracts } from "./Contract.entity";
 import { ContractServices } from "./ContractService.entity";
@@ -12,8 +12,6 @@ export enum AddendumStatus {
 
 @Entity()
 export class ContractAddendums extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column()
     name: string; // e.g., "Phụ lục 01: Bổ sung hạng mục quay phim"

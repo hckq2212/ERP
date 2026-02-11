@@ -21,7 +21,7 @@ export class ProjectService {
 
 
 
-    async getAll(filters: any = {}, userInfo?: { id: string | number, role: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
@@ -66,7 +66,7 @@ export class ProjectService {
         };
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const project = await this.projectRepository.findOne({
             where: { id },
             relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation", "contract.services", "contract.services.service"],
@@ -117,7 +117,7 @@ export class ProjectService {
         return project;
     }
 
-    async getByContractId(contractId: number) {
+    async getByContractId(contractId: string) {
         const project = await this.projectRepository.findOne({
             where: { contract: { id: contractId } },
             relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation"]
@@ -128,7 +128,7 @@ export class ProjectService {
     }
 
 
-    async assign(data: { contractId: number, teamId: number, name?: string }) {
+    async assign(data: { contractId: string, teamId: string, name?: string }) {
         const contract = await this.contractRepository.findOne({
             where: { id: data.contractId },
             relations: ["opportunity"]
@@ -172,7 +172,7 @@ export class ProjectService {
                 content: `Dự án "${savedProject.name}" đã được phân công cho team của bạn.`,
                 type: "PROJECT_ASSIGNED",
                 recipient: team.teamLead,
-                relatedEntityId: savedProject.id.toString(),
+                relatedEntityId: savedProject.id,
                 relatedEntityType: "Project",
                 link: `/projects/${savedProject.id}`
             });
@@ -259,7 +259,7 @@ export class ProjectService {
     }
 
 
-    async confirm(id: number, userId: number) {
+    async confirm(id: string, userId: string) {
         // userId should be the team leader's ID (from token)
         const project = await this.getOne(id);
 
@@ -285,7 +285,7 @@ export class ProjectService {
                 content: `${userConfirming.fullName} đã nhận thông tin dự án ${savedProject.name}`,
                 type: "PROJECT_CONFIRMED",
                 recipient: bod,
-                relatedEntityId: savedProject.id.toString(),
+                relatedEntityId: savedProject.id,
                 relatedEntityType: "Project",
                 link: `/projects/${savedProject.id}`
             });
@@ -295,7 +295,7 @@ export class ProjectService {
     }
 
 
-    async start(id: number) {
+    async start(id: string) {
         const project = await this.getOne(id);
 
         // Check contract signed

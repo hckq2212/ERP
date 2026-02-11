@@ -12,14 +12,14 @@ export class TaskReviewService {
     private criteriaRepository = AppDataSource.getRepository(JobCriterias);
     private notificationService = new NotificationService();
 
-    async getTaskReviews(taskId: number) {
+    async getTaskReviews(taskId: string) {
         return await this.reviewRepository.find({
             where: { task: { id: taskId } },
             relations: ["criteria"]
         });
     }
 
-    async initializeReviews(taskId: number) {
+    async initializeReviews(taskId: string) {
         const task = await this.taskRepository.findOne({
             where: { id: taskId },
             relations: ["job", "job.criteria", "project", "project.team", "project.team.teamLead", "assigner"]
@@ -65,7 +65,7 @@ export class TaskReviewService {
         return await this.reviewRepository.save(reviews);
     }
 
-    async toggleCriteria(reviewId: number, isPassed: boolean, note?: string) {
+    async toggleCriteria(reviewId: string, isPassed: boolean, note?: string) {
         const review = await this.reviewRepository.findOne({
             where: { id: reviewId },
             relations: ["task"]
@@ -80,7 +80,7 @@ export class TaskReviewService {
         return review;
     }
 
-    async checkAndFinalize(taskId: number) {
+    async checkAndFinalize(taskId: string) {
         const reviews = await this.reviewRepository.find({
             where: { task: { id: taskId } }
         });
@@ -136,7 +136,7 @@ export class TaskReviewService {
         }
     }
 
-    async rejectTask(taskId: number, note: string) {
+    async rejectTask(taskId: string, note: string) {
         const task = await this.taskRepository.findOne({
             where: { id: taskId },
             relations: ["assignee"]

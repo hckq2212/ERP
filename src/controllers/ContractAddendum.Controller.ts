@@ -17,7 +17,7 @@ export class ContractAddendumController {
 
     addItems = async (req: Request, res: Response) => {
         try {
-            const result = await this.service.addItems(Number(req.params.id), req.body);
+            const result = await this.service.addItems(req.params.id as string, req.body);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -32,7 +32,7 @@ export class ContractAddendumController {
             }
 
             const fileData = await uploadToCloudinary(file, "GETVINI/ERP/addendum");
-            const result = await this.service.uploadSigned(Number(req.params.id), fileData);
+            const result = await this.service.uploadSigned(req.params.id as string, fileData);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -41,7 +41,7 @@ export class ContractAddendumController {
 
     scaleDown = async (req: Request, res: Response) => {
         try {
-            const result = await this.service.scaleDown(Number(req.params.id), req.body);
+            const result = await this.service.scaleDown(req.params.id as string, req.body);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

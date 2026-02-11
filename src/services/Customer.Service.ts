@@ -10,7 +10,7 @@ export class CustomerService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const customer = await this.customerRepository.findOne({
             where: { id },
             relations: ["referralPartner", "contracts", "opportunities"]
@@ -24,13 +24,13 @@ export class CustomerService {
         return await this.customerRepository.save(customer);
     }
 
-    async update(id: number, data: any) {
+    async update(id: string, data: any) {
         const customer = await this.getOne(id);
         Object.assign(customer, data);
         return await this.customerRepository.save(customer);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const customer = await this.getOne(id);
         await this.customerRepository.remove(customer);
         return { message: "Xóa khách hàng thành công" };

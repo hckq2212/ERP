@@ -6,7 +6,7 @@ export class OpportunityServiceController {
 
     getAllByOpportunity = async (req: Request, res: Response) => {
         try {
-            const opportunityId = parseInt(req.params.opportunityId as string);
+            const opportunityId = req.params.opportunityId as string;
             const result = await this.service.getAllByOpportunity(opportunityId);
             res.status(200).json(result);
         } catch (error: any) {
@@ -16,7 +16,7 @@ export class OpportunityServiceController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.service.getOne(id);
             res.status(200).json(result);
         } catch (error: any) {
@@ -35,7 +35,7 @@ export class OpportunityServiceController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.service.update(id, req.body);
             res.status(200).json(result);
         } catch (error: any) {
@@ -45,7 +45,7 @@ export class OpportunityServiceController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.service.delete(id);
             res.status(200).json(result);
         } catch (error: any) {

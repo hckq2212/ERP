@@ -14,7 +14,7 @@ export class ProjectTeamService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const team = await this.teamRepository.findOne({
             where: { id },
             relations: ["teamLead", "members", "members.user"]
@@ -23,7 +23,7 @@ export class ProjectTeamService {
         return team;
     }
 
-    async getMembers(teamId: number) {
+    async getMembers(teamId: string) {
         const team = await this.teamRepository.findOne({
             where: { id: teamId },
             relations: ["members", "members.user"]
@@ -33,7 +33,7 @@ export class ProjectTeamService {
     }
 
 
-    async create(data: { name: string, teamLeadId: number }) {
+    async create(data: { name: string, teamLeadId: string }) {
         const teamLead = await this.userRepository.findOneBy({ id: data.teamLeadId });
         if (!teamLead) throw new Error("Không tìm thấy team lead");
 
@@ -45,7 +45,7 @@ export class ProjectTeamService {
         return await this.teamRepository.save(team);
     }
 
-    async update(id: number, data: { name?: string, teamLeadId?: number }) {
+    async update(id: string, data: { name?: string, teamLeadId?: string }) {
         const team = await this.getOne(id);
 
         if (data.name) team.name = data.name;
@@ -56,7 +56,7 @@ export class ProjectTeamService {
         return await this.teamRepository.save(team);
     }
 
-    async changeLead(teamId: number, newLeadId: number) {
+    async changeLead(teamId: string, newLeadId: string) {
         const team = await this.teamRepository.findOne({
             where: { id: teamId },
             relations: ["teamLead"]
@@ -70,7 +70,7 @@ export class ProjectTeamService {
         return await this.teamRepository.save(team);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const team = await this.getOne(id);
         // Important: Should we delete members first? TypeORM might handle it if cascade is set, 
         // but let's be safe.
@@ -78,7 +78,7 @@ export class ProjectTeamService {
         return await this.teamRepository.remove(team);
     }
 
-    async addMember(teamId: number, userId: number, role?: MemberRole) {
+    async addMember(teamId: string, userId: string, role?: MemberRole) {
         const team = await this.getOne(teamId);
         const user = await this.userRepository.findOneBy({ id: userId });
         if (!user) throw new Error("Không tìm thấy người dùng");
@@ -98,7 +98,7 @@ export class ProjectTeamService {
         return await this.memberRepository.save(member);
     }
 
-    async updateMember(memberId: number, data: { role?: MemberRole }) {
+    async updateMember(memberId: string, data: { role?: MemberRole }) {
         const member = await this.memberRepository.findOneBy({ id: memberId });
         if (!member) throw new Error("Không tìm thấy thành viên");
 
@@ -107,7 +107,7 @@ export class ProjectTeamService {
         return await this.memberRepository.save(member);
     }
 
-    async removeMember(memberId: number) {
+    async removeMember(memberId: string) {
         const member = await this.memberRepository.findOne({
             where: { id: memberId },
             relations: ["team", "team.teamLead", "user"]

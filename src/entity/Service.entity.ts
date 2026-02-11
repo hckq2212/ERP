@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, JoinTable, OneToMany, ManyToOne, JoinColumn } from "typeorm";
+import { Entity, Column, ManyToMany, JoinTable, OneToMany, ManyToOne, JoinColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Jobs } from "./Job.entity";
 import { OpportunityServices } from "./OpportunityService.entity";
@@ -6,8 +6,6 @@ import { ContractServices } from "./ContractService.entity";
 
 @Entity()
 export class Services extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column()
     name: string;
@@ -25,8 +23,8 @@ export class Services extends BaseEntity {
     @JoinTable({ name: "service_jobs" })
     jobs: Jobs[];
 
-    @Column({ nullable: true })
-    outputJobId: number;
+    @Column({ type: "varchar", length: 26, nullable: true })
+    outputJobId: string;
 
     @ManyToOne(() => Jobs)
     @JoinColumn({ name: "outputJobId" })

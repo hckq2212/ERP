@@ -21,7 +21,7 @@ export class TaskService {
     private reviewService = new TaskReviewService();
 
 
-    async getAll(filters: any = {}, userInfo?: { id: number, role: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
@@ -78,7 +78,7 @@ export class TaskService {
     }
 
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const task = await this.taskRepository.findOne({
             where: { id },
             relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation"]
@@ -89,16 +89,16 @@ export class TaskService {
     }
 
     async create(data: {
-        projectId?: number,
-        jobId: number,
-        assigneeId?: number,
+        projectId?: string,
+        jobId: string,
+        assigneeId?: string,
         performerType?: "INTERNAL" | "VENDOR",
-        vendorId?: number,
+        vendorId?: string,
         description?: string,
         plannedStartDate?: Date,
         plannedEndDate?: Date,
         isExtra?: boolean
-    }, currentUser?: { id: number }) {
+    }, currentUser?: { id: string }) {
         let project = null;
         let taskCode = null;
 
@@ -161,7 +161,7 @@ export class TaskService {
     }
 
 
-    async submitResult(id: number, data: { result: any }) {
+    async submitResult(id: string, data: { result: any }) {
         const task = await this.getOne(id);
 
         task.result = data.result;
@@ -194,7 +194,7 @@ export class TaskService {
         return savedTask;
     }
 
-    async update(id: number, data: Partial<Tasks> & { assigneeId?: number }) {
+    async update(id: string, data: Partial<Tasks> & { assigneeId?: string }) {
         const task = await this.getOne(id);
 
         if (data.assigneeId && (!task.assignee || task.assignee.id !== data.assigneeId)) {
@@ -253,14 +253,14 @@ export class TaskService {
         return await this.taskRepository.save(task);
     }
 
-    async assign(id: number, data: {
-        assigneeId: number;
+    async assign(id: string, data: {
+        assigneeId: string;
         performerType?: "INTERNAL" | "VENDOR";
         plannedEndDate: Date;
         plannedStartDate: Date;
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
-    }, currentUser?: { id: number }) {
+    }, currentUser?: { id: string }) {
         const task = await this.getOne(id);
 
         if (data.performerType === "VENDOR") {
@@ -306,13 +306,13 @@ export class TaskService {
     }
 
 
-    async delete(id: number) {
+    async delete(id: string) {
         const task = await this.getOne(id);
         await this.taskRepository.remove(task);
         return { message: "Xóa công việc thành công" };
     }
 
-    async assessExtraTask(id: number, data: { isBillable: boolean, isRejected?: boolean, sellingPrice?: number, serviceId?: number }) {
+    async assessExtraTask(id: string, data: { isBillable: boolean, isRejected?: boolean, sellingPrice?: number, serviceId?: string }) {
         const task = await this.taskRepository.findOne({
             where: { id },
             relations: ["project", "project.contract", "job"]

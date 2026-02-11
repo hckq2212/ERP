@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Projects } from "./Project.entity";
 import { Jobs } from "./Job.entity";
@@ -28,8 +28,6 @@ export enum PricingStatus {
 
 @Entity()
 export class Tasks extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column({ nullable: true })
     code: string;
@@ -46,15 +44,15 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => ContractServices, (contractService) => contractService.tasks, { nullable: true })
     contractService: ContractServices;
 
-    @Column({ nullable: true })
-    assigneeId: number;
+    @Column({ type: "varchar", length: 26, nullable: true })
+    assigneeId: string;
 
     @ManyToOne(() => Users, (user) => user.tasks, { nullable: true })
     @JoinColumn({ name: "assigneeId" })
     assignee: Users;
 
-    @Column({ nullable: true })
-    assignerId: number;
+    @Column({ type: "varchar", length: 26, nullable: true })
+    assignerId: string;
 
     @ManyToOne(() => Users, { nullable: true })
     @JoinColumn({ name: "assignerId" })

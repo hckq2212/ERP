@@ -6,7 +6,7 @@ export class JobCriteriaController {
 
     getByJob = async (req: Request, res: Response) => {
         try {
-            const result = await this.criteriaService.getByJob(Number(req.params.jobId));
+            const result = await this.criteriaService.getByJob(req.params.jobId as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -24,7 +24,7 @@ export class JobCriteriaController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const result = await this.criteriaService.delete(Number(req.params.id));
+            const result = await this.criteriaService.delete(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

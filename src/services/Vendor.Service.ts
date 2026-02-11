@@ -13,7 +13,7 @@ export class VendorService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const vendor = await this.vendorRepository.findOne({
             where: { id },
             relations: ["vendorJobs", "vendorJobs.job"]
@@ -27,20 +27,20 @@ export class VendorService {
         return await this.vendorRepository.save(vendor);
     }
 
-    async update(id: number, data: any) {
+    async update(id: string, data: any) {
         const vendor = await this.getOne(id);
         Object.assign(vendor, data);
         return await this.vendorRepository.save(vendor);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const vendor = await this.getOne(id);
         await this.vendorRepository.remove(vendor);
         return { message: "Xóa nhà cung cấp thành công" };
     }
 
     // VendorJob Management
-    async addJob(vendorId: number, jobId: number, priceData: { price: number, note?: string }) {
+    async addJob(vendorId: string, jobId: string, priceData: { price: number, note?: string }) {
         const vendor = await this.getOne(vendorId);
         const jobRepository = AppDataSource.getRepository(Jobs);
         const job = await jobRepository.findOneBy({ id: jobId });
@@ -64,7 +64,7 @@ export class VendorService {
         return await this.vendorJobRepository.save(vendorJob);
     }
 
-    async removeJob(vendorId: number, jobId: number) {
+    async removeJob(vendorId: string, jobId: string) {
         const vendorJob = await this.vendorJobRepository.findOne({
             where: { vendor: { id: vendorId }, job: { id: jobId } }
         });
@@ -74,14 +74,14 @@ export class VendorService {
         return { message: "Đã xóa công việc khỏi nhà cung cấp" };
     }
 
-    async getJobs(vendorId: number) {
+    async getJobs(vendorId: string) {
         return await this.vendorJobRepository.find({
             where: { vendor: { id: vendorId } },
             relations: ["job"]
         });
     }
 
-    async getByJob(jobId: number) {
+    async getByJob(jobId: string) {
         const vendorJobs = await this.vendorJobRepository.find({
             where: { job: { id: jobId } },
             relations: ["vendor"]

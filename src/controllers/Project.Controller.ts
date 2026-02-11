@@ -19,7 +19,7 @@ export class ProjectController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const project = await this.projectService.getOne(Number(req.params.id));
+            const project = await this.projectService.getOne(req.params.id as string);
             res.status(200).json(project);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -28,7 +28,7 @@ export class ProjectController {
 
     getByContract = async (req: Request, res: Response) => {
         try {
-            const project = await this.projectService.getByContractId(Number(req.params.contractId));
+            const project = await this.projectService.getByContractId(req.params.contractId as string);
             res.status(200).json(project);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -48,10 +48,10 @@ export class ProjectController {
 
     confirm = async (req: AuthRequest, res: Response) => {
         try {
-            const userId = Number(req.user?.id);
+            const userId = req.user?.id;
             if (!userId) throw new Error("Bạn cần đăng nhập để thực hiện hành động này");
 
-            const project = await this.projectService.confirm(Number(req.params.id), userId);
+            const project = await this.projectService.confirm(req.params.id as string, userId);
             res.status(200).json(project);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -61,7 +61,7 @@ export class ProjectController {
 
     start = async (req: Request, res: Response) => {
         try {
-            const project = await this.projectService.start(Number(req.params.id));
+            const project = await this.projectService.start(req.params.id as string);
             res.status(200).json(project);
         } catch (error) {
             res.status(500).json({ message: error.message });

@@ -8,14 +8,14 @@ export class OpportunityServiceService {
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
     private serviceRepository = AppDataSource.getRepository(Services);
 
-    async getAllByOpportunity(opportunityId: number) {
+    async getAllByOpportunity(opportunityId: string) {
         return await this.oppServiceRepository.find({
             where: { opportunity: { id: opportunityId } },
             relations: ["service"]
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const item = await this.oppServiceRepository.findOne({
             where: { id },
             relations: ["opportunity", "service"]
@@ -24,7 +24,7 @@ export class OpportunityServiceService {
         return item;
     }
 
-    async create(data: { opportunityId: number, serviceId: number, quantity: number, sellingPrice?: number, costAtSale?: number }) {
+    async create(data: { opportunityId: string, serviceId: string, quantity: number, sellingPrice?: number, costAtSale?: number }) {
         const opportunity = await this.opportunityRepository.findOneBy({ id: data.opportunityId });
         if (!opportunity) throw new Error("Không tìm thấy cơ hội kinh doanh");
 
@@ -44,7 +44,7 @@ export class OpportunityServiceService {
         return await this.getOne(saved.id);
     }
 
-    async update(id: number, data: { quantity?: number, sellingPrice?: number, costAtSale?: number }) {
+    async update(id: string, data: { quantity?: number, sellingPrice?: number, costAtSale?: number }) {
         const item = await this.getOne(id);
 
         if (data.quantity !== undefined) item.quantity = data.quantity;
@@ -56,7 +56,7 @@ export class OpportunityServiceService {
         return await this.getOne(id);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const item = await this.getOne(id);
         const opportunityId = item.opportunity.id;
         await this.oppServiceRepository.remove(item);
@@ -64,7 +64,7 @@ export class OpportunityServiceService {
         return { message: "Xóa hạng mục dịch vụ thành công" };
     }
 
-    private async recalculateRevenue(opportunityId: number) {
+    private async recalculateRevenue(opportunityId: string) {
         const services = await this.oppServiceRepository.find({
             where: { opportunity: { id: opportunityId } }
         });

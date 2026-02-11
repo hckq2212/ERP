@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Customers } from "./Customer.entity";
 import { Opportunities } from "./Opportunity.entity";
@@ -26,8 +26,6 @@ export enum PartnerCommissionStatus {
 
 @Entity()
 export class Contracts extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column({
         type: "enum",

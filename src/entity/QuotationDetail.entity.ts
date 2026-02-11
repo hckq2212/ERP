@@ -1,12 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
+import { Entity, Column, ManyToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Quotations } from "./Quotation.entity";
 import { Services } from "./Service.entity";
 
 @Entity()
 export class QuotationDetails extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @ManyToOne(() => Quotations, (quotation) => quotation.details, { onDelete: 'CASCADE' })
     quotation: Quotations;

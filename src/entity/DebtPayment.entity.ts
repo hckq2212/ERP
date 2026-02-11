@@ -1,11 +1,9 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
+import { Entity, Column, ManyToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Debts } from "./Debt.entity";
 
 @Entity()
 export class DebtPayments extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @ManyToOne(() => Debts, (debt) => debt.payments)
     debt: Debts;

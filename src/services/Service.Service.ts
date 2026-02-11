@@ -12,7 +12,7 @@ export class ServiceService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const service = await this.serviceRepository.findOne({
             where: { id },
             relations: ["jobs", "outputJob"]
@@ -21,7 +21,7 @@ export class ServiceService {
         return service;
     }
 
-    async recalculateCost(serviceId: number) {
+    async recalculateCost(serviceId: string) {
         const service = await this.serviceRepository.findOne({
             where: { id: serviceId },
             relations: ["jobs", "outputJob"]
@@ -53,7 +53,7 @@ export class ServiceService {
         return await this.recalculateCost(savedService.id);
     }
 
-    async update(id: number, data: any = {}) {
+    async update(id: string, data: any = {}) {
         const { jobIds, outputJobId, ...serviceData } = data;
         const service = await this.getOne(id) as any;
 
@@ -74,13 +74,13 @@ export class ServiceService {
         return await this.recalculateCost(id);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const service = await this.getOne(id);
         await this.serviceRepository.remove(service);
         return { message: "Xóa dịch vụ thành công" };
     }
 
-    async addJob(serviceId: number, jobId: number) {
+    async addJob(serviceId: string, jobId: string) {
         const service = await this.getOne(serviceId);
         const jobRepository = AppDataSource.getRepository(Jobs);
         const job = await jobRepository.findOneBy({ id: jobId });
@@ -97,7 +97,7 @@ export class ServiceService {
         return await this.getOne(serviceId);
     }
 
-    async removeJob(serviceId: number, jobId: number) {
+    async removeJob(serviceId: string, jobId: string) {
         const service = await this.getOne(serviceId);
         if (service.jobs) {
             service.jobs = service.jobs.filter(j => j.id !== jobId);

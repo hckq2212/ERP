@@ -18,7 +18,7 @@ export class ContractController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const contract = await this.contractService.getOne(Number(req.params.id));
+            const contract = await this.contractService.getOne(req.params.id as string);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -36,7 +36,7 @@ export class ContractController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const result = await this.contractService.delete(Number(req.params.id));
+            const result = await this.contractService.delete(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -52,7 +52,7 @@ export class ContractController {
             }
 
             const fileData = await uploadToCloudinary(file, "GETVINI/ERP/proposal");
-            const contract = await this.contractService.uploadProposal(Number(req.params.id), fileData);
+            const contract = await this.contractService.uploadProposal(req.params.id as string, fileData);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -61,7 +61,7 @@ export class ContractController {
 
     approveProposal = async (req: Request, res: Response) => {
         try {
-            const contract = await this.contractService.approveProposal(Number(req.params.id));
+            const contract = await this.contractService.approveProposal(req.params.id as string);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -76,7 +76,7 @@ export class ContractController {
             }
 
             const fileData = await uploadToCloudinary(file, "GETVINI/ERP/signed");
-            const contract = await this.contractService.uploadSigned(Number(req.params.id), fileData);
+            const contract = await this.contractService.uploadSigned(req.params.id as string, fileData);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -85,7 +85,7 @@ export class ContractController {
 
     addMilestone = async (req: Request, res: Response) => {
         try {
-            const milestone = await this.contractService.addMilestone(Number(req.params.id), req.body);
+            const milestone = await this.contractService.addMilestone(req.params.id as string, req.body);
             res.status(201).json(milestone);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -94,7 +94,7 @@ export class ContractController {
 
     updateMilestone = async (req: Request, res: Response) => {
         try {
-            const milestone = await this.contractService.updateMilestone(Number(req.params.id), req.body);
+            const milestone = await this.contractService.updateMilestone(req.params.id as string, req.body);
             res.status(200).json(milestone);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -103,7 +103,7 @@ export class ContractController {
 
     deleteMilestone = async (req: Request, res: Response) => {
         try {
-            const result = await this.contractService.deleteMilestone(Number(req.params.id));
+            const result = await this.contractService.deleteMilestone(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

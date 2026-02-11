@@ -15,7 +15,7 @@ export class ServiceController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.serviceService.getOne(id);
             res.status(200).json(result);
         } catch (error: any) {
@@ -34,7 +34,7 @@ export class ServiceController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.serviceService.update(id, req.body);
             res.status(200).json(result);
         } catch (error: any) {
@@ -44,7 +44,7 @@ export class ServiceController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.serviceService.delete(id);
             res.status(200).json(result);
         } catch (error: any) {
@@ -54,8 +54,8 @@ export class ServiceController {
 
     addJob = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
-            const jobId = parseInt(req.params.jobId as string);
+            const id = req.params.id as string;
+            const jobId = req.params.jobId as string;
             const result = await this.serviceService.addJob(id, jobId);
             res.status(200).json(result);
         } catch (error: any) {
@@ -65,8 +65,8 @@ export class ServiceController {
 
     removeJob = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
-            const jobId = parseInt(req.params.jobId as string);
+            const id = req.params.id as string;
+            const jobId = req.params.jobId as string;
             const result = await this.serviceService.removeJob(id, jobId);
             res.status(200).json(result);
         } catch (error: any) {

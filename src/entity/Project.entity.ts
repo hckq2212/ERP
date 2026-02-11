@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, OneToOne, JoinColumn, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Contracts } from "./Contract.entity";
 import { ProjectTeams } from "./ProjectTeam.entity";
@@ -14,8 +14,6 @@ export enum ProjectStatus {
 
 @Entity()
 export class Projects extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column()
     name: string;

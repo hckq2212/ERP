@@ -13,14 +13,14 @@ export class PaymentMilestoneService {
         });
     }
 
-    async getByContract(contractId: number) {
+    async getByContract(contractId: string) {
         return await this.milestoneRepository.find({
             where: { contract: { id: contractId } },
             order: { id: "ASC" }
         });
     }
 
-    async create(data: { contractId: number, milestones: any[] }) {
+    async create(data: { contractId: string, milestones: any[] }) {
         const { contractId, milestones } = data;
 
         const contract = await this.contractRepository.findOne({
@@ -62,7 +62,7 @@ export class PaymentMilestoneService {
         return savedMilestones;
     }
 
-    async update(id: number, data: any) {
+    async update(id: string, data: any) {
         const milestone = await this.milestoneRepository.findOne({
             where: { id },
             relations: ["contract"]
@@ -97,7 +97,7 @@ export class PaymentMilestoneService {
         return await this.milestoneRepository.save(milestone);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const milestone = await this.milestoneRepository.findOne({
             where: { id },
             relations: ["debt"]
@@ -113,7 +113,7 @@ export class PaymentMilestoneService {
         return { message: "Xóa giai đoạn thanh toán thành công" };
     }
 
-    async bulkSave(contractId: number, milestones: any[]) {
+    async bulkSave(contractId: string, milestones: any[]) {
         const contract = await this.contractRepository.findOne({
             where: { id: contractId },
             relations: ["milestones", "milestones.debt"]

@@ -27,13 +27,13 @@ passport.use(
         try {
             const accountRepository = AppDataSource.getRepository(Accounts);
             const account = await accountRepository.findOne({
-                where: { id: parseInt(jwt_payload.id) },
+                where: { id: jwt_payload.id as string },
                 relations: ["user"]
             });
 
             if (account) {
                 return done(null, {
-                    id: account.id.toString(),
+                    id: account.id,
                     role: account.role,
                     username: account.username
                 });

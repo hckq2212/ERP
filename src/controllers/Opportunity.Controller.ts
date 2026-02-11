@@ -19,7 +19,7 @@ export class OpportunityController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.opportunityService.getOne(id);
             res.status(200).json(result);
         } catch (error: any) {
@@ -76,7 +76,7 @@ export class OpportunityController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const files = req.files as Express.Multer.File[];
 
             // Fetch existing opportunity to preserve attachments if not provided
@@ -153,7 +153,7 @@ export class OpportunityController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const id = parseInt(req.params.id as string);
+            const id = req.params.id as string;
             const result = await this.opportunityService.delete(id);
             res.status(200).json(result);
         } catch (error: any) {

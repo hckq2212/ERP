@@ -7,7 +7,7 @@ export class NotificationController {
 
     getMyNotifications = async (req: AuthRequest, res: Response) => {
         try {
-            const userId = Number(req.user?.id);
+            const userId = req.user?.id as string;
             if (!userId) {
                 return res.status(400).json({ message: "Không tìm thấy thông tin người dùng." });
             }
@@ -20,7 +20,7 @@ export class NotificationController {
 
     markAsRead = async (req: AuthRequest, res: Response) => {
         try {
-            const notificationId = Number(req.params.id);
+            const notificationId = req.params.id as string;
             const notification = await this.notificationService.markAsRead(notificationId);
             res.status(200).json(notification);
         } catch (error) {

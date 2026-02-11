@@ -6,7 +6,7 @@ export class TaskReviewController {
 
     getTaskReviews = async (req: Request, res: Response) => {
         try {
-            const result = await this.reviewService.getTaskReviews(Number(req.params.taskId));
+            const result = await this.reviewService.getTaskReviews(req.params.taskId as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -16,7 +16,7 @@ export class TaskReviewController {
     toggleCriteria = async (req: Request, res: Response) => {
         try {
             const { isPassed, note } = req.body;
-            const result = await this.reviewService.toggleCriteria(Number(req.params.id), isPassed, note);
+            const result = await this.reviewService.toggleCriteria(req.params.id as string, isPassed, note);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -25,7 +25,7 @@ export class TaskReviewController {
 
     finalize = async (req: Request, res: Response) => {
         try {
-            const taskId = Number(req.params.taskId);
+            const taskId = req.params.taskId as string;
             await this.reviewService.checkAndFinalize(taskId);
             res.status(200).json({ message: "Đã xử lý duyệt công việc" });
         } catch (error) {
@@ -35,7 +35,7 @@ export class TaskReviewController {
 
     reject = async (req: Request, res: Response) => {
         try {
-            const taskId = Number(req.params.taskId);
+            const taskId = req.params.taskId as string;
             const { note } = req.body;
             const result = await this.reviewService.rejectTask(taskId, note);
             res.status(200).json(result);

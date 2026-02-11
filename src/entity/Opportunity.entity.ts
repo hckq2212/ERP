@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Customers } from "./Customer.entity";
 import { Quotations } from "./Quotation.entity";
@@ -35,8 +35,6 @@ export enum OpportunityStatus {
 
 @Entity()
 export class Opportunities extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column({ unique: true })
     opportunityCode: string;

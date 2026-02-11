@@ -30,7 +30,7 @@ export class UserService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const user = await this.userRepository.findOne({
             where: { id },
             relations: ["tasks", "account"],
@@ -88,7 +88,7 @@ export class UserService {
         return { message: "Tạo người dùng thành công" };
     }
 
-    async update(id: number, data: any) {
+    async update(id: string, data: any) {
         const user = await this.getOne(id);
         const { fullName, phoneNumber, email, role, isActive, username } = data;
 
@@ -107,7 +107,7 @@ export class UserService {
         return await this.userRepository.save(user);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const user = await this.getOne(id);
 
         await AppDataSource.transaction(async (transactionalEntityManager) => {

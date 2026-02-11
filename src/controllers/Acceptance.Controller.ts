@@ -23,7 +23,7 @@ export class AcceptanceController {
         try {
             const approverId = (req as any).user?.id || req.body?.approverId;
             const feedback = req.body?.feedback;
-            const result = await this.acceptanceService.approveRequest(Number(req.params.id), approverId, feedback);
+            const result = await this.acceptanceService.approveRequest(req.params.id as string, approverId, feedback);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -34,7 +34,7 @@ export class AcceptanceController {
         try {
             const approverId = (req as any).user?.id || req.body?.approverId;
             const feedback = req.body?.feedback;
-            const result = await this.acceptanceService.rejectRequest(Number(req.params.id), approverId, feedback);
+            const result = await this.acceptanceService.rejectRequest(req.params.id as string, approverId, feedback);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -43,7 +43,7 @@ export class AcceptanceController {
 
     getRequest = async (req: Request, res: Response) => {
         try {
-            const result = await this.acceptanceService.getRequest(Number(req.params.id));
+            const result = await this.acceptanceService.getRequest(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -62,7 +62,7 @@ export class AcceptanceController {
     processRequest = async (req: Request, res: Response) => {
         try {
             const approverId = (req as any).user?.id || req.body?.approverId;
-            const result = await this.acceptanceService.processRequest(Number(req.params.id), approverId, req.body.decisions);
+            const result = await this.acceptanceService.processRequest(req.params.id as string, approverId, req.body.decisions);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

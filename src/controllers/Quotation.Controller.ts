@@ -15,7 +15,7 @@ export class QuotationController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.getOne(Number(req.params.id));
+            const result = await this.quotationService.getOne(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -24,7 +24,7 @@ export class QuotationController {
 
     getByOpportunity = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.getByOpportunity(Number(req.params.opportunityId));
+            const result = await this.quotationService.getByOpportunity(req.params.opportunityId as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -42,7 +42,7 @@ export class QuotationController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.update(Number(req.params.id), req.body);
+            const result = await this.quotationService.update(req.params.id as string, req.body);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -51,7 +51,7 @@ export class QuotationController {
 
     approve = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.approve(Number(req.params.id));
+            const result = await this.quotationService.approve(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -60,7 +60,7 @@ export class QuotationController {
 
     reject = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.reject(Number(req.params.id));
+            const result = await this.quotationService.reject(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -69,7 +69,7 @@ export class QuotationController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.delete(Number(req.params.id));
+            const result = await this.quotationService.delete(req.params.id as string);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

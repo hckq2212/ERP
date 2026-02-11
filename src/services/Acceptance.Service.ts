@@ -15,7 +15,7 @@ export class AcceptanceService {
     private projectRepo = AppDataSource.getRepository(Projects);
     private notificationService = new NotificationService();
 
-    async createRequest(data: { serviceIds: number[], userId: number, name: string, projectId: number, note?: string }) {
+    async createRequest(data: { serviceIds: string[], userId: string, name: string, projectId: string, note?: string }) {
         const { serviceIds, userId, name, projectId, note } = data;
 
         const requester = await this.userRepo.findOneBy({ id: userId });
@@ -52,7 +52,8 @@ export class AcceptanceService {
             project,
             note,
             status: AcceptanceStatus.PENDING,
-            services
+            services,
+            projectId // Added this since AcceptanceRequests entity has explicit projectId: string
         });
 
         const savedRequest = await this.acceptanceRepo.save(request);
@@ -77,7 +78,7 @@ export class AcceptanceService {
                 content: `Team Lead ${requester.fullName} yêu cầu nghiệm thu đợt: ${name}`,
                 type: "ACCEPTANCE_REQUESTED",
                 recipient: bod,
-                relatedEntityId: savedRequest.id.toString(),
+                relatedEntityId: savedRequest.id,
                 relatedEntityType: "AcceptanceRequest",
                 link: `/acceptance/${savedRequest.id}`
             });
@@ -86,7 +87,7 @@ export class AcceptanceService {
         return savedRequest;
     }
 
-    async approveRequest(requestId: number, approverId: number, feedback?: string) {
+    async approveRequest(requestId: string, approverId: string, feedback?: string) {
         const request = await this.acceptanceRepo.findOne({
             where: { id: requestId },
             relations: ["services", "requester"]
@@ -116,7 +117,7 @@ export class AcceptanceService {
             content: `Đợt nghiệm thu "${request.name}" đã được phê duyệt.`,
             type: "ACCEPTANCE_APPROVED",
             recipient: request.requester,
-            relatedEntityId: request.id.toString(),
+            relatedEntityId: request.id,
             relatedEntityType: "AcceptanceRequest",
             link: `/acceptance/${request.id}`
         });
@@ -124,7 +125,7 @@ export class AcceptanceService {
         return request;
     }
 
-    async rejectRequest(requestId: number, approverId: number, feedback: string) {
+    async rejectRequest(requestId: string, approverId: string, feedback: string) {
         if (!feedback) throw new Error("Vui lòng nhập lý do từ chối");
 
         const request = await this.acceptanceRepo.findOne({
@@ -167,7 +168,7 @@ export class AcceptanceService {
             content: `Đợt nghiệm thu "${request.name}" bị từ chối. Lý do: ${feedback}`,
             type: "ACCEPTANCE_REJECTED",
             recipient: request.requester,
-            relatedEntityId: request.id.toString(),
+            relatedEntityId: request.id,
             relatedEntityType: "AcceptanceRequest",
             link: `/acceptance/${request.id}`
         });
@@ -175,7 +176,7 @@ export class AcceptanceService {
         return request;
     }
 
-    async processRequest(requestId: number, approverId: number, decisions: { serviceId: number, status: 'APPROVED' | 'REJECTED', feedback?: string }[]) {
+    async processRequest(requestId: string, approverId: string, decisions: { serviceId: string, status: 'APPROVED' | 'REJECTED', feedback?: string }[]) {
         const request = await this.acceptanceRepo.findOne({
             where: { id: requestId },
             relations: ["services", "services.tasks", "requester"]
@@ -226,7 +227,7 @@ export class AcceptanceService {
             content: `Đợt nghiệm thu "${request.name}" đã được xử lý.`,
             type: anyRejected ? "ACCEPTANCE_REJECTED" : "ACCEPTANCE_APPROVED",
             recipient: request.requester,
-            relatedEntityId: request.id.toString(),
+            relatedEntityId: request.id,
             relatedEntityType: "AcceptanceRequest",
             link: `/acceptance/${request.id}`
         });
@@ -234,7 +235,7 @@ export class AcceptanceService {
         return request;
     }
 
-    async getRequest(id: number) {
+    async getRequest(id: string) {
         return await this.acceptanceRepo.findOne({
             where: { id },
             relations: ["services", "services.tasks", "requester", "approver", "project"]

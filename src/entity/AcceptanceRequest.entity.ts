@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Users } from "./User.entity";
 import { ContractServices } from "./ContractService.entity";
@@ -13,8 +13,6 @@ export enum AcceptanceStatus {
 
 @Entity()
 export class AcceptanceRequests extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column()
     name: string; // e.g., "Đợt nghiệm thu tháng 02/2026"
@@ -25,8 +23,8 @@ export class AcceptanceRequests extends BaseEntity {
     @ManyToOne(() => Projects)
     project: Projects;
 
-    @Column()
-    projectId: number;
+    @Column({ type: "varchar", length: 26 })
+    projectId: string;
 
     @ManyToOne(() => Users, { nullable: true })
     approver: Users;

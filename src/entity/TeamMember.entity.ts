@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, ManyToOne, Column } from "typeorm";
+import { Entity, ManyToOne, Column } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { ProjectTeams } from "./ProjectTeam.entity";
 import { Users } from "./User.entity";
@@ -17,8 +17,6 @@ export enum MemberRole {
 
 @Entity()
 export class TeamMembers extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @ManyToOne(() => ProjectTeams, (team) => team.members)
     team: ProjectTeams;

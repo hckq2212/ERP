@@ -25,7 +25,7 @@ export class ContractService {
     private debtService = new DebtService();
 
 
-    async getAll(filters: any = {}, userInfo?: { id: string | number, role: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
@@ -68,7 +68,7 @@ export class ContractService {
         };
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const contract = await this.contractRepository.findOne({
             where: { id },
             relations: ["customer", "opportunity", "milestones", "services", "debts", "addendums"]
@@ -91,11 +91,8 @@ export class ContractService {
             }
         });
 
-        const sequence = (count + 1).toString().padStart(4, '0'); // Let's keep 4 digits or change to what user wants? "Số thứ tự của hợp đồng trong tháng". 
-        // User example "2 số tháng (ví dụ : 01 } – { Số thứ tự của hợp đồng trong tháng}". Doesn't specify digits for seq. 
-        // Assuming 2-3 digits is enough but sticking to safe padding. Let's use 3 digits.
-        const seq = (count + 1).toString().padStart(3, '0');
-        return `${prefix}-${seq}`;
+        const sequence = (count + 1).toString().padStart(3, '0');
+        return `${prefix}-${sequence}`;
     }
 
     async create(data: any) {
@@ -170,8 +167,6 @@ export class ContractService {
 
                     // Update Opportunity to link to this new customer
                     opportunity.customer = customer;
-                    // Optional: Clear lead fields? Maybe keep them for history or clear them. 
-                    // Let's keep them for record but rely on customer relation now.
                     await this.opportunityRepository.save(opportunity);
                 }
             } else {
@@ -261,7 +256,7 @@ export class ContractService {
         return savedContract;
     }
 
-    async uploadProposal(id: number, fileData: any) {
+    async uploadProposal(id: string, fileData: any) {
         const contract = await this.getOne(id);
         contract.proposal_contract = fileData.url;
         contract.status = ContractStatus.PROPOSAL_UPLOADED;
@@ -279,7 +274,7 @@ export class ContractService {
         return await this.contractRepository.save(contract);
     }
 
-    async approveProposal(id: number) {
+    async approveProposal(id: string) {
         const contract = await this.getOne(id);
         if (contract.status !== ContractStatus.PROPOSAL_UPLOADED) {
             throw new Error("Cần upload dự thảo hợp đồng trước khi duyệt");
@@ -294,7 +289,7 @@ export class ContractService {
     }
 
 
-    async uploadSigned(id: number, fileData: any) {
+    async uploadSigned(id: string, fileData: any) {
         const contract = await this.contractRepository.findOne({
             where: { id },
             relations: ["project", "customer", "opportunity", "milestones", "services", "debts"]
@@ -341,7 +336,7 @@ export class ContractService {
     }
 
 
-    async addMilestone(contractId: number, data: { name: string, percentage: number, amount?: number, dueDate: Date }) {
+    async addMilestone(contractId: string, data: { name: string, percentage: number, amount?: number, dueDate: Date }) {
         const contract = await this.getOne(contractId);
 
         // Validate percentage
@@ -364,7 +359,7 @@ export class ContractService {
         return await this.milestoneRepository.save(milestone);
     }
 
-    async updateMilestone(id: number, data: Partial<PaymentMilestones>) {
+    async updateMilestone(id: string, data: Partial<PaymentMilestones>) {
         const milestone = await this.milestoneRepository.findOne({ where: { id }, relations: ["contract"] });
         if (!milestone) throw new Error("Không tìm thấy đợt thanh toán");
 
@@ -385,14 +380,14 @@ export class ContractService {
         return await this.milestoneRepository.save(milestone);
     }
 
-    async deleteMilestone(id: number) {
+    async deleteMilestone(id: string) {
         const milestone = await this.milestoneRepository.findOne({ where: { id } });
         if (!milestone) throw new Error("Không tìm thấy đợt thanh toán");
         return await this.milestoneRepository.remove(milestone);
     }
 
     // ... Update/Delete methods can be basic for now
-    async delete(id: number) {
+    async delete(id: string) {
         const contract = await this.getOne(id);
         await this.contractRepository.remove(contract);
         return { message: "Xóa hợp đồng thành công" };

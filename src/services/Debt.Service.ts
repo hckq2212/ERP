@@ -12,7 +12,7 @@ export class DebtService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const debt = await this.debtRepository.findOne({
             where: { id },
             relations: ["contract", "milestone", "payments"]
@@ -21,14 +21,14 @@ export class DebtService {
         return debt;
     }
 
-    async getByContract(contractId: number) {
+    async getByContract(contractId: string) {
         return await this.debtRepository.find({
             where: { contract: { id: contractId } },
             relations: ["milestone", "payments"]
         });
     }
 
-    async createFromMilestone(milestoneId: number) {
+    async createFromMilestone(milestoneId: string) {
         const milestone = await this.milestoneRepository.findOne({
             where: { id: milestoneId },
             relations: ["contract", "debt"]
@@ -49,7 +49,7 @@ export class DebtService {
         return await this.debtRepository.save(debt);
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const debt = await this.getOne(id);
         if (debt.payments && debt.payments.length > 0) {
             throw new Error("Không thể xóa khoản nợ đã có lượt thanh toán");

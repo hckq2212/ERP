@@ -20,7 +20,7 @@ export class QuotationService {
         });
     }
 
-    async getOne(id: number) {
+    async getOne(id: string) {
         const quotation = await this.quotationRepository.findOne({
             where: { id },
             relations: ["opportunity", "opportunity.contracts", "details", "details.service"]
@@ -29,7 +29,7 @@ export class QuotationService {
         return quotation;
     }
 
-    async getByOpportunity(opportunityId: number) {
+    async getByOpportunity(opportunityId: string) {
         return await this.quotationRepository.find({
             where: { opportunity: { id: opportunityId } },
             relations: ["details", "details.service"],
@@ -38,7 +38,7 @@ export class QuotationService {
     }
 
     // 1. Create Quotation: Copy from Opportunity Service -> Quotation Details
-    async create(data: { opportunityId: number, note?: string }) {
+    async create(data: { opportunityId: string, note?: string }) {
         const { opportunityId, note } = data;
 
         const opportunity = await this.opportunityRepository.findOne({
@@ -92,7 +92,7 @@ export class QuotationService {
         return await this.quotationRepository.save(savedQuotation);
     }
 
-    async createAddendumQuotation(data: { opportunityId: number, taskIds: number[], note?: string }) {
+    async createAddendumQuotation(data: { opportunityId: string, taskIds: string[], note?: string }) {
         const { opportunityId, taskIds, note } = data;
 
         const opportunity = await this.opportunityRepository.findOne({
@@ -167,7 +167,7 @@ export class QuotationService {
     }
 
     // 2. Update Quotation Details (Price, Qty)
-    async update(id: number, data: { status?: QuotationStatus, note?: string, details?: any[] }) {
+    async update(id: string, data: { status?: QuotationStatus, note?: string, details?: any[] }) {
         const quotation = await this.getOne(id);
 
         if (quotation.status === QuotationStatus.APPROVED) {
@@ -216,7 +216,7 @@ export class QuotationService {
     }
 
     // 3. Approve Quotation: Sync BACK to Opportunity
-    async approve(id: number) {
+    async approve(id: string) {
         const quotation = await this.getOne(id);
 
         if (quotation.status === QuotationStatus.APPROVED) {
@@ -291,7 +291,7 @@ export class QuotationService {
     }
 
     // 4. Reject Quotation
-    async reject(id: number) {
+    async reject(id: string) {
         const quotation = await this.getOne(id);
 
         if (quotation.status === QuotationStatus.APPROVED) {
@@ -307,7 +307,7 @@ export class QuotationService {
         return { message: "Đã từ chối báo giá", quotation };
     }
 
-    async delete(id: number) {
+    async delete(id: string) {
         const quotation = await this.getOne(id);
         if (quotation.status === QuotationStatus.APPROVED) {
             throw new Error("Không thể xóa báo giá đã duyệt");

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Services } from "./Service.entity";
 import { Contracts } from "./Contract.entity";
@@ -16,8 +16,6 @@ export enum ContractServiceStatus {
 
 @Entity()
 export class ContractServices extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @ManyToOne(() => Services, (service) => service.contractServices)
     service: Services;

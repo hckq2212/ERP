@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne } from "typeorm";
+import { Entity, Column, OneToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Users } from "./User.entity";
 
@@ -11,8 +11,6 @@ export enum UserRole {
 
 @Entity()
 export class Accounts extends BaseEntity {
-    @PrimaryGeneratedColumn()
-    id: number;
 
     @Column({ unique: true })
     username: string;
