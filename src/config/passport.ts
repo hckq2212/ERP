@@ -34,6 +34,7 @@ passport.use(
             if (account) {
                 return done(null, {
                     id: account.id,
+                    userId: account.user?.id,
                     role: account.role,
                     username: account.username
                 });

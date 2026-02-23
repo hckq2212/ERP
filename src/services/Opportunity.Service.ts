@@ -272,16 +272,18 @@ export class OpportunityService {
             // You might want to pass price overrides too
 
             const service = await serviceRepository.findOneBy({ id: serviceId });
-            if (service) {
-                const oppService = opportunityServiceRepository.create({
-                    opportunity: opportunity,
-                    service: service,
-                    sellingPrice: service.costPrice || 0, // Should be sellingPrice ideally, but used cost in prev code
-                    costAtSale: service.costPrice || 0,
-                    quantity: quantity
-                });
-                await opportunityServiceRepository.save(oppService);
+            if (!service) {
+                throw new Error(`Không tìm thấy dịch vụ với ID: ${serviceId}. Vui lòng kiểm tra lại danh sách dịch vụ.`);
             }
+
+            const oppService = opportunityServiceRepository.create({
+                opportunity: opportunity,
+                service: service,
+                sellingPrice: service.costPrice || 0,
+                costAtSale: service.costPrice || 0,
+                quantity: quantity
+            });
+            await opportunityServiceRepository.save(oppService);
         }
     }
 }

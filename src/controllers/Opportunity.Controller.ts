@@ -34,9 +34,9 @@ export class OpportunityController {
 
             const files = req.files as Express.Multer.File[];
 
-            // Handle multipart/form-data stringified fields
-            const links = req.body.links ? JSON.parse(req.body.links) : [];
-            const services = req.body.services ? JSON.parse(req.body.services) : [];
+            // Handle multipart/form-data stringified fields (safely check if parsing is needed)
+            const links = typeof req.body.links === 'string' ? JSON.parse(req.body.links) : (req.body.links || []);
+            const services = typeof req.body.services === 'string' ? JSON.parse(req.body.services) : (req.body.services || []);
             const attachments = [...links];
 
             // 1. Files validation
@@ -104,11 +104,7 @@ export class OpportunityController {
 
             let services = [];
             if (req.body.services) {
-                try {
-                    services = JSON.parse(req.body.services);
-                } catch (e) {
-                    services = [];
-                }
+                services = typeof req.body.services === 'string' ? JSON.parse(req.body.services) : req.body.services;
             }
 
             let finalAttachments = [...currentAttachments, ...links];

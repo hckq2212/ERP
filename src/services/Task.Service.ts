@@ -138,7 +138,7 @@ export class TaskService {
             plannedEndDate: data.plannedEndDate,
             isExtra: data.isExtra || false,
             pricingStatus: data.isExtra ? PricingStatus.PENDING : null,
-            assignerId: currentUser?.id
+            assignerId: (currentUser as any)?.userId || currentUser?.id
         });
 
         if (data.assigneeId) {
@@ -299,7 +299,7 @@ export class TaskService {
         }
 
         if (currentUser) {
-            task.assignerId = currentUser.id;
+            task.assignerId = (currentUser as any).userId || currentUser.id;
         }
 
         return await this.taskRepository.save(task);
