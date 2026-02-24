@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Quotations } from "./Quotation.entity";
 import { Services } from "./Service.entity";
+import { Jobs } from "./Job.entity";
 
 @Entity()
 export class QuotationDetails extends BaseEntity {
@@ -9,8 +10,11 @@ export class QuotationDetails extends BaseEntity {
     @ManyToOne(() => Quotations, (quotation) => quotation.details, { onDelete: 'CASCADE' })
     quotation: Quotations;
 
-    @ManyToOne(() => Services)
+    @ManyToOne(() => Services, { nullable: true })
     service: Services;
+
+    @ManyToOne(() => Jobs, { nullable: true })
+    job: Jobs;
 
     @Column({ type: "int", default: 1 })
     quantity: number;

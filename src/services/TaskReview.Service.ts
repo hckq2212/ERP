@@ -31,6 +31,10 @@ export class TaskReviewService {
         // Delete existing reviews for this task if any
         await this.reviewRepository.delete({ task: { id: taskId } });
 
+        // Reset review note on new submission
+        task.reviewNote = null;
+        await this.taskRepository.save(task);
+
         // Determine evaluators and their types
         const definitions: { user: Users, type: ReviewerType }[] = [];
 
@@ -80,7 +84,7 @@ export class TaskReviewService {
         return review;
     }
 
-    async checkAndFinalize(taskId: string) {
+    async checkAndFinalize(taskId: string, reviewNote?: string) {
         const reviews = await this.reviewRepository.find({
             where: { task: { id: taskId } }
         });
@@ -107,6 +111,7 @@ export class TaskReviewService {
             if (task) {
                 task.status = TaskStatus.AWAITING_ACCEPTANCE;
                 task.actualEndDate = new Date();
+                if (reviewNote) task.reviewNote = reviewNote;
                 await this.taskRepository.save(task);
 
                 // Sync result to ContractService if this is an output job
@@ -136,7 +141,7 @@ export class TaskReviewService {
         }
     }
 
-    async rejectTask(taskId: string, note: string) {
+    async rejectTask(taskId: string, reviewNote: string) {
         const task = await this.taskRepository.findOne({
             where: { id: taskId },
             relations: ["assignee"]
@@ -145,13 +150,14 @@ export class TaskReviewService {
         if (!task) throw new Error("Không tìm thấy công việc");
 
         task.status = TaskStatus.REJECTED;
+        task.reviewNote = reviewNote;
         await this.taskRepository.save(task);
 
         // Notify assignee
         if (task.assignee) {
             await this.notificationService.createNotification({
                 title: "Công việc cần sửa lại",
-                content: `Công việc "${task.name}" bị từ chối/yêu cầu sửa lại. Lý do: ${note}`,
+                content: `Công việc "${task.name}" bị từ chối/yêu cầu sửa lại. Lý do: ${reviewNote}`,
                 type: "TASK_REJECTED",
                 recipient: task.assignee,
                 relatedEntityId: task.id.toString(),

@@ -16,6 +16,8 @@ export enum TaskStatus {
     COMPLETED = "COMPLETED",
     AWAITING_REVIEW = "AWAITING_REVIEW",
     REJECTED = "REJECTED",
+    REJECTED_BILLABLE = "Từ chối có phí",
+    REJECTED_SUPPORT = "Từ chối hỗ trợ",
     OVERDUE = "OVERDUE",
     AWAITING_PRICING = "AWAITING_PRICING"
 }
@@ -126,5 +128,8 @@ export class Tasks extends BaseEntity {
     mappedService: Services;
 
     @ManyToOne("Quotations", "tasks", { nullable: true })
-    quotation: any; // Using string and any to avoid circular dependency if not handled elsewhere
+    quotation: any;
+
+    @Column({ type: "text", nullable: true })
+    reviewNote: string; // Persistent rejection reason
 }

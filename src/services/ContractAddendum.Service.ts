@@ -31,14 +31,38 @@ export class ContractAddendumService {
     async addItems(addendumId: string, data: { services: any[], milestones: any[] }) {
         const addendum = await this.addendumRepository.findOne({
             where: { id: addendumId },
-            relations: ["contract"]
+            relations: ["contract", "quotation"]
         });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
 
         let totalSellingPrice = 0;
         let totalCost = 0;
 
-        // 1. Process Services
+        // 1. Process Items from Quotation (if linked)
+        if (addendum.quotation) {
+            const quotation = await AppDataSource.getRepository("Quotations").findOne({
+                where: { id: addendum.quotation.id },
+                relations: ["details", "details.service", "details.job"]
+            }) as any;
+
+            if (quotation) {
+                for (const d of quotation.details) {
+                    const addendumService = this.contractServiceRepository.create({
+                        contract: addendum.contract,
+                        addendum: addendum,
+                        service: d.service,
+                        job: d.job,
+                        sellingPrice: d.sellingPrice,
+                        status: ContractServiceStatus.ACTIVE
+                    });
+                    await this.contractServiceRepository.save(addendumService);
+                    totalSellingPrice += Number(d.sellingPrice);
+                    totalCost += Number(d.costAtSale || 0);
+                }
+            }
+        }
+
+        // 2. Process Manual Services (If provided directly)
         if (data.services) {
             for (const s of data.services) {
                 const serviceDef = await this.serviceRepository.findOneBy({ id: s.serviceId });
@@ -54,15 +78,14 @@ export class ContractAddendumService {
             }
         }
 
-        // 2. Process Milestones
+        // 3. Process Milestones
         if (data.milestones) {
             for (const m of data.milestones) {
                 const milestone = this.milestoneRepository.create({
                     contract: addendum.contract,
                     addendum: addendum,
                     name: m.name,
-                    percentage: m.percentage, // Percentage relative to addendum or manual amount? 
-                    // Let's assume amount is provided directly for addendums for flexibility
+                    percentage: m.percentage,
                     amount: m.amount,
                     status: MilestoneStatus.PENDING,
                     dueDate: m.dueDate
@@ -72,6 +95,7 @@ export class ContractAddendumService {
         }
 
         addendum.sellingPrice = totalSellingPrice;
+        addendum.cost = totalCost; // Update addendum cost estimate
         return await this.addendumRepository.save(addendum);
     }
 

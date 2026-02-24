@@ -3,6 +3,7 @@ import { BaseEntity } from "./BaseEntity";
 import { Contracts } from "./Contract.entity";
 import { ContractServices } from "./ContractService.entity";
 import { PaymentMilestones } from "./PaymentMilestone.entity";
+import { Quotations } from "./Quotation.entity";
 
 export enum AddendumStatus {
     DRAFT = "DRAFT",
@@ -43,4 +44,7 @@ export class ContractAddendums extends BaseEntity {
 
     @OneToMany(() => PaymentMilestones, (milestone) => milestone.addendum)
     milestones: PaymentMilestones[];
+
+    @ManyToOne(() => Quotations, { nullable: true })
+    quotation: Quotations;
 }

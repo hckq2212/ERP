@@ -143,11 +143,17 @@ export class QuotationService {
 
             // 3. Fallback cuối cùng: lấy Service đầu tiên mà Job này thuộc về
             if (!service) {
-                service = task.job.services?.[0];
-            }
-
-            if (!service) {
-                throw new Error(`Công việc "${task.name}" không thể quy đổi ra Dịch vụ để báo giá. Vui lòng thiết lập Dịch vụ đầu ra hoặc chọn tay Dịch vụ khi định giá.`);
+                // FALLBACK: If no service is found, we will quote based on the Job directly.
+                const detail = this.quotationDetailRepository.create({
+                    quotation: savedQuotation,
+                    job: task.job,
+                    quantity: 1,
+                    sellingPrice: task.sellingPrice,
+                    costAtSale: task.cost
+                });
+                await this.quotationDetailRepository.save(detail);
+                total += Number(detail.sellingPrice);
+                continue;
             }
 
             const detail = this.quotationDetailRepository.create({

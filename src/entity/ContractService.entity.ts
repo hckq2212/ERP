@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Services } from "./Service.entity";
+import { Jobs } from "./Job.entity";
 import { Contracts } from "./Contract.entity";
 import { OpportunityServices } from "./OpportunityService.entity";
 import { Tasks } from "./Task.entity";
@@ -17,8 +18,11 @@ export enum ContractServiceStatus {
 @Entity()
 export class ContractServices extends BaseEntity {
 
-    @ManyToOne(() => Services, (service) => service.contractServices)
+    @ManyToOne(() => Services, (service) => service.contractServices, { nullable: true })
     service: Services;
+
+    @ManyToOne(() => Jobs, { nullable: true })
+    job: Jobs;
 
     @ManyToOne(() => Contracts, (contract) => contract.services)
     contract: Contracts;

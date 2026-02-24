@@ -406,7 +406,7 @@ export class TaskService {
         if (!task.isExtra) throw new Error("Đây không phải là công việc phát sinh");
 
         if (data.isRejected) {
-            task.status = TaskStatus.REJECTED;
+            task.status = data.isBillable ? TaskStatus.REJECTED_BILLABLE : TaskStatus.REJECTED_SUPPORT;
             return await this.taskRepository.save(task);
         }
 
