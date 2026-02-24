@@ -7,7 +7,7 @@ export class NotificationController {
 
     getMyNotifications = async (req: AuthRequest, res: Response) => {
         try {
-            const userId = req.user?.id as string;
+            const userId = req.user?.userId || req.user?.id;
             if (!userId) {
                 return res.status(400).json({ message: "Không tìm thấy thông tin người dùng." });
             }

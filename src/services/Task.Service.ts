@@ -21,7 +21,7 @@ export class TaskService {
     private reviewService = new TaskReviewService();
 
 
-    async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, userId?: string, role: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
@@ -32,7 +32,7 @@ export class TaskService {
 
         // 1. Enforce Role-based access
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
-            baseWhere.assignee = { id: userInfo.id };
+            baseWhere.assignee = { id: userInfo.userId || userInfo.id };
         }
 
         // 2. Apply dynamic filters

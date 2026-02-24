@@ -105,7 +105,7 @@ export class TaskReviewService {
                 relations: ["assignee", "contractService", "job", "contractService.service", "contractService.service.outputJob"]
             });
             if (task) {
-                task.status = TaskStatus.COMPLETED;
+                task.status = TaskStatus.AWAITING_ACCEPTANCE;
                 task.actualEndDate = new Date();
                 await this.taskRepository.save(task);
 

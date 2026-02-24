@@ -10,4 +10,8 @@ export class JobCriterias extends BaseEntity {
 
     @ManyToOne(() => Jobs, (job) => job.criteria)
     job: Jobs;
+
+    @Column({ nullable: true })
+    description: string;
+
 }
