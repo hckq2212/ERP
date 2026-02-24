@@ -1,5 +1,5 @@
 import { AppDataSource } from "../data-source";
-import { Opportunities, CustomerType } from "../entity/Opportunity.entity";
+import { Opportunities, CustomerType, OpportunityStatus } from "../entity/Opportunity.entity";
 import { Customers } from "../entity/Customer.entity";
 import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { Services } from "../entity/Service.entity";
@@ -154,10 +154,16 @@ export class OpportunityService {
         // Handle CreatedBy Logic
         if (accountId) {
             const user = await this.userRepository.findOne({
-                where: { account: { id: accountId } }
+                where: { account: { id: accountId } },
+                relations: ["account"]
             });
             if (user) {
                 opportunity.createdBy = user;
+
+                // Auto-skip approval for BOD/ADMIN
+                if (user.account?.role === "BOD" || user.account?.role === "ADMIN") {
+                    opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
+                }
             }
         }
 
@@ -257,6 +263,19 @@ export class OpportunityService {
         const opportunity = await this.getOne(id);
         await this.opportunityRepository.remove(opportunity);
         return { message: "Xóa cơ hội kinh doanh thành công" };
+    }
+
+    async approve(id: string) {
+        const opportunity = await this.getOne(id);
+
+        if (opportunity.status !== OpportunityStatus.PENDING_OPP_APPROVAL) {
+            throw new Error("Chỉ có thể duyệt cơ hội đang ở trạng thái chờ duyệt");
+        }
+
+        opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
+        await this.opportunityRepository.save(opportunity);
+
+        return { message: "Duyệt cơ hội thành công", opportunity };
     }
 
     private async updateServices(opportunity: Opportunities, services: any[]) {

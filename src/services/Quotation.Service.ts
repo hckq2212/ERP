@@ -84,8 +84,8 @@ export class QuotationService {
         savedQuotation.totalAmount = total;
 
         // Update Opportunity Status to QUOTATION_DRAFTING if it's new
-        if (opportunity.status !== OpportunityStatus.QUOTATION_DRAFTING && opportunity.status !== OpportunityStatus.QUOTE_APPROVED) {
-            opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
+        if (opportunity.status !== OpportunityStatus.PENDING_QUOTE_APPROVAL && opportunity.status !== OpportunityStatus.QUOTE_APPROVED) {
+            opportunity.status = OpportunityStatus.PENDING_QUOTE_APPROVAL;
             await this.opportunityRepository.save(opportunity);
         }
 

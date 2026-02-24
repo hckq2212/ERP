@@ -79,7 +79,7 @@ export class Opportunities extends BaseEntity {
     @Column({
         type: "enum",
         enum: OpportunityStatus,
-        default: OpportunityStatus.OPEN
+        default: OpportunityStatus.PENDING_OPP_APPROVAL
     })
     status: OpportunityStatus;
 

@@ -20,6 +20,7 @@ router.get("/", authMiddleware, opportunityController.getAll);
 router.get("/:id", opportunityController.getOne);
 router.post("/", authMiddleware, upload.array('files', 5), opportunityController.create);
 router.patch("/:id", authMiddleware, upload.array('files', 5), opportunityController.update);
+router.patch("/:id/approve", authMiddleware, opportunityController.approve);
 router.delete("/:id", authMiddleware, opportunityController.delete);
 
 export default router;

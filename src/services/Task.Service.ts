@@ -9,6 +9,7 @@ import { VendorJobs } from "../entity/VendorJob.entity";
 import { NotificationService } from "./Notification.Service";
 import { TaskReviewService } from "./TaskReview.Service";
 import { StringHelper } from "../helpers/String.helper";
+import { Contracts } from "../entity/Contract.entity";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -17,6 +18,7 @@ export class TaskService {
     private userRepository = AppDataSource.getRepository(Users);
     private vendorRepository = AppDataSource.getRepository(Vendors);
     private vendorJobRepository = AppDataSource.getRepository(VendorJobs);
+    private contractRepository = AppDataSource.getRepository(Contracts);
     private notificationService = new NotificationService();
     private reviewService = new TaskReviewService();
 
@@ -319,20 +321,41 @@ export class TaskService {
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
     }, currentUser?: { id: string }) {
-        const task = await this.getOne(id);
+        const task = await this.taskRepository.findOne({
+            where: { id },
+            relations: ["project", "project.contract", "job"]
+        });
+        if (!task) throw new Error("Không tìm thấy công việc");
+
+        const oldCost = Number(task.cost || 0);
+        let newCost = 0;
 
         if (data.performerType === "VENDOR") {
             const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
             if (!vendor) throw new Error("Vendor không tồn tại");
+
+            // Fetch Vendor Price for this Job
+            const vendorJob = await this.vendorJobRepository.findOneBy({
+                vendor: { id: vendor.id },
+                job: { id: task.job.id }
+            });
+
+            if (!vendorJob) {
+                throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
+            }
+
+            newCost = Number(vendorJob.price);
             task.vendor = vendor;
             task.assignee = null as any;
             task.performerType = "VENDOR";
+            task.cost = newCost;
         } else {
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
             if (!user) throw new Error("Người thực hiện không tồn tại");
             task.assignee = user;
             task.vendor = null as any;
             task.performerType = "INTERNAL";
+            task.cost = 0; // Internal tasks have 0 cost in this context
 
             await this.notificationService.createNotification({
                 title: "Công việc mới được giao",
@@ -349,6 +372,13 @@ export class TaskService {
         task.plannedStartDate = data.plannedStartDate;
         if (data.description) task.description = data.description;
         if (data.attachments) task.attachments = data.attachments;
+
+        // Update Contract Cost if changed
+        if (oldCost !== newCost && task.project?.contract) {
+            const contract = task.project.contract;
+            contract.cost = Number(contract.cost || 0) - oldCost + newCost;
+            await this.contractRepository.save(contract);
+        }
 
         if (task.status === TaskStatus.PENDING) {
             task.status = TaskStatus.DOING;
