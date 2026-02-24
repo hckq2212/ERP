@@ -12,13 +12,14 @@ export class JobCriteriaService {
         });
     }
 
-    async create(data: { jobId: string, name: string }) {
+    async create(data: { jobId: string, name: string, description?: string }) {
         const job = await this.jobRepository.findOneBy({ id: data.jobId });
         if (!job) throw new Error("Không tìm thấy công việc (Job)");
 
         const criteria = this.criteriaRepository.create({
             job,
-            name: data.name
+            name: data.name,
+            description: data.description
         });
 
         return await this.criteriaRepository.save(criteria);

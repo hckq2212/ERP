@@ -51,4 +51,7 @@ export class Quotations extends BaseEntity {
 
     @OneToMany(() => Tasks, (task) => task.quotation, { nullable: true })
     tasks: Tasks[];
+
+    @Column({ nullable: true })
+    description: string;
 }

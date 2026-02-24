@@ -19,6 +19,7 @@ const upload = multer({
 router.get("/", authMiddleware, taskController.getAll);
 router.get("/:id", authMiddleware, taskController.getOne);
 router.post("/", authMiddleware, taskController.create);
+router.post("/internal", authMiddleware, taskController.createInternal);
 router.put("/:id", authMiddleware, taskController.update);
 router.put("/:id/assign", authMiddleware, upload.array('files', 5), taskController.assign);
 router.patch("/:id/submit-result", authMiddleware, upload.single('file'), taskController.submitResult);

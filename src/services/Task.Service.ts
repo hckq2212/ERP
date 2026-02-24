@@ -1,6 +1,6 @@
 import { AppDataSource } from "../data-source";
 import { Tasks, TaskStatus, PricingStatus } from "../entity/Task.entity";
-import { ILike, Like } from "typeorm";
+import { ILike, Like, Between, IsNull } from "typeorm";
 import { Projects } from "../entity/Project.entity";
 import { Jobs } from "../entity/Job.entity";
 import { Users } from "../entity/User.entity";
@@ -8,7 +8,7 @@ import { Vendors } from "../entity/Vendor.entity";
 import { VendorJobs } from "../entity/VendorJob.entity";
 import { NotificationService } from "./Notification.Service";
 import { TaskReviewService } from "./TaskReview.Service";
-
+import { StringHelper } from "../helpers/String.helper";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -20,6 +20,80 @@ export class TaskService {
     private notificationService = new NotificationService();
     private reviewService = new TaskReviewService();
 
+    async createInternalTask(data: {
+        name: string,
+        assigneeId: string,
+        supervisorId: string,
+        description?: string,
+        plannedStartDate?: Date,
+        plannedEndDate?: Date
+    }, currentUser?: { id: string }) {
+        const assignee = await this.userRepository.findOneBy({ id: data.assigneeId });
+        if (!assignee) throw new Error("Không tìm thấy người thực hiện");
+
+        const supervisor = await this.userRepository.findOneBy({ id: data.supervisorId });
+        if (!supervisor) throw new Error("Không tìm thấy người giám sát");
+
+        // Logic sinh mã (Code Generation)
+        const initials = StringHelper.getInitials(assignee.fullName);
+        const now = new Date();
+        const year = now.getFullYear().toString().slice(-2);
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+
+        // Đếm số lượng công việc nội bộ trong tháng để lấy Index
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+        const internalTaskCount = await this.taskRepository.count({
+            where: {
+                project: IsNull(),
+                createdAt: Between(startOfMonth, endOfMonth)
+            }
+        });
+
+        const sequence = (internalTaskCount + 1).toString().padStart(2, '0');
+        const taskCode = `CVK-${initials}-${year}-${month}-${sequence}`;
+
+        const task = this.taskRepository.create({
+            code: taskCode,
+            name: data.name,
+            project: null,
+            job: null,
+            assignee: assignee,
+            supervisor: supervisor,
+            status: TaskStatus.DOING,
+            plannedStartDate: data.plannedStartDate,
+            plannedEndDate: data.plannedEndDate,
+            description: data.description,
+            assignerId: (currentUser as any)?.userId || currentUser?.id
+        });
+
+        const savedTask = await this.taskRepository.save(task);
+
+        // Notify Assignee
+        await this.notificationService.createNotification({
+            title: "Công việc nội bộ mới",
+            content: `Bạn được giao công việc nội bộ: ${task.name} (Mã: ${task.code})`,
+            type: "TASK_ASSIGNED",
+            recipient: assignee,
+            relatedEntityId: savedTask.id?.toString(),
+            relatedEntityType: "Task",
+            link: `/tasks/${savedTask.id}`
+        });
+
+        // Notify Supervisor
+        await this.notificationService.createNotification({
+            title: "Giám sát công việc mới",
+            content: `Bạn được phân công giám sát công việc: ${task.name} (Mã: ${task.code})`,
+            type: "TASK_REVIEW",
+            recipient: supervisor,
+            relatedEntityId: savedTask.id?.toString(),
+            relatedEntityType: "Task",
+            link: `/tasks/${savedTask.id}`
+        });
+
+        return savedTask;
+    }
 
     async getAll(filters: any = {}, userInfo?: { id: string, userId?: string, role: string }) {
         const page = parseInt(filters.page) || 1;
@@ -30,12 +104,10 @@ export class TaskService {
         const where: any = [];
         const baseWhere: any = {};
 
-        // 1. Enforce Role-based access
         if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
             baseWhere.assignee = { id: userInfo.userId || userInfo.id };
         }
 
-        // 2. Apply dynamic filters
         if (filters.status && filters.status !== 'ALL') {
             baseWhere.status = filters.status;
         }
@@ -48,7 +120,6 @@ export class TaskService {
             baseWhere.project = { id: filters.projectId };
         }
 
-        // 3. Fuzzy search for name or code
         if (filters.q || filters.search) {
             const query = filters.q || filters.search;
             const searchTerm = `%${query}%`;
@@ -60,7 +131,7 @@ export class TaskService {
 
         const [items, total] = await this.taskRepository.findAndCount({
             where: where.length > 1 ? where : where[0],
-            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee"],
+            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "supervisor"],
             order: { [sortBy]: sortDir },
             skip: (page - 1) * limit,
             take: limit
@@ -77,11 +148,10 @@ export class TaskService {
         };
     }
 
-
     async getOne(id: string) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation"]
+            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation", "supervisor"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
@@ -113,7 +183,6 @@ export class TaskService {
             if (!project) throw new Error("Không tìm thấy dự án");
             if (!project.contract) throw new Error("Dự án không có hợp đồng liên kết");
 
-            // Naming Logic: ContractCode - JobCode - Sequence
             const contractCode = project.contract.contractCode;
             const jobCode = job.code || `JOB${job.id}`;
 
@@ -160,24 +229,21 @@ export class TaskService {
         return await this.taskRepository.save(task);
     }
 
-
     async submitResult(id: string, data: { result: any }) {
         const task = await this.getOne(id);
 
         task.result = data.result;
         task.status = TaskStatus.AWAITING_REVIEW;
-        task.actualEndDate = new Date(); // Record when the result was submitted
+        task.actualEndDate = new Date();
 
         const savedTask = await this.taskRepository.save(task);
 
-        // Notify Team Lead
         const taskWithInfo = await this.taskRepository.findOne({
             where: { id: task.id },
             relations: ["project", "project.team", "project.team.teamLead"]
         });
 
         if (taskWithInfo && taskWithInfo.project?.team?.teamLead) {
-            // Initialize reviews based on job criteria
             await this.reviewService.initializeReviews(task.id);
 
             await this.notificationService.createNotification({
@@ -187,7 +253,7 @@ export class TaskService {
                 recipient: taskWithInfo.project.team.teamLead,
                 relatedEntityId: task.id.toString(),
                 relatedEntityType: "Task",
-                link: `/tasks/${task.id}` // Link to task detail for review
+                link: `/tasks/${task.id}`
             });
         }
 
@@ -213,10 +279,6 @@ export class TaskService {
             }
         }
 
-
-        // Prevent name update if it's auto-generated? Or allow? 
-        // For now, let's just update other fields.
-
         if (data.status) task.status = data.status;
         if (data.plannedStartDate) task.plannedStartDate = data.plannedStartDate;
         if (data.plannedEndDate) task.plannedEndDate = data.plannedEndDate;
@@ -224,20 +286,16 @@ export class TaskService {
         if (data.actualEndDate) task.actualEndDate = data.actualEndDate;
         if (data.result) {
             task.result = data.result;
-            // If result files are uploaded, move to awaiting review
             task.status = TaskStatus.AWAITING_REVIEW;
 
-            // Re-fetch task with project and team lead info for notification
             const taskWithInfo = await this.taskRepository.findOne({
                 where: { id: task.id },
                 relations: ["project", "project.team", "project.team.teamLead"]
             });
 
             if (taskWithInfo && taskWithInfo.project?.team?.teamLead) {
-                // Initialize reviews based on job criteria
                 await this.reviewService.initializeReviews(task.id);
 
-                // Notify Team Lead
                 await this.notificationService.createNotification({
                     title: "Công việc chờ duyệt",
                     content: `Nhân viên đã upload kết quả cho công việc: ${task.name}. Vui lòng đánh giá.`,
@@ -276,7 +334,6 @@ export class TaskService {
             task.vendor = null as any;
             task.performerType = "INTERNAL";
 
-            // Send Notification to internal user
             await this.notificationService.createNotification({
                 title: "Công việc mới được giao",
                 content: `Bạn được giao công việc: ${task.name} (Mã: ${task.code})`,
@@ -293,7 +350,6 @@ export class TaskService {
         if (data.description) task.description = data.description;
         if (data.attachments) task.attachments = data.attachments;
 
-        // Auto update status if it is pending
         if (task.status === TaskStatus.PENDING) {
             task.status = TaskStatus.DOING;
         }
@@ -304,7 +360,6 @@ export class TaskService {
 
         return await this.taskRepository.save(task);
     }
-
 
     async delete(id: string) {
         const task = await this.getOne(id);
@@ -331,20 +386,17 @@ export class TaskService {
         if (data.isBillable) {
             task.sellingPrice = Number(data.sellingPrice || 0);
 
-            // Manual mapping if serviceId is provided
             if (data.serviceId) {
                 const service = await AppDataSource.getRepository("Services").findOneBy({ id: data.serviceId }) as any;
                 if (service) task.mappedService = service;
             }
         } else {
             task.sellingPrice = 0;
-            // Update Contract Cost immediately for non-billable support tasks
             if (task.project?.contract) {
                 const contract = task.project.contract;
                 contract.cost = Number(contract.cost || 0) + task.cost;
                 await AppDataSource.getRepository("Contracts").save(contract);
             }
-            // If it's internal cost-only, it can start immediately
             task.status = TaskStatus.PENDING;
         }
 

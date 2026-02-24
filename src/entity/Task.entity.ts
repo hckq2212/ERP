@@ -38,7 +38,7 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => Projects, (project) => project.tasks, { nullable: true })
     project: Projects;
 
-    @ManyToOne(() => Jobs, (job) => job.tasks)
+    @ManyToOne(() => Jobs, (job) => job.tasks, { nullable: true })
     job: Jobs;
 
     @ManyToOne(() => ContractServices, (contractService) => contractService.tasks, { nullable: true })
@@ -50,6 +50,13 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => Users, (user) => user.tasks, { nullable: true })
     @JoinColumn({ name: "assigneeId" })
     assignee: Users;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    supervisorId: string;
+
+    @ManyToOne(() => Users, { nullable: true })
+    @JoinColumn({ name: "supervisorId" })
+    supervisor: Users;
 
     @Column({ type: "varchar", length: 26, nullable: true })
     assignerId: string;

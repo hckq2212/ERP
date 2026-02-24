@@ -36,6 +36,16 @@ export class TaskController {
         }
     }
 
+    createInternal = async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const task = await this.taskService.createInternalTask(req.body, user);
+            res.status(201).json(task);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     update = async (req: Request, res: Response) => {
         try {
             const task = await this.taskService.update(req.params.id as string, req.body);

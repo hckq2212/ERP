@@ -225,6 +225,7 @@ export class QuotationService {
 
         // 1. Mark this as APPROVED
         quotation.status = QuotationStatus.APPROVED;
+        quotation.description = quotation.description;
         await this.quotationRepository.save(quotation);
 
         // 3. IF ADDENDUM: Create Contract Addendum and SYNC
@@ -299,6 +300,7 @@ export class QuotationService {
         }
 
         quotation.status = QuotationStatus.REJECTED;
+        quotation.description = quotation.description;
         await this.quotationRepository.save(quotation);
 
         // Optionally revert opportunity status if needed, 
