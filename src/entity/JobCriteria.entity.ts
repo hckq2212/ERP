@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne } from "typeorm";
+import { Entity, Column, ManyToOne, DeleteDateColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Jobs } from "./Job.entity";
 
@@ -13,5 +13,8 @@ export class JobCriterias extends BaseEntity {
 
     @Column({ nullable: true })
     description: string;
+
+    @DeleteDateColumn()
+    deletedAt: Date;
 
 }

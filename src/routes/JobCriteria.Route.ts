@@ -5,6 +5,7 @@ const router = Router();
 const controller = new JobCriteriaController();
 
 router.get("/job/:jobId", controller.getByJob);
+router.put("/job/:jobId", controller.sync);
 router.post("/", controller.create);
 router.delete("/:id", controller.delete);
 
