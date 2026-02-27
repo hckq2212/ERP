@@ -132,4 +132,7 @@ export class Tasks extends BaseEntity {
 
     @Column({ type: "text", nullable: true })
     reviewNote: string; // Persistent rejection reason
+
+    @Column({ type: "text", nullable: true })
+    reassignNote: string; // Reason for reassignment
 }

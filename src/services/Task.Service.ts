@@ -391,6 +391,107 @@ export class TaskService {
         return await this.taskRepository.save(task);
     }
 
+    async reassign(id: string, data: {
+        assigneeId: string;
+        performerType: "INTERNAL" | "VENDOR";
+        reason: string;
+    }, currentUser: { id: string }) {
+        const task = await this.taskRepository.findOne({
+            where: { id },
+            relations: ["project", "project.contract", "job", "assignee", "vendor"]
+        });
+
+        if (!task) throw new Error("Không tìm thấy công việc");
+
+        // Identify old performer info for notification
+        let oldPerformerName = "";
+        let oldRecipient: Users | null = null;
+        if (task.performerType === "INTERNAL" && task.assignee) {
+            oldPerformerName = task.assignee.fullName;
+            oldRecipient = task.assignee;
+        } else if (task.performerType === "VENDOR" && task.vendor) {
+            oldPerformerName = task.vendor.name;
+            // For vendors, we might not have a direct User recipient object unless they have accounts.
+            // Based on existing logic, notifications go to Users.
+        }
+
+        const oldCost = Number(task.cost || 0);
+        let newCost = 0;
+        let newPerformerName = "";
+        let newRecipient: Users | null = null;
+
+        if (data.performerType === "VENDOR") {
+            const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
+            if (!vendor) throw new Error("Vendor không tồn tại");
+
+            const vendorJob = await this.vendorJobRepository.findOneBy({
+                vendor: { id: vendor.id },
+                job: { id: task.job.id }
+            });
+
+            if (!vendorJob) {
+                throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
+            }
+
+            newCost = Number(vendorJob.price);
+            newPerformerName = vendor.name;
+            task.vendor = vendor;
+            task.assignee = null as any;
+            task.performerType = "VENDOR";
+            task.cost = newCost;
+        } else {
+            const user = await this.userRepository.findOneBy({ id: data.assigneeId });
+            if (!user) throw new Error("Người thực hiện không tồn tại");
+
+            newPerformerName = user.fullName;
+            newRecipient = user;
+            task.assignee = user;
+            task.vendor = null as any;
+            task.performerType = "INTERNAL";
+            task.cost = 0;
+        }
+
+        task.reassignNote = data.reason;
+        task.assignerId = (currentUser as any).userId || currentUser.id;
+
+        // Update Contract Cost if changed
+        if (oldCost !== newCost && task.project?.contract) {
+            const contract = task.project.contract;
+            contract.cost = Number(contract.cost || 0) - oldCost + newCost;
+            await this.contractRepository.save(contract);
+        }
+
+        const savedTask = await this.taskRepository.save(task);
+
+        // Notify OLD performer (if Internal)
+        if (oldRecipient) {
+            await this.notificationService.createNotification({
+                title: "Công việc đã được chuyển giao",
+                content: `Công việc: ${task.name} (Mã: ${task.code}) đã được chuyển giao cho ${newPerformerName}`,
+                type: "TASK_REASSIGNED",
+                recipient: oldRecipient,
+                relatedEntityId: task.id.toString(),
+                relatedEntityType: "Task",
+                link: `/tasks/${task.id}`
+            });
+        }
+
+        // Notify NEW performer (if Internal)
+        if (newRecipient) {
+            await this.notificationService.createNotification({
+                title: "Công việc được chuyển giao mới",
+                content: `Bạn được giao công việc: ${task.name} (Mã: ${task.code}). Lý do: ${data.reason}`,
+                type: "TASK_ASSIGNED",
+                recipient: newRecipient,
+                relatedEntityId: task.id.toString(),
+                relatedEntityType: "Task",
+                link: `/tasks/${task.id}`
+            });
+        }
+
+        return savedTask;
+    }
+
     async delete(id: string) {
         const task = await this.getOne(id);
         await this.taskRepository.remove(task);

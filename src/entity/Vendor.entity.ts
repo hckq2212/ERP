@@ -33,6 +33,15 @@ export class Vendors extends BaseEntity {
     })
     type: PartnerType;
 
+    @Column({ nullable: true })
+    bankAccount: string;
+
+    @Column({ nullable: true })
+    idCardFront: string;
+
+    @Column({ nullable: true })
+    idCardBack: string;
+
     @OneToMany(() => VendorJobs, (vendorJob) => vendorJob.vendor)
     vendorJobs: VendorJobs[];
 }

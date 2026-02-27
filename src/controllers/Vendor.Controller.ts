@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { VendorService } from "../services/Vendor.Service";
+import { uploadToCloudinary } from "../helpers/cloudinary.helper";
 
 export class VendorController {
     private vendorService = new VendorService();
@@ -25,6 +26,19 @@ export class VendorController {
 
     create = async (req: Request, res: Response) => {
         try {
+            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+            if (files) {
+                if (files.idCardFront && files.idCardFront[0]) {
+                    const upload = await uploadToCloudinary(files.idCardFront[0], "GETVINI/ERP/vendor");
+                    req.body.idCardFront = upload.url;
+                }
+                if (files.idCardBack && files.idCardBack[0]) {
+                    const upload = await uploadToCloudinary(files.idCardBack[0], "GETVINI/ERP/vendor");
+                    req.body.idCardBack = upload.url;
+                }
+            }
+
             const result = await this.vendorService.create(req.body);
             res.status(201).json(result);
         } catch (error: any) {
@@ -35,6 +49,19 @@ export class VendorController {
     update = async (req: Request, res: Response) => {
         try {
             const id = req.params.id as string;
+            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+            if (files) {
+                if (files.idCardFront && files.idCardFront[0]) {
+                    const upload = await uploadToCloudinary(files.idCardFront[0], "GETVINI/ERP/vendor");
+                    req.body.idCardFront = upload.url;
+                }
+                if (files.idCardBack && files.idCardBack[0]) {
+                    const upload = await uploadToCloudinary(files.idCardBack[0], "GETVINI/ERP/vendor");
+                    req.body.idCardBack = upload.url;
+                }
+            }
+
             const result = await this.vendorService.update(id, req.body);
             res.status(200).json(result);
         } catch (error: any) {

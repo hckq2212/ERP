@@ -7,13 +7,6 @@ import { Contracts } from "./Contract.entity";
 import { ReferralPartners } from "./ReferralPartner.entity";
 import { Users } from "./User.entity";
 
-export enum Region {
-    NATIONAL = "NATIONAL",
-    NORTH = "NORTH",
-    CENTRAL = "CENTRAL",
-    SOUTH = "SOUTH"
-}
-
 export enum CustomerType {
     DIRECT = "DIRECT", // Khách hàng trực tiếp
     REFERRAL = "REFERRAL" // Khách hàng liên kết
@@ -67,11 +60,11 @@ export class Opportunities extends BaseEntity {
     successChance: number;
 
     @Column({
-        type: "enum",
-        enum: Region,
-        default: Region.NATIONAL
+        type: "jsonb",
+        nullable: true,
+        default: []
     })
-    region: Region;
+    region: string[];
 
     @Column({ type: "int", default: 0 })
     durationMonths: number;
