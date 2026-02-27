@@ -30,6 +30,10 @@ export class OpportunityService {
             baseWhere.status = filters.status;
         }
 
+        if (filters.customerId) {
+            baseWhere.customer = { id: filters.customerId };
+        }
+
         if (filters.search) {
             const searchTerm = `%${filters.search}%`;
             where.push({ ...baseWhere, name: Like(searchTerm) });
