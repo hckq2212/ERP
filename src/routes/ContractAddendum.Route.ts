@@ -10,7 +10,7 @@ const controller = new ContractAddendumController();
 
 router.post("/", controller.create);
 router.post("/:id/items", controller.addItems);
-router.post("/:id/upload-signed", upload.single("file"), controller.uploadSigned);
+router.post("/:id/upload-signed", controller.uploadSigned);
 router.post("/:id/scale-down", controller.scaleDown);
 
 export default router;

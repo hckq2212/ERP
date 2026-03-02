@@ -28,7 +28,8 @@ export class TaskService {
         supervisorId: string,
         description?: string,
         plannedStartDate?: Date,
-        plannedEndDate?: Date
+        plannedEndDate?: Date,
+        attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[]
     }, currentUser?: { id: string }) {
         const assignee = await this.userRepository.findOneBy({ id: data.assigneeId });
         if (!assignee) throw new Error("Không tìm thấy người thực hiện");
@@ -67,6 +68,7 @@ export class TaskService {
             plannedStartDate: data.plannedStartDate,
             plannedEndDate: data.plannedEndDate,
             description: data.description,
+            attachments: data.attachments,
             assignerId: (currentUser as any)?.userId || currentUser?.id
         });
 

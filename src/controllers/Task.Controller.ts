@@ -57,36 +57,18 @@ export class TaskController {
 
     assign = async (req: Request, res: Response) => {
         try {
-            const files = req.files as Express.Multer.File[];
-            // Parse links and attachments from body
-            let bodyAttachments: any[] = [];
+            // attachments should now be pre-uploaded and sent in body
+            const { attachments: bodyAttachments = [], links = [] } = req.body;
 
-            const parseField = (field: any) => {
-                if (!field) return [];
-                if (typeof field === 'string') {
-                    try {
-                        return JSON.parse(field);
-                    } catch (e) {
-                        return [{ type: "LINK", name: field, url: field }];
-                    }
-                }
-                return Array.isArray(field) ? field : [field];
-            };
+            const attachments: any[] = [...links];
 
-            const links = parseField(req.body.links);
-            const existingAttachments = parseField(req.body.attachments);
-
-            bodyAttachments = [...links, ...existingAttachments];
-
-            const attachments: { type: string, name: string, url: string, size?: number, publicId?: string }[] = [];
-
-            // Standardize body attachments
-            bodyAttachments.forEach(item => {
+            // Standardize attachments from body (both pre-uploaded files and links)
+            bodyAttachments.forEach((item: any) => {
                 if (typeof item === 'string') {
                     attachments.push({ type: "LINK", name: item, url: item });
                 } else if (item.url) {
                     attachments.push({
-                        type: item.type || "LINK",
+                        type: item.type || "FILE",
                         name: item.name || item.url,
                         url: item.url,
                         size: item.size,
@@ -94,26 +76,6 @@ export class TaskController {
                     });
                 }
             });
-
-
-            // Validations
-            if (files) {
-                const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-                if (totalSize > 25 * 1024 * 1024) {
-                    return res.status(400).json({ message: "Tổng dung lượng file không được vượt quá 25MB" });
-                }
-                if (files.length + attachments.length > 5) { // Simple check, exact logic depends on reqs
-                    // warning on limit
-                }
-            }
-
-            // Upload files
-            if (files && files.length > 0) {
-                const uploadPromises = files.map(file => uploadToCloudinary(file, "GETVINI/ERP/tasks"));
-                const uploadedFiles = await Promise.all(uploadPromises);
-                // @ts-ignore
-                attachments.push(...uploadedFiles);
-            }
 
             const user = (req as any).user;
             const result = await this.taskService.assign(req.params.id as string, {
@@ -129,13 +91,18 @@ export class TaskController {
     submitResult = async (req: Request, res: Response) => {
         try {
             const taskId = req.params.id as string;
-            const file = req.file as Express.Multer.File;
-            const { link } = req.body;
+            // result is now pre-uploaded and sent in body
+            const { result: bodyResult, link } = req.body;
             let resultData: any = null;
 
-            if (file) {
-                // Upload file to specific folder: GETVINI/ERP/TASK/{taskId}
-                resultData = await uploadToCloudinary(file, `GETVINI/ERP/TASK/${taskId}`);
+            if (bodyResult && bodyResult.url) {
+                resultData = {
+                    type: bodyResult.type || "FILE",
+                    name: bodyResult.name || "Kết quả công việc",
+                    url: bodyResult.url,
+                    size: bodyResult.size,
+                    publicId: bodyResult.publicId
+                };
             } else if (link) {
                 resultData = {
                     type: "LINK",
@@ -154,6 +121,7 @@ export class TaskController {
             res.status(500).json({ message: error.message });
         }
     }
+
 
     delete = async (req: Request, res: Response) => {
         try {

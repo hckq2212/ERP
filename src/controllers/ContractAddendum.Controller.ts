@@ -26,13 +26,12 @@ export class ContractAddendumController {
 
     uploadSigned = async (req: Request, res: Response) => {
         try {
-            const file = req.file;
+            const { file } = req.body;
             if (!file) {
-                return res.status(400).json({ message: "Không tìm thấy file upload" });
+                return res.status(400).json({ message: "Không tìm thấy file metadata" });
             }
 
-            const fileData = await uploadToCloudinary(file, "GETVINI/ERP/addendum");
-            const result = await this.service.uploadSigned(req.params.id as string, fileData);
+            const result = await this.service.uploadSigned(req.params.id as string, file);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

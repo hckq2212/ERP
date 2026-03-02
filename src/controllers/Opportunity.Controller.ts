@@ -32,43 +32,16 @@ export class OpportunityController {
             const authReq = req as AuthRequest;
             const accountId = authReq.user?.id;
 
-            const files = req.files as Express.Multer.File[];
-
-            // Handle multipart/form-data stringified fields (safely check if parsing is needed)
-            const links = typeof req.body.links === 'string' ? JSON.parse(req.body.links) : (req.body.links || []);
-            const services = typeof req.body.services === 'string' ? JSON.parse(req.body.services) : (req.body.services || []);
-            const attachments = [...links];
-
-            // 1. Files validation
-            // Multer 'limits' option handles max count (5), but let's be safe
-            if (files && files.length > 5) {
-                return res.status(400).json({ message: "Chỉ được upload tối đa 5 file" });
-            }
-
-            // 2. Size validation
-            if (files) {
-                const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-                if (totalSize > 25 * 1024 * 1024) { // 25MB
-                    return res.status(400).json({ message: "Tổng dung lượng file không được vượt quá 25MB" });
-                }
-            }
-
-            // 3. Upload to Cloudinary
-            if (files && files.length > 0) {
-                const uploadPromises = files.map(file => uploadToCloudinary(file, "GETVINI/ERP/opportunities"));
-
-                const uploadedFiles = await Promise.all(uploadPromises);
-                attachments.push(...uploadedFiles);
-            }
+            // req.body should now be plain JSON including pre-uploaded attachments
+            const { services, attachments, ...rest } = req.body;
 
             const result = await this.opportunityService.create({
-                ...req.body,
-                services,
-                attachments,
+                ...rest,
+                services: services || [],
+                attachments: attachments || [],
                 accountId
             });
             res.status(201).json(result);
-
         } catch (error: any) {
             res.status(400).json({ message: error.message });
         }
@@ -77,70 +50,8 @@ export class OpportunityController {
     update = async (req: Request, res: Response) => {
         try {
             const id = req.params.id as string;
-            const files = req.files as Express.Multer.File[];
-
-            // Fetch existing opportunity to preserve attachments if not provided
-            const existingOpportunity = await this.opportunityService.getOne(id);
-
-            let currentAttachments = [];
-            if (req.body.attachments) {
-                try {
-                    currentAttachments = JSON.parse(req.body.attachments);
-                } catch (e) {
-                    currentAttachments = [];
-                }
-            } else {
-                currentAttachments = existingOpportunity.attachments || [];
-            }
-
-            let links = [];
-            if (req.body.links) {
-                try {
-                    links = JSON.parse(req.body.links);
-                } catch (e) {
-                    links = [];
-                }
-            }
-
-            let services = [];
-            if (req.body.services) {
-                services = typeof req.body.services === 'string' ? JSON.parse(req.body.services) : req.body.services;
-            }
-
-            let finalAttachments = [...currentAttachments, ...links];
-
-            // Validations
-            const newFilesCount = files ? files.length : 0;
-            const existingFilesCount = finalAttachments.filter((a: any) => a.type === 'FILE').length;
-
-            if (newFilesCount + existingFilesCount > 5) {
-                return res.status(400).json({ message: "Tổng số file (cũ + mới) không được vượt quá 5" });
-            }
-
-            if (files) {
-                const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-                if (totalSize > 25 * 1024 * 1024) {
-                    return res.status(400).json({ message: "Tổng dung lượng file mới không được vượt quá 25MB" });
-                }
-            }
-
-            // Upload NEW files
-            if (files && files.length > 0) {
-                const uploadPromises = files.map(file => uploadToCloudinary(file, "GETVINI/ERP/opportunities"));
-                const uploadedFiles = await Promise.all(uploadPromises);
-                finalAttachments.push(...uploadedFiles);
-            }
-
-            const updateData: any = {
-                ...req.body,
-                attachments: finalAttachments
-            };
-
-            if (req.body.services) {
-                updateData.services = services;
-            }
-
-            const result = await this.opportunityService.update(id, updateData);
+            // req.body should now be plain JSON including pre-uploaded or existing attachments/services
+            const result = await this.opportunityService.update(id, req.body);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });
