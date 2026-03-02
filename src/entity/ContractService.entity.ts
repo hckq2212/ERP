@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Services } from "./Service.entity";
 import { Jobs } from "./Job.entity";
@@ -35,6 +35,13 @@ export class ContractServices extends BaseEntity {
 
     @OneToMany(() => Tasks, (task) => task.contractService)
     tasks: Tasks[];
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    outputTaskId: string;
+
+    @ManyToOne(() => Tasks, { nullable: true })
+    @JoinColumn({ name: "outputTaskId" })
+    outputTask: Tasks;
 
     @ManyToOne(() => ContractAddendums, (addendum) => addendum.services, { nullable: true })
     addendum: ContractAddendums;

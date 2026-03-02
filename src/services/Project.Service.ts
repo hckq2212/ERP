@@ -69,7 +69,19 @@ export class ProjectService {
     async getOne(id: string) {
         const project = await this.projectRepository.findOne({
             where: { id },
-            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation", "contract.services", "contract.services.service"],
+            relations: [
+                "contract",
+                "team",
+                "team.teamLead",
+                "tasks",
+                "tasks.assignee",
+                "tasks.job",
+                "tasks.quotation",
+                "contract.services",
+                "contract.services.service",
+                "contract.services.outputTask",
+            ],
+
             select: {
                 id: true,
                 name: true,
@@ -90,7 +102,15 @@ export class ProjectService {
                         service: {
                             id: true,
                             name: true
+                        },
+                        outputTask: {
+                            id: true,
+                            name: true,
+                            status: true,
+                            result: true,
+                            code: true
                         }
+
                     }
                 },
                 team: {
@@ -251,9 +271,16 @@ export class ProjectService {
                     attachments: contract.attachments || [] // Inherit attachments from contract
                 });
 
-                await this.taskRepository.save(task);
+                const savedTask = await this.taskRepository.save(task);
+
+                // If this job is the output job of the service, mark it as outputTask
+                if (cs.service.outputJobId === job.id) {
+                    cs.outputTaskId = savedTask.id;
+                    await this.contractServiceRepository.save(cs);
+                }
             }
         }
+
 
         return project;
     }
