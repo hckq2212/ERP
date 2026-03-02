@@ -34,6 +34,9 @@ export class Vendors extends BaseEntity {
     type: PartnerType;
 
     @Column({ nullable: true })
+    bankName: string;
+
+    @Column({ nullable: true })
     bankAccount: string;
 
     @Column({ nullable: true })

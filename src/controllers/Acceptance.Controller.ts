@@ -6,7 +6,7 @@ export class AcceptanceController {
 
     createRequest = async (req: Request, res: Response) => {
         try {
-            const userId = (req as any).user?.id || req.body.userId; // Prefer token user
+            const userId = (req as any).user?.userId || req.body.userId; // Prefer profile userId
             if (!userId) throw new Error("Unauthorized: Missing user information");
 
             const result = await this.acceptanceService.createRequest({
@@ -21,7 +21,7 @@ export class AcceptanceController {
 
     approveRequest = async (req: Request, res: Response) => {
         try {
-            const approverId = (req as any).user?.id || req.body?.approverId;
+            const approverId = (req as any).user?.userId || req.body?.approverId;
             const feedback = req.body?.feedback;
             const result = await this.acceptanceService.approveRequest(req.params.id as string, approverId, feedback);
             res.status(200).json(result);
@@ -32,7 +32,7 @@ export class AcceptanceController {
 
     rejectRequest = async (req: Request, res: Response) => {
         try {
-            const approverId = (req as any).user?.id || req.body?.approverId;
+            const approverId = (req as any).user?.userId || req.body?.approverId;
             const feedback = req.body?.feedback;
             const result = await this.acceptanceService.rejectRequest(req.params.id as string, approverId, feedback);
             res.status(200).json(result);
@@ -61,7 +61,7 @@ export class AcceptanceController {
 
     processRequest = async (req: Request, res: Response) => {
         try {
-            const approverId = (req as any).user?.id || req.body?.approverId;
+            const approverId = (req as any).user?.userId || req.body?.approverId;
             const result = await this.acceptanceService.processRequest(req.params.id as string, approverId, req.body.decisions);
             res.status(200).json(result);
         } catch (error) {

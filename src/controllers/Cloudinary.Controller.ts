@@ -17,7 +17,7 @@ export class CloudinaryController {
             const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
             // Log status for server-side debugging
-            console.log(`[Cloudinary DEBUG] cloudName: ${cloudName}, apiKey: ${apiKey ? 'exists' : 'missing'}, apiSecret: ${apiSecret ? 'exists' : 'missing'}`);
+            // console.log(`[Cloudinary DEBUG] cloudName: ${cloudName}, apiKey: ${apiKey ? 'exists' : 'missing'}, apiSecret: ${apiSecret ? 'exists' : 'missing'}`);
 
             if (!cloudName || cloudName === 'undefined' || !apiKey || apiKey === 'undefined' || !apiSecret) {
                 console.error("[Cloudinary] CONFIGURATION ERROR: Missing or invalid keys in .env", { cloudName, apiKey });

@@ -1,20 +1,9 @@
 import { Router } from "express";
 import { OpportunityController } from "../controllers/Opportunity.Controller";
-import multer from "multer";
 import { authMiddleware } from "../middlewares/Auth.Middleware";
 
 const router = Router();
 const opportunityController = new OpportunityController();
-
-// Multer config
-const storage = multer.memoryStorage();
-const upload = multer({
-    storage: storage,
-    limits: {
-        fileSize: 25 * 1024 * 1024, // 25MB (individual file limit check, but we check total manually)
-        files: 5 // Max 5 files
-    }
-});
 
 router.get("/", authMiddleware, opportunityController.getAll);
 router.get("/:id", opportunityController.getOne);
