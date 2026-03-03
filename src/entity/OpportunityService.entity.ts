@@ -1,8 +1,9 @@
-import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Services } from "./Service.entity";
 import { Opportunities } from "./Opportunity.entity";
 import { ContractServices } from "./ContractService.entity";
+import { OpportunityPackages } from "./OpportunityPackage.entity";
 
 @Entity()
 export class OpportunityServices extends BaseEntity {
@@ -12,6 +13,13 @@ export class OpportunityServices extends BaseEntity {
 
     @ManyToOne(() => Opportunities, (opportunity) => opportunity.services)
     opportunity: Opportunities;
+
+    @ManyToOne(() => OpportunityPackages, (pkg) => pkg.services, { nullable: true })
+    @JoinColumn({ name: "opportunityPackageId" })
+    opportunityPackage: OpportunityPackages;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    opportunityPackageId: string;
 
     @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
     sellingPrice: number;

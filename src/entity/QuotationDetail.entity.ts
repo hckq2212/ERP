@@ -24,4 +24,19 @@ export class QuotationDetails extends BaseEntity {
 
     @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
     costAtSale: number; // Estimated cost per unit (for margin calc)
+
+    @Column({ nullable: true })
+    name: string; // Snapshot of service name
+
+    @Column({ type: "int", default: 1, nullable: true })
+    packageQuantity: number; // Quantity of the package this item belongs to
+
+    @Column({ nullable: true })
+    packageName: string;
+
+    @Column({ nullable: true })
+    servicePackageId: string;
+
+    @Column({ default: false })
+    isPackageService: boolean;
 }

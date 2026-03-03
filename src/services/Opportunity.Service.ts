@@ -5,6 +5,8 @@ import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { Services } from "../entity/Service.entity";
 import { ReferralPartners } from "../entity/ReferralPartner.entity";
 import { Users } from "../entity/User.entity";
+import { OpportunityPackages } from "../entity/OpportunityPackage.entity";
+import { ServicePackages } from "../entity/ServicePackage.entity";
 import { Like } from "typeorm";
 
 export class OpportunityService {
@@ -12,6 +14,10 @@ export class OpportunityService {
     private customerRepository = AppDataSource.getRepository(Customers);
     private referralPartnerRepository = AppDataSource.getRepository(ReferralPartners);
     private userRepository = AppDataSource.getRepository(Users);
+    private opportunityPackageRepository = AppDataSource.getRepository(OpportunityPackages);
+    private opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
+    private serviceRepository = AppDataSource.getRepository(Services);
+    private packageRepository = AppDataSource.getRepository(ServicePackages);
 
     async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
         const page = parseInt(filters.page) || 1;
@@ -66,7 +72,18 @@ export class OpportunityService {
     async getOne(id: string) {
         const opportunity = await this.opportunityRepository.findOne({
             where: { id },
-            relations: ["customer", "referralPartner", "services", "quotations", "contracts", "createdBy"]
+            relations: [
+                "customer",
+                "referralPartner",
+                "services",
+                "services.service",
+                "packages",
+                "packages.services",
+                "packages.services.service",
+                "quotations",
+                "contracts",
+                "createdBy"
+            ]
         });
         if (!opportunity) {
             throw new Error("Không tìm thấy cơ hội kinh doanh");
@@ -103,6 +120,7 @@ export class OpportunityService {
             leadAddress,
             leadTaxId,
             services,
+            packages,
             accountId,
             ...opportunityData
         } = data;
@@ -173,10 +191,8 @@ export class OpportunityService {
 
         const savedOpportunity = await this.opportunityRepository.save(opportunity);
 
-        // Handle service selection with quantity
-        if (services && Array.isArray(services)) {
-            await this.updateServices(savedOpportunity, services);
-        }
+        // Handle service and package selection
+        await this.syncServicesAndPackages(savedOpportunity, services, packages);
 
         return await this.getOne(savedOpportunity.id);
     }
@@ -193,6 +209,7 @@ export class OpportunityService {
             leadAddress,
             leadTaxId,
             services,
+            packages,
             ...opportunityData
         } = data;
 
@@ -255,9 +272,9 @@ export class OpportunityService {
         Object.assign(opportunity, opportunityData);
         const savedOpportunity = await this.opportunityRepository.save(opportunity);
 
-        // Update services if provided
-        if (services && Array.isArray(services)) {
-            await this.updateServices(savedOpportunity, services);
+        // Update services and packages if provided
+        if ((services && Array.isArray(services)) || (packages && Array.isArray(packages))) {
+            await this.syncServicesAndPackages(savedOpportunity, services, packages);
         }
 
         return await this.getOne(savedOpportunity.id);
@@ -282,31 +299,63 @@ export class OpportunityService {
         return { message: "Duyệt cơ hội thành công", opportunity };
     }
 
-    private async updateServices(opportunity: Opportunities, services: any[]) {
-        const opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
-        const serviceRepository = AppDataSource.getRepository(Services);
+    private async syncServicesAndPackages(opportunity: Opportunities, services: any[], packages: any[]) {
+        // Clear existing services and packages
+        await this.opportunityServiceRepository.delete({ opportunity: { id: opportunity.id } });
+        await this.opportunityPackageRepository.delete({ opportunity: { id: opportunity.id } });
 
-        // Simple approach: remove old and add new (or you can do smart update)
-        await opportunityServiceRepository.delete({ opportunity: { id: opportunity.id } });
+        // Handle Packages
+        if (packages && Array.isArray(packages)) {
+            for (const pkgItem of packages) {
+                const pkg = this.opportunityPackageRepository.create({
+                    opportunity: opportunity,
+                    servicePackageId: pkgItem.servicePackageId,
+                    name: pkgItem.name,
+                    description: pkgItem.description,
+                    quantity: pkgItem.quantity || 1
+                });
+                const savedPkg = await this.opportunityPackageRepository.save(pkg);
 
-        for (const item of services) {
-            const serviceId = typeof item === 'string' ? item : item.id;
-            const quantity = typeof item === 'object' ? (item.quantity || 1) : 1;
-            // You might want to pass price overrides too
+                if (pkgItem.services && Array.isArray(pkgItem.services)) {
+                    for (const s of pkgItem.services) {
+                        const service = await this.serviceRepository.findOneBy({ id: s.serviceId || s.id });
+                        if (!service) continue;
 
-            const service = await serviceRepository.findOneBy({ id: serviceId });
-            if (!service) {
-                throw new Error(`Không tìm thấy dịch vụ với ID: ${serviceId}. Vui lòng kiểm tra lại danh sách dịch vụ.`);
+                        const oppService = this.opportunityServiceRepository.create({
+                            opportunity: opportunity,
+                            opportunityPackage: savedPkg,
+                            service: service,
+                            sellingPrice: s.sellingPrice || service.costPrice || 0,
+                            costAtSale: service.costPrice || 0,
+                            quantity: (s.quantity || 1) * (savedPkg.quantity || 1)
+                        });
+                        await this.opportunityServiceRepository.save(oppService);
+                    }
+                }
             }
+        }
 
-            const oppService = opportunityServiceRepository.create({
-                opportunity: opportunity,
-                service: service,
-                sellingPrice: service.costPrice || 0,
-                costAtSale: service.costPrice || 0,
-                quantity: quantity
-            });
-            await opportunityServiceRepository.save(oppService);
+        // Handle Standalone Services
+        if (services && Array.isArray(services)) {
+            for (const item of services) {
+                const serviceId = typeof item === 'string' ? item : (item.serviceId || item.id);
+                const quantity = typeof item === 'object' ? (item.quantity || 1) : 1;
+                const sellingPrice = typeof item === 'object' ? item.sellingPrice : undefined;
+
+                const service = await this.serviceRepository.findOneBy({ id: serviceId });
+                if (!service) {
+                    throw new Error(`Không tìm thấy dịch vụ với ID: ${serviceId}.`);
+                }
+
+                const oppService = this.opportunityServiceRepository.create({
+                    opportunity: opportunity,
+                    service: service,
+                    sellingPrice: sellingPrice || service.costPrice || 0,
+                    costAtSale: service.costPrice || 0,
+                    quantity: quantity
+                });
+                await this.opportunityServiceRepository.save(oppService);
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ import { OpportunityServices } from "./OpportunityService.entity";
 import { Contracts } from "./Contract.entity";
 import { ReferralPartners } from "./ReferralPartner.entity";
 import { Users } from "./User.entity";
+import { OpportunityPackages } from "./OpportunityPackage.entity";
 
 export enum CustomerType {
     DIRECT = "DIRECT", // Khách hàng trực tiếp
@@ -119,6 +120,9 @@ export class Opportunities extends BaseEntity {
 
     @OneToMany(() => Quotations, (quotation) => quotation.opportunity)
     quotations: Quotations[];
+
+    @OneToMany(() => OpportunityPackages, (oppPackage) => oppPackage.opportunity)
+    packages: OpportunityPackages[];
 
     @OneToMany(() => OpportunityServices, (oppService) => oppService.opportunity)
     services: OpportunityServices[];

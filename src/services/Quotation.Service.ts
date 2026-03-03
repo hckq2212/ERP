@@ -3,6 +3,7 @@ import { Quotations, QuotationStatus, QuotationType } from "../entity/Quotation.
 import { QuotationDetails } from "../entity/QuotationDetail.entity";
 import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
 import { OpportunityServices } from "../entity/OpportunityService.entity";
+import { OpportunityPackages } from "../entity/OpportunityPackage.entity";
 import { Services } from "../entity/Service.entity";
 import { Tasks, PricingStatus, TaskStatus } from "../entity/Task.entity";
 import { ContractAddendums, AddendumStatus } from "../entity/ContractAddendum.entity";
@@ -12,6 +13,7 @@ export class QuotationService {
     private quotationDetailRepository = AppDataSource.getRepository(QuotationDetails);
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
     private opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
+    private opportunityPackageRepository = AppDataSource.getRepository(OpportunityPackages);
     private taskRepository = AppDataSource.getRepository(Tasks);
 
     async getAll() {
@@ -43,7 +45,7 @@ export class QuotationService {
 
         const opportunity = await this.opportunityRepository.findOne({
             where: { id: opportunityId },
-            relations: ["services", "services.service"]
+            relations: ["services", "services.service", "packages", "packages.services", "packages.services.service"]
         });
 
         if (!opportunity) throw new Error("Không tìm thấy cơ hội kinh doanh");
@@ -64,28 +66,54 @@ export class QuotationService {
 
         const savedQuotation = await this.quotationRepository.save(quotation);
 
-        // Copy logic
         let total = 0;
-        if (opportunity.services) {
-            for (const oppService of opportunity.services) {
-                const detail = this.quotationDetailRepository.create({
-                    quotation: savedQuotation,
-                    service: oppService.service,
-                    quantity: oppService.quantity,
-                    sellingPrice: oppService.sellingPrice,
-                    costAtSale: oppService.costAtSale
-                });
-                await this.quotationDetailRepository.save(detail);
 
-                total += Number(detail.sellingPrice) * detail.quantity;
+        // 1. Copy standalone services
+        const standaloneServices = opportunity.services?.filter(s => !s.opportunityPackageId) || [];
+        for (const oppService of standaloneServices) {
+            const detail = this.quotationDetailRepository.create({
+                quotation: savedQuotation,
+                service: oppService.service,
+                quantity: oppService.quantity,
+                sellingPrice: oppService.sellingPrice,
+                costAtSale: oppService.costAtSale,
+                name: oppService.service?.name || 'Standalone Service',
+                packageQuantity: 1, // Standalone is always 1 for norm calc
+                isPackageService: false
+            });
+            await this.quotationDetailRepository.save(detail);
+            total += Number(detail.sellingPrice) * detail.quantity;
+        }
+
+        // 2. Copy packages
+        if (opportunity.packages) {
+            for (const oppPkg of opportunity.packages) {
+                if (oppPkg.services) {
+                    for (const s of oppPkg.services) {
+                        const detail = this.quotationDetailRepository.create({
+                            quotation: savedQuotation,
+                            service: s.service,
+                            quantity: Number(s.quantity) * Number(oppPkg.quantity || 1),
+                            sellingPrice: s.sellingPrice,
+                            costAtSale: s.costAtSale,
+                            name: s.service?.name || 'Package Item',
+                            packageQuantity: oppPkg.quantity || 1,
+                            packageName: oppPkg.name,
+                            servicePackageId: oppPkg.servicePackageId,
+                            isPackageService: true
+                        });
+                        await this.quotationDetailRepository.save(detail);
+                        total += Number(detail.sellingPrice) * detail.quantity;
+                    }
+                }
             }
         }
 
         savedQuotation.totalAmount = total;
 
         // Update Opportunity Status to QUOTATION_DRAFTING if it's new
-        if (opportunity.status !== OpportunityStatus.PENDING_QUOTE_APPROVAL && opportunity.status !== OpportunityStatus.QUOTE_APPROVED) {
-            opportunity.status = OpportunityStatus.PENDING_QUOTE_APPROVAL;
+        if (opportunity.status === OpportunityStatus.PENDING_OPP_APPROVAL) {
+            opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
             await this.opportunityRepository.save(opportunity);
         }
 
@@ -206,7 +234,12 @@ export class QuotationService {
                     service,
                     quantity: item.quantity || 1,
                     sellingPrice: item.sellingPrice || 0,
-                    costAtSale: item.costAtSale || 0
+                    costAtSale: item.costAtSale || 0,
+                    name: item.name || service.name,
+                    packageQuantity: item.packageQuantity || 1,
+                    packageName: item.packageName,
+                    servicePackageId: item.servicePackageId,
+                    isPackageService: item.isPackageService || false
                 });
 
                 await this.quotationDetailRepository.save(detail);
@@ -268,19 +301,38 @@ export class QuotationService {
         const opportunity = quotation.opportunity;
         // ... (existing initial sync logic)
 
-        // Wipe old Opp Services
+        // Wipe old Opp Services & Packages
         await this.opportunityServiceRepository.delete({ opportunity: { id: opportunity.id } });
+        await this.opportunityPackageRepository.delete({ opportunity: { id: opportunity.id } });
 
+        const packageMap = new Map<string, OpportunityPackages>();
         let totalRevenue = 0;
         let totalCost = 0;
 
         for (const detail of quotation.details) {
+            let oppPkg = null;
+            if (detail.isPackageService && detail.packageName) {
+                const pkgKey = `${detail.packageName}_${detail.packageQuantity}`;
+                if (!packageMap.has(pkgKey)) {
+                    const newPkg = this.opportunityPackageRepository.create({
+                        opportunity,
+                        name: detail.packageName,
+                        quantity: detail.packageQuantity || 1,
+                        servicePackageId: detail.servicePackageId
+                    });
+                    const savedPkg = await this.opportunityPackageRepository.save(newPkg);
+                    packageMap.set(pkgKey, savedPkg);
+                }
+                oppPkg = packageMap.get(pkgKey);
+            }
+
             const oppService = this.opportunityServiceRepository.create({
                 opportunity: opportunity,
                 service: detail.service,
                 quantity: detail.quantity,
                 sellingPrice: detail.sellingPrice,
-                costAtSale: detail.costAtSale
+                costAtSale: detail.costAtSale,
+                opportunityPackage: oppPkg
             });
             await this.opportunityServiceRepository.save(oppService);
 

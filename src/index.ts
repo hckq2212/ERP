@@ -28,6 +28,7 @@ import jobCriteriaRoute from "./routes/JobCriteria.Route"
 import taskReviewRoute from "./routes/TaskReview.Route"
 import acceptanceRoute from "./routes/Acceptance.Route"
 import cloudinaryRoute from "./routes/Cloudinary.Route"
+import servicePackageRoute from "./routes/ServicePackage.Route"
 
 
 
@@ -85,6 +86,7 @@ app.use("/api/job-criteria", jobCriteriaRoute)
 app.use("/api/task-reviews", taskReviewRoute)
 app.use("/api/acceptance", acceptanceRoute)
 app.use("/api/cloudinary", cloudinaryRoute)
+app.use("/api/service-packages", servicePackageRoute)
 
 
 
