@@ -99,6 +99,9 @@ export class ProjectService {
                         sellingPrice: true,
                         status: true,
                         result: true,
+                        name: true,
+                        packageName: true,
+                        isPackageService: true,
                         service: {
                             id: true,
                             name: true
@@ -228,16 +231,21 @@ export class ProjectService {
         // 2. Fetch Contract Services with their Jobs
         const contractServices = await this.contractServiceRepository.find({
             where: { contract: { id: contract.id } },
-            relations: ["service", "service.jobs"]
+            relations: ["service", "service.jobs", "service.outputJob"]
         });
 
         // 3. Generate Tasks for each Job in each Service
         for (const cs of contractServices) {
-            if (!cs.service || !cs.service.jobs) continue;
+            if (!cs.service) continue;
 
-            for (const job of cs.service.jobs) {
-                // Avoid duplicate tasks for the same job and contract service?
-                // Usually, one contract service item = a set of tasks.
+            const jobsToProcess: Jobs[] = [];
+            if (cs.service.jobs) jobsToProcess.push(...cs.service.jobs);
+            if (cs.service.outputJob && !jobsToProcess.find(j => j.id === cs.service.outputJob.id)) {
+                jobsToProcess.push(cs.service.outputJob);
+            }
+
+            for (const job of jobsToProcess) {
+                // Avoid duplicate tasks for the same job and contract service
                 const existingTask = await this.taskRepository.findOne({
                     where: {
                         project: { id: project.id },
@@ -246,32 +254,35 @@ export class ProjectService {
                     }
                 });
 
-                if (existingTask) continue;
+                let savedTask;
+                if (existingTask) {
+                    savedTask = existingTask;
+                } else {
+                    // Calculate Sequence for this specific job in this project
+                    const count = await this.taskRepository.count({
+                        where: {
+                            project: { id: project.id },
+                            job: { id: job.id }
+                        }
+                    });
 
-                // Calculate Sequence for this specific job in this project
-                const count = await this.taskRepository.count({
-                    where: {
-                        project: { id: project.id },
-                        job: { id: job.id }
-                    }
-                });
+                    const seq = (count + 1).toString().padStart(2, '0');
+                    const jobCode = job.code || `JOB${job.id}`;
+                    const taskCode = `${contract.contractCode} - ${jobCode} - ${seq}`;
 
-                const seq = (count + 1).toString().padStart(2, '0');
-                const jobCode = job.code || `JOB${job.id}`;
-                const taskCode = `${contract.contractCode} - ${jobCode} - ${seq}`;
+                    const task = this.taskRepository.create({
+                        code: taskCode,
+                        name: job.name,
+                        project: project,
+                        job: job,
+                        contractService: cs,
+                        status: TaskStatus.PENDING,
+                        performerType: job.defaultPerformerType === "INTERNAL" ? "INTERNAL" : "VENDOR",
+                        attachments: contract.attachments || []
+                    });
 
-                const task = this.taskRepository.create({
-                    code: taskCode,
-                    name: job.name,
-                    project: project,
-                    job: job,
-                    contractService: cs,
-                    status: TaskStatus.PENDING,
-                    performerType: job.defaultPerformerType === "INTERNAL" ? "INTERNAL" : "VENDOR",
-                    attachments: contract.attachments || [] // Inherit attachments from contract
-                });
-
-                const savedTask = await this.taskRepository.save(task);
+                    savedTask = await this.taskRepository.save(task);
+                }
 
                 // If this job is the output job of the service, mark it as outputTask
                 if (cs.service.outputJobId === job.id) {

@@ -109,6 +109,12 @@ export class AcceptanceService {
         for (const s of request.services) {
             s.status = ContractServiceStatus.COMPLETED;
             await this.serviceRepo.save(s);
+
+            // Fetch and complete all tasks for this service
+            await this.taskRepo.update(
+                { contractService: { id: s.id } },
+                { status: TaskStatus.COMPLETED, actualEndDate: new Date() }
+            );
         }
 
         // Notify requester
@@ -199,6 +205,12 @@ export class AcceptanceService {
                 service.status = ContractServiceStatus.COMPLETED;
                 service.feedback = null;
                 anyApproved = true;
+
+                // Fetch and complete all tasks for this service
+                await this.taskRepo.update(
+                    { contractService: { id: service.id } },
+                    { status: TaskStatus.COMPLETED, actualEndDate: new Date() }
+                );
             } else {
                 service.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
                 service.feedback = decision.feedback || "Từ chối nghiệm thu";

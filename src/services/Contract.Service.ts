@@ -11,6 +11,8 @@ import { ContractServices } from "../entity/ContractService.entity";
 import { QuotationStatus } from "../entity/Quotation.entity";
 import { ProjectService } from "./Project.Service";
 import { DebtService } from "./Debt.Service";
+import { NotificationService } from "./Notification.Service";
+import { Users } from "../entity/User.entity";
 
 
 
@@ -21,8 +23,10 @@ export class ContractService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
     private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
     private contractServiceRepository = AppDataSource.getRepository(ContractServices);
+    private userRepository = AppDataSource.getRepository(Users);
     private projectService = new ProjectService();
     private debtService = new DebtService();
+    private notificationService = new NotificationService();
 
 
     async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
@@ -99,7 +103,7 @@ export class ContractService {
         return `${prefix}-${sequence}`;
     }
 
-    async create(data: any) {
+    async create(data: any, userInfo?: { id: string }) {
         const { opportunityId, ...contractData } = data;
 
         // Auto-generate code
@@ -214,7 +218,9 @@ export class ContractService {
             cost: finalCost || 0,
             customer: customer,
             opportunity: opportunity,
-            attachments: opportunity?.attachments || [] // Copy attachments
+            attachments: opportunity?.attachments || [], // Copy attachments
+            description: opportunity?.description || contractData.description,
+            createdBy: userInfo ? { id: userInfo.id } as Users : undefined
         });
 
         const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
@@ -232,8 +238,12 @@ export class ContractService {
                     const cs = this.contractServiceRepository.create({
                         contract: savedContract,
                         service: os.service,
+                        serviceId: os.service?.id,
                         sellingPrice: os.sellingPrice,
-                        opportunityService: os
+                        opportunityService: os,
+                        name: os.name,
+                        packageName: os.packageName,
+                        isPackageService: os.isPackageService
                     });
                     await this.contractServiceRepository.save(cs);
                 }
@@ -264,6 +274,7 @@ export class ContractService {
         const contract = await this.getOne(id);
         contract.proposal_contract = fileData.url;
         contract.status = ContractStatus.PROPOSAL_UPLOADED;
+        contract.rejectionReason = null; // Clear rejection reason on re-upload
 
         // Add to attachments if not already there
         if (!contract.attachments) contract.attachments = [];
@@ -390,10 +401,43 @@ export class ContractService {
         return await this.milestoneRepository.remove(milestone);
     }
 
-    // ... Update/Delete methods can be basic for now
     async delete(id: string) {
         const contract = await this.getOne(id);
         await this.contractRepository.remove(contract);
         return { message: "Xóa hợp đồng thành công" };
+    }
+
+    async rejectProposal(id: string, reason: string, userInfo?: { id: string }) {
+        const contract = await this.contractRepository.findOne({
+            where: { id },
+            relations: ["opportunity", "opportunity.createdBy"]
+        });
+        if (!contract) throw new Error("Không tìm thấy hợp đồng");
+
+        if (contract.status !== ContractStatus.PROPOSAL_UPLOADED) {
+            throw new Error("Chỉ có thể từ chối hợp đồng đang ở trạng thái PROPOSAL_UPLOADED");
+        }
+
+        contract.status = ContractStatus.PROPOSAL_REJECTED;
+        contract.rejectionReason = reason;
+
+        const savedContract = await this.contractRepository.save(contract);
+
+        // Notify Opportunity Creator
+        if (contract.opportunity?.createdBy) {
+            const sender = userInfo ? { id: userInfo.id } as Users : undefined;
+            await this.notificationService.createNotification({
+                title: "Bản dự thảo hợp đồng bị từ chối",
+                content: `Bản dự thảo cho hợp đồng ${contract.contractCode} đã bị từ chối với lý do: ${reason}`,
+                type: "CONTRACT_REJECTION",
+                recipient: contract.opportunity.createdBy,
+                sender: sender,
+                relatedEntityId: contract.id,
+                relatedEntityType: "CONTRACT",
+                link: `/opportunities/${contract.opportunity.id}`
+            });
+        }
+
+        return savedContract;
     }
 }

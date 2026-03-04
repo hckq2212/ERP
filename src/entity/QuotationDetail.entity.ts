@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne } from "typeorm";
+import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Quotations } from "./Quotation.entity";
 import { Services } from "./Service.entity";
@@ -11,7 +11,11 @@ export class QuotationDetails extends BaseEntity {
     quotation: Quotations;
 
     @ManyToOne(() => Services, { nullable: true })
+    @JoinColumn({ name: "serviceId" })
     service: Services;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    serviceId: string;
 
     @ManyToOne(() => Jobs, { nullable: true })
     job: Jobs;

@@ -13,6 +13,7 @@ router.delete("/:id", contractController.delete);
 // Proposal Workflow
 router.post("/:id/proposal", contractController.uploadProposal);
 router.post("/:id/approve-proposal", contractController.approveProposal);
+router.post("/:id/reject-proposal", contractController.rejectProposal);
 router.post("/:id/signed", contractController.uploadSigned);
 
 // Milestones

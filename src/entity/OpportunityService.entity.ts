@@ -9,7 +9,11 @@ import { OpportunityPackages } from "./OpportunityPackage.entity";
 export class OpportunityServices extends BaseEntity {
 
     @ManyToOne(() => Services, (service) => service.opportunityServices)
+    @JoinColumn({ name: "serviceId" })
     service: Services;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    serviceId: string;
 
     @ManyToOne(() => Opportunities, (opportunity) => opportunity.services)
     opportunity: Opportunities;
@@ -29,6 +33,15 @@ export class OpportunityServices extends BaseEntity {
 
     @Column({ type: "int", default: 1 })
     quantity: number;
+
+    @Column({ nullable: true })
+    name: string; // Snapshot of service name
+
+    @Column({ nullable: true })
+    packageName: string; // Snapshot of package name
+
+    @Column({ default: false })
+    isPackageService: boolean;
 
     @OneToMany(() => ContractServices, (contractService) => contractService.opportunityService)
     contractServices: ContractServices[];

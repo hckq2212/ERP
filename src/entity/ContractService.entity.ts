@@ -19,7 +19,11 @@ export enum ContractServiceStatus {
 export class ContractServices extends BaseEntity {
 
     @ManyToOne(() => Services, (service) => service.contractServices, { nullable: true })
+    @JoinColumn({ name: "serviceId" })
     service: Services;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    serviceId: string;
 
     @ManyToOne(() => Jobs, { nullable: true })
     job: Jobs;
@@ -58,6 +62,15 @@ export class ContractServices extends BaseEntity {
 
     @Column({ type: "json", nullable: true })
     result: { type: string, name: string, url: string, size?: number, publicId?: string };
+
+    @Column({ nullable: true })
+    name: string; // Snapshot of service name
+
+    @Column({ nullable: true })
+    packageName: string; // Snapshot of package name
+
+    @Column({ default: false })
+    isPackageService: boolean;
 
     @Column({ type: "text", nullable: true })
     feedback: string;

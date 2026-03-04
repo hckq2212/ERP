@@ -109,13 +109,20 @@ export class TaskReviewService {
                 relations: ["assignee", "contractService", "job", "contractService.service", "contractService.service.outputJob"]
             });
             if (task) {
-                task.status = TaskStatus.AWAITING_ACCEPTANCE;
+                const isOutputJob = task.contractService && task.contractService.service?.outputJobId === task.job?.id;
+
+                if (isOutputJob) {
+                    task.status = TaskStatus.AWAITING_ACCEPTANCE;
+                } else {
+                    task.status = TaskStatus.COMPLETED;
+                }
+
                 task.actualEndDate = new Date();
                 if (reviewNote) task.reviewNote = reviewNote;
                 await this.taskRepository.save(task);
 
                 // Sync result to ContractService if this is an output job
-                if (task.contractService && task.contractService.service?.outputJob?.id === task.job?.id) {
+                if (isOutputJob) {
                     const contractServiceRepository = AppDataSource.getRepository(ContractServices);
                     const contractService = task.contractService;
                     contractService.result = {
@@ -127,9 +134,13 @@ export class TaskReviewService {
 
                 // Notify assignee
                 if (task.assignee) {
+                    const message = isOutputJob
+                        ? `Công việc đầu ra "${task.name}" đã được duyệt nội bộ và đang chờ khách hàng nghiệm thu.`
+                        : `Công việc nội bộ "${task.name}" đã hoàn thành.`;
+
                     await this.notificationService.createNotification({
                         title: "Công việc đã được duyệt",
-                        content: `Công việc "${task.name}" của bạn đã hoàn thành sau khi được đánh giá.`,
+                        content: message,
                         type: "TASK_COMPLETED",
                         recipient: task.assignee,
                         relatedEntityId: task.id.toString(),

@@ -318,16 +318,30 @@ export class OpportunityService {
 
                 if (pkgItem.services && Array.isArray(pkgItem.services)) {
                     for (const s of pkgItem.services) {
-                        const service = await this.serviceRepository.findOneBy({ id: s.serviceId || s.id });
-                        if (!service) continue;
+                        // Ensure we use the correct ID property from the frontend payload
+                        const serviceId = s.serviceId || s.id;
+                        if (!serviceId) {
+                            console.warn(`[OpportunityService] Missing serviceId for item in package ${savedPkg.name}`);
+                            continue;
+                        }
+
+                        const service = await this.serviceRepository.findOneBy({ id: serviceId });
+                        if (!service) {
+                            console.warn(`[OpportunityService] Service not found for ID: ${serviceId}`);
+                            continue;
+                        }
 
                         const oppService = this.opportunityServiceRepository.create({
                             opportunity: opportunity,
                             opportunityPackage: savedPkg,
                             service: service,
+                            serviceId: service.id,
                             sellingPrice: s.sellingPrice || service.costPrice || 0,
                             costAtSale: service.costPrice || 0,
-                            quantity: (s.quantity || 1) * (savedPkg.quantity || 1)
+                            quantity: (s.quantity || 1) * (savedPkg.quantity || 1),
+                            name: s.name || service.name,
+                            packageName: savedPkg.name,
+                            isPackageService: true
                         });
                         await this.opportunityServiceRepository.save(oppService);
                     }
@@ -350,9 +364,12 @@ export class OpportunityService {
                 const oppService = this.opportunityServiceRepository.create({
                     opportunity: opportunity,
                     service: service,
+                    serviceId: service.id,
                     sellingPrice: sellingPrice || service.costPrice || 0,
                     costAtSale: service.costPrice || 0,
-                    quantity: quantity
+                    quantity: quantity,
+                    name: (typeof item === 'object' ? item.name : null) || service.name,
+                    isPackageService: false
                 });
                 await this.opportunityServiceRepository.save(oppService);
             }

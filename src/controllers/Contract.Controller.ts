@@ -27,7 +27,8 @@ export class ContractController {
 
     create = async (req: Request, res: Response) => {
         try {
-            const contract = await this.contractService.create(req.body);
+            const userInfo = (req as any).user;
+            const contract = await this.contractService.create(req.body, userInfo);
             res.status(201).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -61,6 +62,20 @@ export class ContractController {
     approveProposal = async (req: Request, res: Response) => {
         try {
             const contract = await this.contractService.approveProposal(req.params.id as string);
+            res.status(200).json(contract);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    rejectProposal = async (req: Request, res: Response) => {
+        try {
+            const { reason } = req.body;
+            if (!reason) {
+                return res.status(400).json({ message: "Vui lòng cung cấp lý do từ chối" });
+            }
+            const userInfo = (req as any).user;
+            const contract = await this.contractService.rejectProposal(req.params.id as string, reason, userInfo);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });

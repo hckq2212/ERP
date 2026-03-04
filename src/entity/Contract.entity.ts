@@ -8,11 +8,13 @@ import { Debts } from "./Debt.entity";
 import { ContractServices } from "./ContractService.entity";
 import { ReferralPartners } from "./ReferralPartner.entity";
 import { ContractAddendums } from "./ContractAddendum.entity";
+import { Users } from "./User.entity";
 
 export enum ContractStatus {
     DRAFT = "DRAFT",
     PROPOSAL_UPLOADED = "PROPOSAL_UPLOADED",
     PROPOSAL_APPROVED = "PROPOSAL_APPROVED",
+    PROPOSAL_REJECTED = "PROPOSAL_REJECTED",
     SIGNED = "SIGNED",
     COMPLETED = "COMPLETED",
     CANCELLED = "CANCELLED"
@@ -95,4 +97,13 @@ export class Contracts extends BaseEntity {
 
     @OneToMany(() => ContractAddendums, (addendum) => addendum.contract)
     addendums: ContractAddendums[];
+
+    @Column({ type: "text", nullable: true })
+    rejectionReason: string;
+
+    @Column({ type: "text", nullable: true })
+    description: string;
+
+    @ManyToOne(() => Users)
+    createdBy: Users;
 }

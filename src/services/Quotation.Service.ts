@@ -74,6 +74,7 @@ export class QuotationService {
             const detail = this.quotationDetailRepository.create({
                 quotation: savedQuotation,
                 service: oppService.service,
+                serviceId: oppService.service?.id,
                 quantity: oppService.quantity,
                 sellingPrice: oppService.sellingPrice,
                 costAtSale: oppService.costAtSale,
@@ -93,6 +94,7 @@ export class QuotationService {
                         const detail = this.quotationDetailRepository.create({
                             quotation: savedQuotation,
                             service: s.service,
+                            serviceId: s.service?.id,
                             quantity: Number(s.quantity) * Number(oppPkg.quantity || 1),
                             sellingPrice: s.sellingPrice,
                             costAtSale: s.costAtSale,
@@ -232,6 +234,7 @@ export class QuotationService {
                 const detail = this.quotationDetailRepository.create({
                     quotation,
                     service,
+                    serviceId: item.serviceId,
                     quantity: item.quantity || 1,
                     sellingPrice: item.sellingPrice || 0,
                     costAtSale: item.costAtSale || 0,
@@ -332,7 +335,10 @@ export class QuotationService {
                 quantity: detail.quantity,
                 sellingPrice: detail.sellingPrice,
                 costAtSale: detail.costAtSale,
-                opportunityPackage: oppPkg
+                opportunityPackage: oppPkg,
+                name: detail.name,
+                packageName: detail.packageName,
+                isPackageService: detail.isPackageService
             });
             await this.opportunityServiceRepository.save(oppService);
 
