@@ -84,7 +84,19 @@ export class TaskReviewService {
         return review;
     }
 
-    async checkAndFinalize(taskId: string, reviewNote?: string) {
+    async checkAndFinalize(taskId: string, passedCriteriaIds?: string[], reviewNote?: string) {
+        // Update criteria status in batch if provided
+        if (passedCriteriaIds) {
+            const allReviews = await this.reviewRepository.find({
+                where: { task: { id: taskId } }
+            });
+
+            for (const review of allReviews) {
+                review.isPassed = passedCriteriaIds.includes(review.id);
+            }
+            await this.reviewRepository.save(allReviews);
+        }
+
         const reviews = await this.reviewRepository.find({
             where: { task: { id: taskId } }
         });
@@ -152,7 +164,17 @@ export class TaskReviewService {
         }
     }
 
-    async rejectTask(taskId: string, reviewNote: string) {
+    async rejectTask(taskId: string, passedCriteriaIds: string[], reviewNote: string) {
+        // Update criteria status even on reject
+        const allReviews = await this.reviewRepository.find({
+            where: { task: { id: taskId } }
+        });
+
+        for (const review of allReviews) {
+            review.isPassed = passedCriteriaIds.includes(review.id);
+        }
+        await this.reviewRepository.save(allReviews);
+
         const task = await this.taskRepository.findOne({
             where: { id: taskId },
             relations: ["assignee"]

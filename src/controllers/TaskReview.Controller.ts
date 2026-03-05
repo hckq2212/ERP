@@ -26,8 +26,8 @@ export class TaskReviewController {
     finalize = async (req: Request, res: Response) => {
         try {
             const taskId = req.params.taskId as string;
-            const { reviewNote } = req.body;
-            await this.reviewService.checkAndFinalize(taskId, reviewNote);
+            const { passedCriteriaIds, reviewNote } = req.body;
+            await this.reviewService.checkAndFinalize(taskId, passedCriteriaIds, reviewNote);
             res.status(200).json({ message: "Đã xử lý duyệt công việc" });
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -37,8 +37,8 @@ export class TaskReviewController {
     reject = async (req: Request, res: Response) => {
         try {
             const taskId = req.params.taskId as string;
-            const { reviewNote } = req.body;
-            const result = await this.reviewService.rejectTask(taskId, reviewNote);
+            const { passedCriteriaIds, reviewNote } = req.body;
+            const result = await this.reviewService.rejectTask(taskId, passedCriteriaIds, reviewNote);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

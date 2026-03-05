@@ -94,6 +94,7 @@ export class ProjectService {
                     contractCode: true,
                     attachments: true,
                     status: true,
+                    description: true,
                     services: {
                         id: true,
                         sellingPrice: true,
