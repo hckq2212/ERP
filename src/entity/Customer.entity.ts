@@ -3,6 +3,7 @@ import { BaseEntity } from "./BaseEntity";
 import { ReferralPartners } from "./ReferralPartner.entity";
 import { Contracts } from "./Contract.entity";
 import { Opportunities } from "./Opportunity.entity";
+import { Users } from "./User.entity";
 
 export enum CustomerSource {
     INTERNAL = "INTERNAL",
@@ -42,4 +43,7 @@ export class Customers extends BaseEntity {
 
     @OneToMany(() => Opportunities, (opportunity) => opportunity.customer)
     opportunities: Opportunities[];
+
+    @ManyToOne(() => Users)
+    createdBy: Users;
 }

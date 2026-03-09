@@ -6,7 +6,7 @@ const router = Router();
 const opportunityController = new OpportunityController();
 
 router.get("/", authMiddleware, opportunityController.getAll);
-router.get("/:id", opportunityController.getOne);
+router.get("/:id", authMiddleware, opportunityController.getOne);
 router.post("/", authMiddleware, opportunityController.create);
 router.patch("/:id", authMiddleware, opportunityController.update);
 router.patch("/:id/approve", authMiddleware, opportunityController.approve);

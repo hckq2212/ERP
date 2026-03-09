@@ -3,11 +3,13 @@ import passport from "passport";
 
 export interface AuthRequest extends Request {
     user?: {
-        id: string;
-        userId?: string;
+        id: string;      // Account ID
+        userId?: string;  // User ID (from Users entity)
         role: string;
+        username?: string;
     };
 }
+
 
 export const authMiddleware = (req: any, res: Response, next: NextFunction) => {
     passport.authenticate("jwt", { session: false }, (err: any, user: any, info: any) => {

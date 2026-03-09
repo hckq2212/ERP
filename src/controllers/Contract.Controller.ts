@@ -18,10 +18,15 @@ export class ContractController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const contract = await this.contractService.getOne(req.params.id as string);
+            const userInfo = (req as any).user;
+            const contract = await this.contractService.getOne(req.params.id as string, userInfo);
             res.status(200).json(contract);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            if (error.message === "FORBIDDEN_ACCESS" || error.message.includes("không có quyền xem")) {
+                res.status(403).json({ message: error.message });
+            } else {
+                res.status(404).json({ message: error.message });
+            }
         }
     }
 
@@ -61,7 +66,8 @@ export class ContractController {
 
     approveProposal = async (req: Request, res: Response) => {
         try {
-            const contract = await this.contractService.approveProposal(req.params.id as string);
+            const contract = await this.contractService.approveProposal(req.params.id as string, (req as any).user);
+
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });

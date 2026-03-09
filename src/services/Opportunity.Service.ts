@@ -7,7 +7,10 @@ import { ReferralPartners } from "../entity/ReferralPartner.entity";
 import { Users } from "../entity/User.entity";
 import { OpportunityPackages } from "../entity/OpportunityPackage.entity";
 import { ServicePackages } from "../entity/ServicePackage.entity";
-import { Like } from "typeorm";
+import { Like, In } from "typeorm";
+import { SecurityService } from "./Security.Service";
+import { NotificationService } from "./Notification.Service";
+import { UserRole } from "../entity/Account.entity";
 
 export class OpportunityService {
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
@@ -18,40 +21,99 @@ export class OpportunityService {
     private opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
     private serviceRepository = AppDataSource.getRepository(Services);
     private packageRepository = AppDataSource.getRepository(ServicePackages);
+    private notificationService = new NotificationService();
 
-    async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
         const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
+        const searchTerm = filters.search ? `%${filters.search}%` : null;
 
-        const where: any = [];
-        const baseWhere: any = {};
-        if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
-            // Filter by createdBy.account.id since accountId is what we have in userInfo
-            baseWhere.createdBy = { account: { id: userInfo.id } };
+        // Apply RBAC filters
+        let rbacWhere: any = {};
+        if (userInfo) {
+            try {
+                rbacWhere = SecurityService.getOpportunityFilters(userInfo);
+            } catch (error: any) {
+                if (error.message === "FORBIDDEN_ACCESS") {
+                    return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+                }
+                throw error;
+            }
         }
 
+        // Start with common filters
+        const commonWhere: any = {};
+
         if (filters.status && filters.status !== 'ALL') {
-            baseWhere.status = filters.status;
+            commonWhere.status = filters.status;
         }
 
         if (filters.customerId) {
-            baseWhere.customer = { id: filters.customerId };
+            commonWhere.customer = { id: filters.customerId };
         }
 
-        if (filters.search) {
-            const searchTerm = `%${filters.search}%`;
-            where.push({ ...baseWhere, name: Like(searchTerm) });
-            where.push({ ...baseWhere, leadName: Like(searchTerm) });
-            where.push({ ...baseWhere, customer: { name: Like(searchTerm) } });
-            where.push({ ...baseWhere, opportunityCode: { opportunityCode: Like(searchTerm) } });
-        } else {
-            where.push(baseWhere);
+        const finalWhereConditions: any[] = [];
+
+        // Helper to combine conditions
+        const combineConditions = (base: any, additional: any) => {
+            return { ...base, ...additional };
+        };
+
+        // If RBAC returns an array (OR conditions for RBAC)
+        if (Array.isArray(rbacWhere)) {
+            for (const rbacCond of rbacWhere) {
+                const currentBase = combineConditions(commonWhere, rbacCond);
+                if (searchTerm) {
+                    const searchableFields = ["name", "leadName"];
+                    const relationSearchFields = [
+                        {
+                            customer: {
+                                ...currentBase.customer,
+                                name: Like(searchTerm)
+                            }
+                        },
+                        { opportunityCode: Like(searchTerm) } // Corrected to directly use Like on opportunityCode
+                    ];
+
+                    searchableFields.forEach(field => {
+                        finalWhereConditions.push({ ...currentBase, [field]: Like(searchTerm) });
+                    });
+                    relationSearchFields.forEach(relSearch => {
+                        finalWhereConditions.push({ ...currentBase, ...relSearch });
+                    });
+                } else {
+                    finalWhereConditions.push(currentBase);
+                }
+            }
+        } else { // RBAC returns a single object (AND conditions for RBAC)
+            const currentBase = combineConditions(commonWhere, rbacWhere);
+            if (searchTerm) {
+                const searchableFields = ["name", "leadName"];
+                const relationSearchFields = [
+                    {
+                        customer: {
+                            ...currentBase.customer,
+                            name: Like(searchTerm)
+                        }
+                    },
+                    { opportunityCode: Like(searchTerm) } // Corrected
+                ];
+
+                searchableFields.forEach(field => {
+                    finalWhereConditions.push({ ...currentBase, [field]: Like(searchTerm) });
+                });
+                relationSearchFields.forEach(relSearch => {
+                    finalWhereConditions.push({ ...currentBase, ...relSearch });
+                });
+            } else {
+                finalWhereConditions.push(currentBase);
+            }
         }
 
         const [items, total] = await this.opportunityRepository.findAndCount({
-            where: where.length > 1 ? where : where[0],
+            where: finalWhereConditions.length > 1 ? finalWhereConditions : finalWhereConditions[0],
             relations: ["customer", "referralPartner", "createdBy"],
             order: { [sortBy]: sortDir },
             skip: (page - 1) * limit,
@@ -69,9 +131,22 @@ export class OpportunityService {
         };
     }
 
-    async getOne(id: string) {
+    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+        let rbacWhere: any = {};
+        if (userInfo) {
+            rbacWhere = SecurityService.getOpportunityFilters(userInfo);
+            // If rbacWhere is an array (OR conditions), we need to wrap the find with those conditions
+            if (Array.isArray(rbacWhere)) {
+                rbacWhere = rbacWhere.map(cond => ({ id, ...cond }));
+            } else {
+                rbacWhere = { id, ...rbacWhere };
+            }
+        } else {
+            rbacWhere = { id };
+        }
+
         const opportunity = await this.opportunityRepository.findOne({
-            where: { id },
+            where: rbacWhere,
             relations: [
                 "customer",
                 "referralPartner",
@@ -86,7 +161,7 @@ export class OpportunityService {
             ]
         });
         if (!opportunity) {
-            throw new Error("Không tìm thấy cơ hội kinh doanh");
+            throw new Error("Không tìm thấy cơ hội kinh doanh hoặc bạn không có quyền xem");
         }
         return opportunity;
     }
@@ -108,7 +183,7 @@ export class OpportunityService {
         return `${prefix}-${sequence}`;
     }
 
-    async create(data: any = {}) {
+    async create(data: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
         const {
             customerId,
             referralPartnerId,
@@ -121,7 +196,6 @@ export class OpportunityService {
             leadTaxId,
             services,
             packages,
-            accountId,
             ...opportunityData
         } = data;
 
@@ -174,16 +248,16 @@ export class OpportunityService {
         }
 
         // Handle CreatedBy Logic
-        if (accountId) {
+        if (userInfo?.userId) {
             const user = await this.userRepository.findOne({
-                where: { account: { id: accountId } },
+                where: { id: userInfo.userId },
                 relations: ["account"]
             });
             if (user) {
                 opportunity.createdBy = user;
-
+                const role = user.account?.role || userInfo.role;
                 // Auto-skip approval for BOD/ADMIN
-                if (user.account?.role === "BOD" || user.account?.role === "ADMIN") {
+                if (role === "BOD" || role === "ADMIN") {
                     opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
                 }
             }
@@ -193,6 +267,30 @@ export class OpportunityService {
 
         // Handle service and package selection
         await this.syncServicesAndPackages(savedOpportunity, services, packages);
+
+        // --- Notifications ---
+        if (opportunity.createdBy) {
+            const creatorRole = opportunity.createdBy.account?.role;
+            // Notify BOD and ADMIN if creator is NOT one of them
+            if (creatorRole !== UserRole.BOD && creatorRole !== UserRole.ADMIN) {
+                const managementUsers = await this.userRepository.find({
+                    where: { account: { role: In([UserRole.BOD, UserRole.ADMIN]) } },
+                    relations: ["account"]
+                });
+
+                for (const user of managementUsers) {
+                    await this.notificationService.createNotification({
+                        title: "Cơ hội kinh doanh mới",
+                        content: `Cơ hội "${savedOpportunity.name}" (${savedOpportunity.opportunityCode}) đã được tạo bởi ${opportunity.createdBy.fullName}.`,
+                        type: "OPPORTUNITY_CREATED",
+                        recipient: user,
+                        sender: opportunity.createdBy,
+                        relatedEntityId: savedOpportunity.id,
+                        relatedEntityType: "Opportunities"
+                    });
+                }
+            }
+        }
 
         return await this.getOne(savedOpportunity.id);
     }
@@ -294,9 +392,27 @@ export class OpportunityService {
         }
 
         opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
-        await this.opportunityRepository.save(opportunity);
+        const result = await this.opportunityRepository.save(opportunity);
 
-        return { message: "Duyệt cơ hội thành công", opportunity };
+        // --- Notifications ---
+        // Fetch full record to get createdBy
+        const doc = await this.getOne(id);
+        if (doc.createdBy) {
+            const creatorRole = doc.createdBy.account?.role;
+            // Notify creator if they are NOT BOD/ADMIN
+            if (creatorRole !== UserRole.BOD && creatorRole !== UserRole.ADMIN) {
+                await this.notificationService.createNotification({
+                    title: "Cơ hội đã được duyệt",
+                    content: `Cơ hội "${doc.name}" (${doc.opportunityCode}) của bạn đã được duyệt.`,
+                    type: "OPPORTUNITY_APPROVED",
+                    recipient: doc.createdBy,
+                    relatedEntityId: doc.id,
+                    relatedEntityType: "Opportunities"
+                });
+            }
+        }
+
+        return { message: "Duyệt cơ hội thành công", opportunity: result };
     }
 
     private async syncServicesAndPackages(opportunity: Opportunities, services: any[], packages: any[]) {

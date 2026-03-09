@@ -3,6 +3,7 @@ import { BaseEntity } from "./BaseEntity";
 import { Contracts } from "./Contract.entity";
 import { ProjectTeams } from "./ProjectTeam.entity";
 import { Tasks } from "./Task.entity";
+import { Users } from "./User.entity";
 
 export enum ProjectStatus {
     PENDING_CONFIRMATION = "PENDING_CONFIRMATION", // Chờ xác nhận
@@ -46,4 +47,8 @@ export class Projects extends BaseEntity {
 
     @OneToMany(() => Tasks, (task) => task.project)
     tasks: Tasks[];
+
+    @ManyToOne(() => Users)
+    createdBy: Users;
 }
+

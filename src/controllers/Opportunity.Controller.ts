@@ -13,17 +13,26 @@ export class OpportunityController {
             const result = await this.opportunityService.getAll(filters, userInfo);
             res.status(200).json(result);
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            if (error.message === "FORBIDDEN_ACCESS") {
+                res.status(403).json({ message: "Bạn không có quyền truy cập danh sách này" });
+            } else {
+                res.status(500).json({ message: error.message });
+            }
         }
     }
 
     getOne = async (req: Request, res: Response) => {
         try {
+            const userInfo = (req as any).user;
             const id = req.params.id as string;
-            const result = await this.opportunityService.getOne(id);
+            const result = await this.opportunityService.getOne(id, userInfo);
             res.status(200).json(result);
         } catch (error: any) {
-            res.status(404).json({ message: error.message });
+            if (error.message === "FORBIDDEN_ACCESS" || error.message.includes("không có quyền xem")) {
+                res.status(403).json({ message: error.message });
+            } else {
+                res.status(404).json({ message: error.message });
+            }
         }
     }
 
@@ -38,9 +47,9 @@ export class OpportunityController {
             const result = await this.opportunityService.create({
                 ...rest,
                 services: services || [],
-                attachments: attachments || [],
-                accountId
-            });
+                attachments: attachments || []
+            }, authReq.user);
+
             res.status(201).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });

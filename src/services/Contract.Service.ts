@@ -16,6 +16,8 @@ import { Users } from "../entity/User.entity";
 
 
 
+import { SecurityService } from "./Security.Service";
+
 export class ContractService {
     private contractRepository = AppDataSource.getRepository(Contracts);
     private customerRepository = AppDataSource.getRepository(Customers);
@@ -29,18 +31,25 @@ export class ContractService {
     private notificationService = new NotificationService();
 
 
-    async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
         const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
 
-        const where: any = [];
-        const baseWhere: any = {};
-        if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
-            baseWhere.opportunity = { createdBy: { account: { id: userInfo.id } } };
+        let rbacWhere: any = {};
+        if (userInfo) {
+            try {
+                rbacWhere = SecurityService.getContractFilters(userInfo);
+            } catch (error: any) {
+                if (error.message === "FORBIDDEN_ACCESS") {
+                    return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+                }
+                throw error;
+            }
         }
 
+        const baseWhere: any = {};
         if (filters.status && filters.status !== 'ALL') {
             baseWhere.status = filters.status;
         }
@@ -49,12 +58,42 @@ export class ContractService {
             baseWhere.customer = { id: filters.customerId };
         }
 
-        if (filters.search) {
-            const searchTerm = `%${filters.search}%`;
-            where.push({ ...baseWhere, contractCode: Like(searchTerm) });
-            where.push({ ...baseWhere, customer: { name: Like(searchTerm) } });
+        // Combine search and RBAC
+        let where: any = [];
+        const combineWithSearch = (rbacCond: any) => {
+            if (filters.search) {
+                const searchTerm = `%${filters.search}%`;
+                return [
+                    { ...baseWhere, ...rbacCond, contractCode: Like(searchTerm) },
+                    {
+                        ...baseWhere,
+                        ...rbacCond,
+                        customer: {
+                            ...rbacCond.customer,
+                            name: Like(searchTerm)
+                        }
+                    }
+                ];
+            }
+            return { ...baseWhere, ...rbacCond };
+        };
+
+        if (Array.isArray(rbacWhere)) {
+            rbacWhere.forEach(cond => {
+                const combined = combineWithSearch(cond);
+                if (Array.isArray(combined)) {
+                    where.push(...combined);
+                } else {
+                    where.push(combined);
+                }
+            });
         } else {
-            where.push(baseWhere);
+            const combined = combineWithSearch(rbacWhere);
+            if (Array.isArray(combined)) {
+                where.push(...combined);
+            } else {
+                where.push(combined);
+            }
         }
 
         const [items, total] = await this.contractRepository.findAndCount({
@@ -76,13 +115,26 @@ export class ContractService {
         };
     }
 
-    async getOne(id: string) {
+    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+        let rbacWhere: any = {};
+        if (userInfo) {
+            rbacWhere = SecurityService.getContractFilters(userInfo);
+            // If rbacWhere is an array (OR conditions), we need to wrap the find with those conditions
+            if (Array.isArray(rbacWhere)) {
+                rbacWhere = rbacWhere.map(cond => ({ id, ...cond }));
+            } else {
+                rbacWhere = { id, ...rbacWhere };
+            }
+        } else {
+            rbacWhere = { id };
+        }
+
         const contract = await this.contractRepository.findOne({
-            where: { id },
+            where: rbacWhere,
             relations: ["customer", "opportunity", "milestones", "services", "debts", "addendums"]
         });
         if (!contract) {
-            throw new Error("Không tìm thấy hợp đồng");
+            throw new Error("Không tìm thấy hợp đồng hoặc bạn không có quyền xem");
         }
         return contract;
     }
@@ -103,7 +155,7 @@ export class ContractService {
         return `${prefix}-${sequence}`;
     }
 
-    async create(data: any, userInfo?: { id: string }) {
+    async create(data: any, userInfo?: { id: string, userId: string }) {
         const { opportunityId, ...contractData } = data;
 
         // Auto-generate code
@@ -171,6 +223,11 @@ export class ContractService {
                         newCustomer.source = CustomerSource.INTERNAL;
                     }
 
+                    if (userInfo?.userId) {
+                        newCustomer.createdBy = { id: userInfo.userId } as Users;
+                    } else {
+                        console.warn("[ContractService] No userId in userInfo during customer promotion");
+                    }
                     customer = await this.customerRepository.save(newCustomer);
 
                     // Update Opportunity to link to this new customer
@@ -220,8 +277,14 @@ export class ContractService {
             opportunity: opportunity,
             attachments: opportunity?.attachments || [], // Copy attachments
             description: opportunity?.description || contractData.description,
-            createdBy: userInfo ? { id: userInfo.id } as Users : undefined
-        });
+            createdBy: userInfo?.userId ? { id: userInfo.userId } as Users : undefined
+        } as Partial<Contracts>);
+
+
+        if (!contract.createdBy) {
+            console.warn("[ContractService] contract.createdBy is undefined after set. userInfo.userId:", userInfo?.userId);
+        }
+
 
         const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
 
@@ -289,16 +352,19 @@ export class ContractService {
         return await this.contractRepository.save(contract);
     }
 
-    async approveProposal(id: string) {
-        const contract = await this.getOne(id);
-        if (contract.status !== ContractStatus.PROPOSAL_UPLOADED) {
-            throw new Error("Cần upload dự thảo hợp đồng trước khi duyệt");
-        }
-        contract.status = ContractStatus.PROPOSAL_APPROVED;
-        const savedContract = await this.contractRepository.save(contract);
+    async approveProposal(id: string, userInfo?: { id: string, userId?: string }) {
+        const contract = await this.contractRepository.findOne({
+            where: { id },
+            relations: ["opportunity", "opportunity.attachments"]
+        });
+        if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
-        // Auto create project
-        await this.projectService.createFromContract(savedContract);
+        contract.status = ContractStatus.PROPOSAL_APPROVED;
+        const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
+
+        // Auto Create Project (Draft)
+        await this.projectService.createFromContract(savedContract, userInfo);
+
 
         return savedContract;
     }
@@ -407,7 +473,7 @@ export class ContractService {
         return { message: "Xóa hợp đồng thành công" };
     }
 
-    async rejectProposal(id: string, reason: string, userInfo?: { id: string }) {
+    async rejectProposal(id: string, reason: string, userInfo?: { id: string, userId: string }) {
         const contract = await this.contractRepository.findOne({
             where: { id },
             relations: ["opportunity", "opportunity.createdBy"]
@@ -425,7 +491,7 @@ export class ContractService {
 
         // Notify Opportunity Creator
         if (contract.opportunity?.createdBy) {
-            const sender = userInfo ? { id: userInfo.id } as Users : undefined;
+            const sender = userInfo?.userId ? { id: userInfo.userId } as Users : undefined;
             await this.notificationService.createNotification({
                 title: "Bản dự thảo hợp đồng bị từ chối",
                 content: `Bản dự thảo cho hợp đồng ${contract.contractCode} đã bị từ chối với lý do: ${reason}`,

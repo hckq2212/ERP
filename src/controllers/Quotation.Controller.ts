@@ -33,7 +33,7 @@ export class QuotationController {
 
     create = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.create(req.body);
+            const result = await this.quotationService.create(req.body, (req as any).user);
             res.status(201).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -60,7 +60,9 @@ export class QuotationController {
 
     reject = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.reject(req.params.id as string);
+            const id = req.params.id as string;
+            const description = req.body.description as string;
+            const result = await this.quotationService.reject(id, description);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -78,7 +80,7 @@ export class QuotationController {
 
     createAddendum = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.createAddendumQuotation(req.body);
+            const result = await this.quotationService.createAddendumQuotation(req.body, (req as any).user);
             res.status(201).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

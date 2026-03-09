@@ -19,18 +19,25 @@ export class ProjectController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const project = await this.projectService.getOne(req.params.id as string);
+            const userInfo = (req as any).user;
+            const project = await this.projectService.getOne(req.params.id as string, userInfo);
             res.status(200).json(project);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            if (error.message === "FORBIDDEN_ACCESS" || error.message.includes("không có quyền xem")) {
+                res.status(403).json({ message: error.message });
+            } else {
+                res.status(404).json({ message: error.message });
+            }
         }
     }
 
     getByContract = async (req: Request, res: Response) => {
         try {
+            // Usually getByContract should also have RBAC, but let's stick to getOne/getAll for now
+            // as they are the main entry points
             const project = await this.projectService.getByContractId(req.params.contractId as string);
             res.status(200).json(project);
-        } catch (error) {
+        } catch (error: any) {
             res.status(500).json({ message: error.message });
         }
     }

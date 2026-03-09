@@ -6,14 +6,14 @@ import { authMiddleware } from "../middlewares/Auth.Middleware";
 const router = Router();
 const projectController = new ProjectController();
 
-router.get("/", projectController.getAll);
-router.get("/:id", projectController.getOne);
-router.get("/contract/:contractId", projectController.getByContract);
+router.get("/", authMiddleware, projectController.getAll);
+router.get("/:id", authMiddleware, projectController.getOne);
+router.get("/contract/:contractId", authMiddleware, projectController.getByContract);
 
 
-router.post("/assign", projectController.assign);
+router.post("/assign", authMiddleware, projectController.assign);
 router.post("/:id/confirm", authMiddleware, projectController.confirm);
-router.post("/:id/start", projectController.start);
+router.post("/:id/start", authMiddleware, projectController.start);
 
 
 export default router;

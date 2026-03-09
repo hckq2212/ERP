@@ -6,25 +6,36 @@ export class CustomerController {
 
     getAll = async (req: Request, res: Response) => {
         try {
-            const customers = await this.customerService.getAll();
+            const userInfo = (req as any).user;
+            const customers = await this.customerService.getAll(userInfo);
             res.status(200).json(customers);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            if (error.message === "FORBIDDEN_ACCESS") {
+                res.status(403).json({ message: "Bạn không có quyền truy cập danh sách khách hàng" });
+            } else {
+                res.status(500).json({ message: error.message });
+            }
         }
     }
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const customer = await this.customerService.getOne(req.params.id as string);
+            const userInfo = (req as any).user;
+            const customer = await this.customerService.getOne(req.params.id as string, userInfo);
             res.status(200).json(customer);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            if (error.message === "FORBIDDEN_ACCESS" || error.message.includes("không có quyền xem")) {
+                res.status(403).json({ message: error.message });
+            } else {
+                res.status(404).json({ message: error.message });
+            }
         }
     }
 
     create = async (req: Request, res: Response) => {
         try {
-            const customer = await this.customerService.create(req.body);
+            const customer = await this.customerService.create(req.body, (req as any).user);
+
             res.status(201).json(customer);
         } catch (error) {
             res.status(500).json({ message: error.message });

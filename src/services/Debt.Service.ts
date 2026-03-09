@@ -2,28 +2,73 @@ import { AppDataSource } from "../data-source";
 import { Debts, DebtStatus } from "../entity/Debt.entity";
 import { PaymentMilestones } from "../entity/PaymentMilestone.entity";
 
+import { SecurityService } from "./Security.Service";
+
 export class DebtService {
     private debtRepository = AppDataSource.getRepository(Debts);
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
 
-    async getAll() {
+    async getAll(userInfo?: { id: string, role: string, userId?: string }) {
+        let rbacWhere: any = {};
+        if (userInfo) {
+            try {
+                rbacWhere = SecurityService.getDebtFilters(userInfo);
+            } catch (error: any) {
+                if (error.message === "FORBIDDEN_ACCESS") {
+                    return [];
+                }
+                throw error;
+            }
+        }
+
         return await this.debtRepository.find({
+            where: rbacWhere,
             relations: ["contract", "milestone", "payments"]
         });
     }
 
-    async getOne(id: string) {
+    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+        let rbacWhere: any = {};
+        if (userInfo) {
+            rbacWhere = SecurityService.getDebtFilters(userInfo);
+            if (Array.isArray(rbacWhere)) {
+                rbacWhere = rbacWhere.map(cond => ({ id, ...cond }));
+            } else {
+                rbacWhere = { id, ...rbacWhere };
+            }
+        } else {
+            rbacWhere = { id };
+        }
+
         const debt = await this.debtRepository.findOne({
-            where: { id },
+            where: rbacWhere,
             relations: ["contract", "milestone", "payments"]
         });
-        if (!debt) throw new Error("Không tìm thấy khoản nợ");
+        if (!debt) throw new Error("Không tìm thấy khoản nợ hoặc không có quyền truy cập");
         return debt;
     }
 
-    async getByContract(contractId: string) {
+    async getByContract(contractId: string, userInfo?: { id: string, role: string, userId?: string }) {
+        let rbacWhere: any = {};
+        if (userInfo) {
+            rbacWhere = SecurityService.getDebtFilters(userInfo);
+            if (Array.isArray(rbacWhere)) {
+                rbacWhere = rbacWhere.map(cond => ({
+                    ...cond,
+                    contract: { ...cond.contract, id: contractId }
+                }));
+            } else {
+                rbacWhere = {
+                    ...rbacWhere,
+                    contract: { ...rbacWhere.contract, id: contractId }
+                };
+            }
+        } else {
+            rbacWhere = { contract: { id: contractId } };
+        }
+
         return await this.debtRepository.find({
-            where: { contract: { id: contractId } },
+            where: rbacWhere,
             relations: ["milestone", "payments"]
         });
     }

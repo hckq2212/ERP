@@ -6,7 +6,8 @@ export class DebtController {
 
     getAll = async (req: Request, res: Response) => {
         try {
-            const result = await this.debtService.getAll();
+            const userInfo = (req as any).user;
+            const result = await this.debtService.getAll(userInfo);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -15,10 +16,15 @@ export class DebtController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const result = await this.debtService.getOne(req.params.id as string);
+            const userInfo = (req as any).user;
+            const result = await this.debtService.getOne(req.params.id as string, userInfo);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            if (error.message.includes("không có quyền truy cập")) {
+                res.status(403).json({ message: error.message });
+            } else {
+                res.status(404).json({ message: error.message });
+            }
         }
     }
 
@@ -34,7 +40,8 @@ export class DebtController {
 
     getByContract = async (req: Request, res: Response) => {
         try {
-            const result = await this.debtService.getByContract(req.params.contractId as string);
+            const userInfo = (req as any).user;
+            const result = await this.debtService.getByContract(req.params.contractId as string, userInfo);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

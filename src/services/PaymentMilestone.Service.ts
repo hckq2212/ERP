@@ -2,20 +2,70 @@ import { AppDataSource } from "../data-source";
 import { PaymentMilestones } from "../entity/PaymentMilestone.entity";
 import { Contracts } from "../entity/Contract.entity";
 
+import { SecurityService } from "./Security.Service";
+
 export class PaymentMilestoneService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
     private contractRepository = AppDataSource.getRepository(Contracts);
 
-    async getAll() {
+    async getAll(userInfo?: { id: string, role: string, userId?: string }) {
+        let rbacWhere: any = {};
+        if (userInfo) {
+            try {
+                rbacWhere = SecurityService.getPaymentMilestoneFilters(userInfo);
+            } catch (error: any) {
+                if (error.message === "FORBIDDEN_ACCESS") {
+                    return [];
+                }
+                throw error;
+            }
+        }
+
         return await this.milestoneRepository.find({
+            where: rbacWhere,
             relations: ["contract"],
+            select: {
+
+                contract: {
+                    id: true,
+                    name: true,
+                    contractCode: true,
+                    sellingPrice: true,
+                    customer: {
+                        id: true,
+                        name: true,
+                    },
+                    createdBy: {
+                        id: true,
+                        fullName: true,
+                    },
+                },
+            },
             order: { id: "ASC" }
         });
     }
 
-    async getByContract(contractId: string) {
+    async getByContract(contractId: string, userInfo?: { id: string, role: string, userId?: string }) {
+        let rbacWhere: any = {};
+        if (userInfo) {
+            rbacWhere = SecurityService.getPaymentMilestoneFilters(userInfo);
+            if (Array.isArray(rbacWhere)) {
+                rbacWhere = rbacWhere.map(cond => ({
+                    ...cond,
+                    contract: { ...cond.contract, id: contractId }
+                }));
+            } else {
+                rbacWhere = {
+                    ...rbacWhere,
+                    contract: { ...rbacWhere.contract, id: contractId }
+                };
+            }
+        } else {
+            rbacWhere = { contract: { id: contractId } };
+        }
+
         return await this.milestoneRepository.find({
-            where: { contract: { id: contractId } },
+            where: rbacWhere,
             order: { id: "ASC" }
         });
     }

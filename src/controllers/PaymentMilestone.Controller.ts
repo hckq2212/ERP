@@ -6,7 +6,8 @@ export class PaymentMilestoneController {
 
     getAll = async (req: Request, res: Response) => {
         try {
-            const result = await this.service.getAll();
+            const userInfo = (req as any).user;
+            const result = await this.service.getAll(userInfo);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -15,7 +16,8 @@ export class PaymentMilestoneController {
 
     getByContract = async (req: Request, res: Response) => {
         try {
-            const result = await this.service.getByContract(req.params.contractId as string);
+            const userInfo = (req as any).user;
+            const result = await this.service.getByContract(req.params.contractId as string, userInfo);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

@@ -3,6 +3,7 @@ import { BaseEntity } from "./BaseEntity";
 import { Opportunities } from "./Opportunity.entity";
 import { QuotationDetails } from "./QuotationDetail.entity";
 import { Tasks } from "./Task.entity";
+import { Users } from "./User.entity";
 
 export enum QuotationStatus {
     DRAFT = "DRAFT",
@@ -54,4 +55,8 @@ export class Quotations extends BaseEntity {
 
     @Column({ nullable: true })
     description: string;
+
+    @ManyToOne(() => Users)
+    createdBy: Users;
 }
+

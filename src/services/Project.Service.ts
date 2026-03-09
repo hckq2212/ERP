@@ -10,6 +10,8 @@ import { Tasks, TaskStatus } from "../entity/Task.entity";
 import { Jobs } from "../entity/Job.entity";
 import { NotificationService } from "./Notification.Service";
 
+import { SecurityService } from "./Security.Service";
+
 export class ProjectService {
     private projectRepository = AppDataSource.getRepository(Projects);
     private contractRepository = AppDataSource.getRepository(Contracts);
@@ -21,30 +23,65 @@ export class ProjectService {
 
 
 
-    async getAll(filters: any = {}, userInfo?: { id: string, role: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
         const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
 
-        const where: any = [];
-        const baseWhere: any = {};
-
-        // Filter by role if necessary (Project usually has role-based filtering too)
-        if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
-            baseWhere.team = { teamLead: { account: { id: userInfo.id } } };
+        let rbacWhere: any = {};
+        if (userInfo) {
+            try {
+                rbacWhere = SecurityService.getProjectFilters(userInfo);
+            } catch (error: any) {
+                if (error.message === "FORBIDDEN_ACCESS") {
+                    return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+                }
+                throw error;
+            }
         }
 
+        const baseWhere: any = {};
         if (filters.status && filters.status !== 'ALL') {
             baseWhere.status = filters.status;
         }
 
-        if (filters.search) {
-            const searchTerm = `%${filters.search}%`;
-            where.push({ ...baseWhere, name: Like(searchTerm) });
-            where.push({ ...baseWhere, contract: { contractCode: Like(searchTerm) } });
+        // Combine search and RBAC
+        let where: any = [];
+        const combineWithSearch = (rbacCond: any) => {
+            if (filters.search) {
+                const searchTerm = `%${filters.search}%`;
+                return [
+                    { ...baseWhere, ...rbacCond, name: Like(searchTerm) },
+                    {
+                        ...baseWhere,
+                        ...rbacCond,
+                        contract: {
+                            ...rbacCond.contract,
+                            contractCode: Like(searchTerm)
+                        }
+                    }
+                ];
+            }
+            return { ...baseWhere, ...rbacCond };
+        };
+
+        if (Array.isArray(rbacWhere)) {
+            rbacWhere.forEach(cond => {
+                const combined = combineWithSearch(cond);
+                if (Array.isArray(combined)) {
+                    where.push(...combined);
+                } else {
+                    where.push(combined);
+                }
+            });
         } else {
-            where.push(baseWhere);
+            const combined = combineWithSearch(rbacWhere);
+            if (Array.isArray(combined)) {
+                where.push(...combined);
+            } else {
+                where.push(combined);
+            }
         }
 
         const [items, total] = await this.projectRepository.findAndCount({
@@ -66,9 +103,22 @@ export class ProjectService {
         };
     }
 
-    async getOne(id: string) {
+    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+        let rbacWhere: any = {};
+        if (userInfo) {
+            rbacWhere = SecurityService.getProjectFilters(userInfo);
+            // If rbacWhere is an array (OR conditions), we need to wrap the find with those conditions
+            if (Array.isArray(rbacWhere)) {
+                rbacWhere = rbacWhere.map(cond => ({ id, ...cond }));
+            } else {
+                rbacWhere = { id, ...rbacWhere };
+            }
+        } else {
+            rbacWhere = { id };
+        }
+
         const project = await this.projectRepository.findOne({
-            where: { id },
+            where: rbacWhere,
             relations: [
                 "contract",
                 "team",
@@ -213,7 +263,7 @@ export class ProjectService {
         return savedProject;
     }
 
-    async createFromContract(contract: Contracts) {
+    async createFromContract(contract: Contracts, userInfo?: { id: string, userId?: string }) {
         // 1. Check if project already exists
         let project = await this.projectRepository.findOne({
             where: { contract: { id: contract.id } },
@@ -224,8 +274,10 @@ export class ProjectService {
             project = this.projectRepository.create({
                 name: `Dự án ${contract.name}`,
                 contract: contract,
-                status: ProjectStatus.PENDING_CONFIRMATION
+                status: ProjectStatus.PENDING_CONFIRMATION,
+                createdBy: userInfo?.userId ? { id: userInfo.userId } as Users : undefined
             });
+
             project = await this.projectRepository.save(project);
         }
 

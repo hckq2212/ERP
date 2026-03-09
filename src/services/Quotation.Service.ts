@@ -7,6 +7,7 @@ import { OpportunityPackages } from "../entity/OpportunityPackage.entity";
 import { Services } from "../entity/Service.entity";
 import { Tasks, PricingStatus, TaskStatus } from "../entity/Task.entity";
 import { ContractAddendums, AddendumStatus } from "../entity/ContractAddendum.entity";
+import { Users } from "../entity/User.entity";
 
 export class QuotationService {
     private quotationRepository = AppDataSource.getRepository(Quotations);
@@ -40,7 +41,7 @@ export class QuotationService {
     }
 
     // 1. Create Quotation: Copy from Opportunity Service -> Quotation Details
-    async create(data: { opportunityId: string, note?: string }) {
+    async create(data: { opportunityId: string, note?: string }, userInfo?: { id: string, userId?: string }) {
         const { opportunityId, note } = data;
 
         const opportunity = await this.opportunityRepository.findOne({
@@ -61,8 +62,10 @@ export class QuotationService {
             version,
             note,
             status: QuotationStatus.DRAFT,
-            totalAmount: 0 // Will calculate
+            totalAmount: 0, // Will calculate
+            createdBy: userInfo?.userId ? { id: userInfo.userId } as Users : undefined
         });
+
 
         const savedQuotation = await this.quotationRepository.save(quotation);
 
@@ -122,7 +125,7 @@ export class QuotationService {
         return await this.quotationRepository.save(savedQuotation);
     }
 
-    async createAddendumQuotation(data: { opportunityId: string, taskIds: string[], note?: string }) {
+    async createAddendumQuotation(data: { opportunityId: string, taskIds: string[], note?: string }, userInfo?: { id: string, userId?: string }) {
         const { opportunityId, taskIds, note } = data;
 
         const opportunity = await this.opportunityRepository.findOne({
@@ -152,8 +155,10 @@ export class QuotationService {
             note,
             status: QuotationStatus.DRAFT,
             type: QuotationType.ADDENDUM,
-            totalAmount: 0
+            totalAmount: 0,
+            createdBy: userInfo?.userId ? { id: userInfo.userId } as Users : undefined
         });
+
 
         const savedQuotation = await this.quotationRepository.save(quotation);
 
@@ -356,7 +361,7 @@ export class QuotationService {
     }
 
     // 4. Reject Quotation
-    async reject(id: string) {
+    async reject(id: string, description?: string) {
         const quotation = await this.getOne(id);
 
         if (quotation.status === QuotationStatus.APPROVED) {
@@ -364,7 +369,7 @@ export class QuotationService {
         }
 
         quotation.status = QuotationStatus.REJECTED;
-        quotation.description = quotation.description;
+        quotation.description = description;
         await this.quotationRepository.save(quotation);
 
         // Optionally revert opportunity status if needed, 
