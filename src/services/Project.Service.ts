@@ -11,6 +11,7 @@ import { Jobs } from "../entity/Job.entity";
 import { NotificationService } from "./Notification.Service";
 
 import { SecurityService } from "./Security.Service";
+import { UserRole } from "../entity/Account.entity";
 
 export class ProjectService {
     private projectRepository = AppDataSource.getRepository(Projects);
@@ -123,6 +124,8 @@ export class ProjectService {
                 "contract",
                 "team",
                 "team.teamLead",
+                "team.members",
+                "team.members.user",
                 "tasks",
                 "tasks.assignee",
                 "tasks.job",
@@ -186,6 +189,32 @@ export class ProjectService {
             project.contract.attachments = project.contract.attachments.filter(
                 att => att.type !== "PROPOSAL_CONTRACT" && att.type !== "SIGNED_CONTRACT"
             );
+        }
+
+        // Data Restriction for Support Teams
+        if (userInfo && userInfo.role === UserRole.MEMBER && project.team) {
+            const isCoreMember = project.team.teamLead?.id === userInfo.userId ||
+                project.team.members?.some(m => m.user?.id === userInfo.userId);
+
+            if (!isCoreMember) {
+                // Filter tasks: Only show tasks where the user is involved
+                project.tasks = project.tasks.filter(t =>
+                    t.assigneeId === userInfo.userId ||
+                    t.helperId === userInfo.userId ||
+                    t.supportLeadId === userInfo.userId
+                );
+
+                // Mask sensitive contract info
+                if (project.contract) {
+                    project.contract.description = "Bị giới hạn (Dành cho Team hỗ trợ)";
+                    project.contract.attachments = [];
+                    if (project.contract.services) {
+                        project.contract.services.forEach(s => {
+                            s.sellingPrice = 0;
+                        });
+                    }
+                }
+            }
         }
 
         return project;
