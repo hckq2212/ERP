@@ -339,15 +339,6 @@ export class ContractService {
         contract.status = ContractStatus.PROPOSAL_UPLOADED;
         contract.rejectionReason = null; // Clear rejection reason on re-upload
 
-        // Add to attachments if not already there
-        if (!contract.attachments) contract.attachments = [];
-        const exists = contract.attachments.find(a => a.url === fileData.url);
-        if (!exists) {
-            contract.attachments.push({
-                ...fileData,
-                type: "PROPOSAL_CONTRACT"
-            });
-        }
 
         return await this.contractRepository.save(contract);
     }
@@ -355,7 +346,7 @@ export class ContractService {
     async approveProposal(id: string, userInfo?: { id: string, userId?: string }) {
         const contract = await this.contractRepository.findOne({
             where: { id },
-            relations: ["opportunity", "opportunity.attachments"]
+            relations: ["opportunity"]
         });
         if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
@@ -384,15 +375,6 @@ export class ContractService {
         contract.signed_contract = fileData.url;
         contract.status = ContractStatus.SIGNED;
 
-        // Add to attachments
-        if (!contract.attachments) contract.attachments = [];
-        const exists = contract.attachments.find(a => a.url === fileData.url);
-        if (!exists) {
-            contract.attachments.push({
-                ...fileData,
-                type: "SIGNED_CONTRACT"
-            });
-        }
 
         const savedContract = await this.contractRepository.save(contract);
 

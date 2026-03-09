@@ -35,17 +35,23 @@ import { VendorJobs } from "./entity/VendorJob.entity"
 import * as dotenv from "dotenv"
 dotenv.config()
 
+const isProduction = process.env.NODE_ENV === "production";
+
 export const AppDataSource = new DataSource({
     type: "postgres",
-    url: process.env.DATABASE_URL,
-    host: process.env.DB_HOST,
-    port: 5432,
-    username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
-    synchronize: process.env.NODE_ENV !== "production",
-    logging: false,
+    ...(isProduction && process.env.DATABASE_URL
+        ? { url: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+        : {
+            host: process.env.DB_HOST || "localhost",
+            port: Number(process.env.DB_PORT) || 5432,
+            username: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_NAME,
+            ssl: false
+        }
+    ),
+    synchronize: !isProduction,
+    logging: isProduction ? false : ["error", "warn"], // Enabled some logging in dev
     entities: [
         Accounts,
         Users,
