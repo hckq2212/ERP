@@ -11,6 +11,7 @@ import { Like, In } from "typeorm";
 import { SecurityService } from "./Security.Service";
 import { NotificationService } from "./Notification.Service";
 import { UserRole } from "../entity/Account.entity";
+import { Not } from "typeorm";
 
 export class OpportunityService {
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
@@ -22,6 +23,31 @@ export class OpportunityService {
     private serviceRepository = AppDataSource.getRepository(Services);
     private packageRepository = AppDataSource.getRepository(ServicePackages);
     private notificationService = new NotificationService();
+
+    private async checkTaxIdUniqueness(taxId: string, excludeOpportunityId?: string) {
+        if (!taxId) return;
+
+        // 1. Check in Customers (taxId)
+        const customerExists = await this.customerRepository.findOne({
+            where: { taxId }
+        });
+
+        if (customerExists) {
+            throw new Error("Khách hàng này đã tồn tại trên hệ thống ");
+        }
+
+        // 2. Check in Opportunities (leadTaxId)
+        const opportunityExists = await this.opportunityRepository.findOne({
+            where: {
+                leadTaxId: taxId,
+                ...(excludeOpportunityId ? { id: Not(excludeOpportunityId) } : {})
+            }
+        });
+
+        if (opportunityExists) {
+            throw new Error("Mã số thuế này đã tồn tại trên hệ thống (Cơ hội)");
+        }
+    }
 
     async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
         const page = parseInt(filters.page) || 1;
@@ -199,6 +225,10 @@ export class OpportunityService {
             ...opportunityData
         } = data;
 
+        if (leadTaxId) {
+            await this.checkTaxIdUniqueness(leadTaxId);
+        }
+
         // Auto-generate code if not provided
         if (!opportunityData.opportunityCode) {
             opportunityData.opportunityCode = await this.generateOpportunityCode();
@@ -365,7 +395,12 @@ export class OpportunityService {
         if (leadPhone !== undefined) opportunity.leadPhone = leadPhone;
         if (leadEmail !== undefined) opportunity.leadEmail = leadEmail;
         if (leadAddress !== undefined) opportunity.leadAddress = leadAddress;
-        if (leadTaxId !== undefined) opportunity.leadTaxId = leadTaxId;
+        if (leadTaxId !== undefined) {
+            if (leadTaxId && leadTaxId !== opportunity.leadTaxId) {
+                await this.checkTaxIdUniqueness(leadTaxId, id);
+            }
+            opportunity.leadTaxId = leadTaxId;
+        }
 
         Object.assign(opportunity, opportunityData);
         const savedOpportunity = await this.opportunityRepository.save(opportunity);

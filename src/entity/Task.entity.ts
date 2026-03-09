@@ -19,7 +19,8 @@ export enum TaskStatus {
     REJECTED_BILLABLE = "Từ chối có phí",
     REJECTED_SUPPORT = "Từ chối hỗ trợ",
     OVERDUE = "OVERDUE",
-    AWAITING_PRICING = "AWAITING_PRICING"
+    AWAITING_PRICING = "AWAITING_PRICING",
+    AWAITING_SUPPORT = "AWAITING_SUPPORT"
 }
 
 export enum PricingStatus {
@@ -135,4 +136,23 @@ export class Tasks extends BaseEntity {
 
     @Column({ type: "text", nullable: true })
     reassignNote: string; // Reason for reassignment
+
+    @Column({ default: false })
+    isSupportRequested: boolean;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    supportTeamId: string;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    supportLeadId: string;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    helperId: string;
+
+    @ManyToOne(() => Users, { nullable: true })
+    @JoinColumn({ name: "helperId" })
+    helper: Users;
+
+    @Column({ type: "text", nullable: true })
+    supportRequestNote: string;
 }

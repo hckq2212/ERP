@@ -26,6 +26,8 @@ router.patch("/:id/submit-result", authMiddleware, taskController.submitResult);
 router.delete("/:id", authMiddleware, taskController.delete);
 router.patch("/:id/reassign", authMiddleware, taskController.reassign);
 router.post("/:id/pricing", authMiddleware, taskController.assessExtraTask);
+router.patch("/:id/request-support", authMiddleware, taskController.requestSupport);
+router.put("/:id/assign-support-team", authMiddleware, taskController.assignSupportTeam);
 
 
 export default router;

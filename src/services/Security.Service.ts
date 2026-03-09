@@ -108,9 +108,16 @@ export class SecurityService {
             ];
         }
 
-        // MEMBER can see projects where they are in the assigned team
+        // MEMBER can see projects where they are:
+        // 1. In the assigned project team
+        // 2. A helper on any task in the project
+        // 3. A support lead on any task in the project
         if (role === UserRole.MEMBER) {
-            return { team: { members: { user: { id: userInfo.userId } } } };
+            return [
+                { team: { members: { user: { id: userInfo.userId } } } },
+                { tasks: { helper: { id: userInfo.userId } } },
+                { tasks: { supportLeadId: userInfo.userId } }
+            ];
         }
 
         // HR has no access to projects
@@ -176,5 +183,40 @@ export class SecurityService {
 
         // Default: restrictive fallback
         return { contract: { createdBy: { id: userInfo.userId } } };
+    }
+
+    /**
+     * Generates TypeORM 'where' filter for Tasks based on user role and ID.
+     */
+    static getTaskFilters(userInfo: { id: string, role: string, userId?: string }): any {
+        const { id, role } = userInfo;
+        const userId = userInfo.userId;
+
+        // Full access for management roles
+        if ([UserRole.BOD, UserRole.ADMIN].includes(role as UserRole)) {
+            return {};
+        }
+
+        // Business Development (BD) or SALE can see tasks related to their contracts or customers
+        if (role === UserRole.BD || role === UserRole.SALE) {
+            return [
+                { project: { contract: { createdBy: { id: userId } } } },
+                { project: { contract: { customer: { createdBy: { id: userId } } } } }
+            ];
+        }
+
+        // MEMBER access (including Team Leads and Helpers)
+        if (role === UserRole.MEMBER) {
+            return [
+                { assignee: { id: userId } },
+                { supervisor: { id: userId } },
+                { helper: { id: userId } },
+                { project: { team: { teamLead: { id: userId } } } },
+                { supportLeadId: userId }
+            ];
+        }
+
+        // Default: only see their own assigned tasks
+        return { assignee: { id: userId } };
     }
 }

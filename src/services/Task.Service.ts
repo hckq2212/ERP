@@ -10,6 +10,7 @@ import { NotificationService } from "./Notification.Service";
 import { TaskReviewService } from "./TaskReview.Service";
 import { StringHelper } from "../helpers/String.helper";
 import { Contracts } from "../entity/Contract.entity";
+import { SecurityService } from "./Security.Service";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -19,6 +20,7 @@ export class TaskService {
     private vendorRepository = AppDataSource.getRepository(Vendors);
     private vendorJobRepository = AppDataSource.getRepository(VendorJobs);
     private contractRepository = AppDataSource.getRepository(Contracts);
+    private teamRepository = AppDataSource.getRepository("ProjectTeams");
     private notificationService = new NotificationService();
     private reviewService = new TaskReviewService();
 
@@ -106,36 +108,55 @@ export class TaskService {
         const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
 
         const where: any = [];
-        const baseWhere: any = {};
-
-        if (userInfo && userInfo.role !== "BOD" && userInfo.role !== "ADMIN") {
-            baseWhere.assignee = { id: userInfo.userId || userInfo.id };
-        }
+        const baseWhere: any = SecurityService.getTaskFilters(userInfo as any);
 
         if (filters.status && filters.status !== 'ALL') {
-            baseWhere.status = filters.status;
+            if (Array.isArray(baseWhere)) {
+                baseWhere.forEach((w: any) => w.status = filters.status);
+            } else {
+                baseWhere.status = filters.status;
+            }
         }
 
         if (filters.assigneeId) {
-            baseWhere.assignee = { id: filters.assigneeId };
+            if (Array.isArray(baseWhere)) {
+                baseWhere.forEach((w: any) => w.assignee = { id: filters.assigneeId });
+            } else {
+                baseWhere.assignee = { id: filters.assigneeId };
+            }
         }
 
         if (filters.projectId) {
-            baseWhere.project = { id: filters.projectId };
+            if (Array.isArray(baseWhere)) {
+                baseWhere.forEach((w: any) => w.project = { id: filters.projectId });
+            } else {
+                baseWhere.project = { id: filters.projectId };
+            }
         }
 
         if (filters.q || filters.search) {
             const query = filters.q || filters.search;
             const searchTerm = `%${query}%`;
-            where.push({ ...baseWhere, name: ILike(searchTerm) });
-            where.push({ ...baseWhere, code: ILike(searchTerm) });
+            if (Array.isArray(baseWhere)) {
+                baseWhere.forEach((w: any) => {
+                    where.push({ ...w, name: ILike(searchTerm) });
+                    where.push({ ...w, code: ILike(searchTerm) });
+                });
+            } else {
+                where.push({ ...baseWhere, name: ILike(searchTerm) });
+                where.push({ ...baseWhere, code: ILike(searchTerm) });
+            }
         } else {
-            where.push(baseWhere);
+            if (Array.isArray(baseWhere)) {
+                where.push(...baseWhere);
+            } else {
+                where.push(baseWhere);
+            }
         }
 
         const [items, total] = await this.taskRepository.findAndCount({
             where: where.length > 1 ? where : where[0],
-            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "supervisor"],
+            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "supervisor", "helper"],
             order: { [sortBy]: sortDir },
             skip: (page - 1) * limit,
             take: limit
@@ -390,7 +411,73 @@ export class TaskService {
             task.assignerId = (currentUser as any).userId || currentUser.id;
         }
 
+        // Logic check for support mode
+        if (task.isSupportRequested && task.supportLeadId) {
+            // If task is in support mode, the helperId should be assigned
+            task.helperId = data.assigneeId;
+            task.status = TaskStatus.DOING;
+            // Clear support requested flag if helper is assigned
+            // Or keep it? The user said "cho phân công lại", so once assigned to a helper, it's being done.
+            task.isSupportRequested = false;
+        }
+
         return await this.taskRepository.save(task);
+    }
+
+    async requestSupport(id: string, note: string) {
+        const task = await this.getOne(id);
+        task.isSupportRequested = true;
+        task.supportRequestNote = note;
+        task.status = TaskStatus.AWAITING_SUPPORT;
+
+        const savedTask = await this.taskRepository.save(task);
+
+        const taskWithInfo = await this.taskRepository.findOne({
+            where: { id: task.id },
+            relations: ["project", "project.team", "project.team.teamLead"]
+        });
+
+        if (taskWithInfo?.project?.team?.teamLead) {
+            await this.notificationService.createNotification({
+                title: "Yêu cầu hỗ trợ công việc",
+                content: `Nhân viên yêu cầu hỗ trợ cho công việc: ${task.name}. Lý do: ${note}`,
+                type: "TASK_REVIEW",
+                recipient: taskWithInfo.project.team.teamLead,
+                relatedEntityId: task.id.toString(),
+                relatedEntityType: "Task",
+                link: `/tasks/${task.id}`
+            });
+        }
+
+        return savedTask;
+    }
+
+    async assignSupportTeam(id: string, teamId: string) {
+        const task = await this.getOne(id);
+        const team = await this.teamRepository.findOne({
+            where: { id: teamId },
+            relations: ["teamLead"]
+        }) as any;
+
+        if (!team) throw new Error("Không tìm thấy team hỗ trợ");
+        if (!team.teamLead) throw new Error("Team hỗ trợ chưa có Lead");
+
+        task.supportTeamId = teamId;
+        task.supportLeadId = team.teamLead.id;
+        task.isSupportRequested = true;
+
+        const savedTask = await this.taskRepository.save(task);
+
+        await this.notificationService.createNotification({
+            title: "Yêu cầu hỗ trợ chéo team",
+            content: `Team của bạn được nhờ hỗ trợ công việc: ${task.name}. Vui lòng phân công người thực hiện.`,
+            type: "TASK_ASSIGNED",
+            recipient: team.teamLead,
+            relatedEntityId: task.id.toString(),
+            relatedEntityType: "Task"
+        });
+
+        return savedTask;
     }
 
     async reassign(id: string, data: {
