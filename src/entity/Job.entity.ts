@@ -36,7 +36,7 @@ export class Jobs extends BaseEntity {
     @Column({ nullable: true })
     vinicoin: number;
 
-    @Column({ nullable: true })
+    @Column({ type: "decimal", precision: 10, scale: 2, nullable: true })
     timeToComplete: number;
 
     @ManyToMany(() => Services, (service) => service.jobs)
