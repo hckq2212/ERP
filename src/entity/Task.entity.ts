@@ -7,6 +7,7 @@ import { ContractServices } from "./ContractService.entity";
 import { Vendors } from "./Vendor.entity";
 import { TaskReviews } from "./TaskReview.entity";
 import { Services } from "./Service.entity";
+import { TaskIterations } from "./TaskIteration.entity";
 
 export enum TaskStatus {
     PENDING = "PENDING",
@@ -20,7 +21,8 @@ export enum TaskStatus {
     REJECTED_SUPPORT = "Từ chối hỗ trợ",
     OVERDUE = "OVERDUE",
     AWAITING_PRICING = "AWAITING_PRICING",
-    AWAITING_SUPPORT = "AWAITING_SUPPORT"
+    AWAITING_SUPPORT = "AWAITING_SUPPORT",
+    REWORKING = "REWORKING"
 }
 
 export enum PricingStatus {
@@ -108,6 +110,9 @@ export class Tasks extends BaseEntity {
 
     @OneToMany(() => TaskReviews, (review) => review.task)
     reviews: TaskReviews[];
+
+    @OneToMany(() => TaskIterations, (iteration) => iteration.task)
+    iterations: TaskIterations[];
 
     @Column({ default: false })
     isExtra: boolean;

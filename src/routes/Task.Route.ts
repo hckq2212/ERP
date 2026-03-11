@@ -28,6 +28,6 @@ router.patch("/:id/reassign", authMiddleware, taskController.reassign);
 router.post("/:id/pricing", authMiddleware, taskController.assessExtraTask);
 router.patch("/:id/request-support", authMiddleware, taskController.requestSupport);
 router.put("/:id/assign-support-team", authMiddleware, taskController.assignSupportTeam);
-
+router.patch("/:id/rework", authMiddleware, taskController.rework);
 
 export default router;

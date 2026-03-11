@@ -1,6 +1,7 @@
 import { AppDataSource } from "../data-source";
 import { Notifications } from "../entity/Notification.entity";
 import { Users } from "../entity/User.entity";
+import { EntityManager } from "typeorm";
 
 export class NotificationService {
     private notificationRepository = AppDataSource.getRepository(Notifications);
@@ -14,13 +15,14 @@ export class NotificationService {
         link?: string;
         relatedEntityId?: string;
         relatedEntityType?: string;
-    }) {
-        const notification = this.notificationRepository.create({
+    }, manager?: EntityManager) {
+        const repo = manager ? manager.getRepository(Notifications) : this.notificationRepository;
+        const notification = repo.create({
             ...data,
             isRead: false
         });
 
-        return await this.notificationRepository.save(notification);
+        return await repo.save(notification);
     }
 
     async getMyNotifications(userId: string) {

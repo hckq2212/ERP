@@ -33,6 +33,13 @@ export class AcceptanceService {
             throw new Error("Một số hạng mục dịch vụ không tồn tại");
         }
 
+        // 1. Generate automated name: NT-{contractCode}-{DD/MM/YYYY}
+        const firstService = services[0];
+        const contractCode = firstService.contract?.contractCode || "UNKNOWN";
+        const now = new Date();
+        const formattedDate = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
+        const autoName = `NT-${contractCode}-${formattedDate}`;
+
         // Check if all services belong to the project
         const invalidServices = services.filter(s => s.contract?.project?.id !== projectId);
         if (invalidServices.length > 0) {
@@ -47,7 +54,7 @@ export class AcceptanceService {
         }
 
         const request = this.acceptanceRepo.create({
-            name,
+            name: autoName,
             requester,
             project,
             note,

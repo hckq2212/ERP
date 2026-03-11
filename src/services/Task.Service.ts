@@ -10,6 +10,7 @@ import { NotificationService } from "./Notification.Service";
 import { TaskReviewService } from "./TaskReview.Service";
 import { StringHelper } from "../helpers/String.helper";
 import { Contracts } from "../entity/Contract.entity";
+import { TaskReviews } from "../entity/TaskReview.entity";
 import { SecurityService } from "./Security.Service";
 
 export class TaskService {
@@ -21,6 +22,7 @@ export class TaskService {
     private vendorJobRepository = AppDataSource.getRepository(VendorJobs);
     private contractRepository = AppDataSource.getRepository(Contracts);
     private teamRepository = AppDataSource.getRepository("ProjectTeams");
+    private taskIterationRepository = AppDataSource.getRepository("TaskIterations");
     private notificationService = new NotificationService();
     private reviewService = new TaskReviewService();
 
@@ -176,7 +178,7 @@ export class TaskService {
     async getOne(id: string) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation", "supervisor"]
+            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation", "supervisor", "iterations"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
@@ -265,24 +267,104 @@ export class TaskService {
 
         const taskWithInfo = await this.taskRepository.findOne({
             where: { id: task.id },
-            relations: ["project", "project.team", "project.team.teamLead"]
+            relations: ["project", "project.team", "project.team.teamLead", "supervisor", "assigner"]
         });
 
-        if (taskWithInfo && taskWithInfo.project?.team?.teamLead) {
-            await this.reviewService.initializeReviews(task.id);
+        // Notify Lead/Supervisor/Assigner
+        const recipients = new Set<string>();
+        if (taskWithInfo.project?.team?.teamLead?.id) recipients.add(taskWithInfo.project.team.teamLead.id);
+        if (taskWithInfo.supervisor?.id) recipients.add(taskWithInfo.supervisor.id);
+        if (taskWithInfo.assigner?.id) recipients.add(taskWithInfo.assigner.id);
 
-            await this.notificationService.createNotification({
-                title: "Kết quả công việc đã nộp",
-                content: `Nhân viên đã nộp kết quả cho: ${task.code}. Vui lòng đánh giá.`,
-                type: "TASK_REVIEW",
-                recipient: taskWithInfo.project.team.teamLead,
-                relatedEntityId: task.id.toString(),
-                relatedEntityType: "Task",
-                link: `/tasks/${task.id}`
-            });
+        await this.reviewService.initializeReviews(task.id);
+
+        for (const recipientId of recipients) {
+            const recipient = await this.userRepository.findOneBy({ id: recipientId });
+            if (recipient) {
+                await this.notificationService.createNotification({
+                    title: "Kết quả công việc đã nộp",
+                    content: `Nhân viên đã nộp kết quả cho: ${task.code}. Vui lòng đánh giá.`,
+                    type: "TASK_REVIEW",
+                    recipient: recipient,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                });
+            }
         }
 
         return savedTask;
+    }
+
+    async requestRework(id: string, data: {
+        feedback: string,
+        deadlineAt: Date,
+        attachments?: any[]
+    }, currentUser?: { id: string, userId?: string }) {
+        return await AppDataSource.transaction(async (transactionalEntityManager) => {
+            const task = await transactionalEntityManager.findOne(Tasks, {
+                where: { id },
+                relations: ["assignee", "contractService"]
+            });
+
+            if (!task) throw new Error("Không tìm thấy công việc");
+
+            // Status Guard: Only allow rework from review or completed states
+            const allowedStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DONE, TaskStatus.COMPLETED];
+            if (!allowedStatuses.includes(task.status)) {
+                throw new Error(`Không thể yêu cầu làm lại cho công việc đang ở trạng thái ${task.status}`);
+            }
+
+            // 1. Create Iteration Record (Snapshot current state)
+            const iterationCount = await transactionalEntityManager.count(Tasks.name === "TaskIterations" ? "TaskIterations" : "task_iterations", {
+                where: { taskId: task.id }
+            } as any);
+
+            const iterationRepository = transactionalEntityManager.getRepository("TaskIterations");
+            const iteration = iterationRepository.create({
+                task: task,
+                version: iterationCount + 1,
+                submittedResult: task.result,
+                leadFeedback: data.feedback,
+                feedbackAttachments: data.attachments,
+                deadlineAt: data.deadlineAt
+            });
+            await iterationRepository.save(iteration);
+
+            // 1.5. Clean up old reviews (as requested by user)
+            await transactionalEntityManager.delete(TaskReviews, { task: { id } });
+
+            // 1.6. Reset ContractService if linked
+            if (task.contractService) {
+                const contractServiceRepository = transactionalEntityManager.getRepository("ContractServices");
+                await contractServiceRepository.update(task.contractService.id, {
+                    result: null as any,
+                    status: "ACTIVE" as any // Quay về Đang thực hiện
+                });
+            }
+
+            // 2. Update Task
+            task.status = TaskStatus.REWORKING;
+            task.plannedEndDate = data.deadlineAt;
+            task.result = null as any;
+
+            const savedTask = await transactionalEntityManager.save(task);
+
+            // 3. Notify Assignee
+            if (task.assignee) {
+                await this.notificationService.createNotification({
+                    title: "Yêu cầu làm lại công việc",
+                    content: `Bạn có yêu cầu làm lại cho: ${task.name} (Mã: ${task.code}). Feedback: ${data.feedback}`,
+                    type: "TASK_ASSIGNED",
+                    recipient: task.assignee,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                }, transactionalEntityManager);
+            }
+
+            return savedTask;
+        });
     }
 
     async update(id: string, data: Partial<Tasks> & { assigneeId?: string }) {
@@ -465,6 +547,7 @@ export class TaskService {
         task.supportTeamId = teamId;
         task.supportLeadId = team.teamLead.id;
         task.isSupportRequested = true;
+        task.status = TaskStatus.AWAITING_SUPPORT;
 
         const savedTask = await this.taskRepository.save(task);
 

@@ -123,12 +123,7 @@ export class TaskReviewService {
             if (task) {
                 const isOutputJob = task.contractService && task.contractService.service?.outputJobId === task.job?.id;
 
-                if (isOutputJob) {
-                    task.status = TaskStatus.AWAITING_ACCEPTANCE;
-                } else {
-                    task.status = TaskStatus.COMPLETED;
-                }
-
+                task.status = TaskStatus.COMPLETED;
                 task.actualEndDate = new Date();
                 if (reviewNote) task.reviewNote = reviewNote;
                 await this.taskRepository.save(task);
@@ -141,6 +136,7 @@ export class TaskReviewService {
                         ...task.result,
                         name: task.code || task.name
                     };
+                    contractService.status = "AWAITING_ACCEPTANCE" as any; // Sẵn sàng nghiệm thu
                     await contractServiceRepository.save(contractService);
                 }
 

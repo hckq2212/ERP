@@ -28,6 +28,7 @@ import { AcceptanceRequests } from "./entity/AcceptanceRequest.entity"
 import { ServicePackages } from "./entity/ServicePackage.entity"
 import { ServicePackageItems } from "./entity/ServicePackageItem.entity"
 import { OpportunityPackages } from "./entity/OpportunityPackage.entity"
+import { TaskIterations } from "./entity/TaskIteration.entity"
 
 
 import { VendorJobs } from "./entity/VendorJob.entity"
@@ -82,6 +83,7 @@ export const AppDataSource = new DataSource({
         ServicePackages,
         ServicePackageItems,
         OpportunityPackages,
+        TaskIterations,
     ],
 
     migrations: [],
