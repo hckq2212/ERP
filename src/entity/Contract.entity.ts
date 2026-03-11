@@ -48,10 +48,10 @@ export class Contracts extends BaseEntity {
     @ManyToOne(() => Opportunities, (opportunity) => opportunity.contracts)
     opportunity: Opportunities;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     cost: number;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     sellingPrice: number;
 
     // Partner Commission Info

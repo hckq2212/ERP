@@ -21,7 +21,7 @@ export class PaymentMilestones extends BaseEntity {
     @Column({ type: "decimal", precision: 5, scale: 2 })
     percentage: number;
 
-    @Column({ type: "decimal", precision: 15, scale: 2 })
+    @Column({ type: "decimal", precision: 15, scale: 3 })
     amount: number;
 
     @Column({

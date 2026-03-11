@@ -42,10 +42,10 @@ export class Opportunities extends BaseEntity {
     @Column()
     field: string;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     expectedRevenue: number;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     budget: number;
 
     @Column({ type: "date", nullable: true })

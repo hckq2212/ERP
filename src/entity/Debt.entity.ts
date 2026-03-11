@@ -21,7 +21,7 @@ export class Debts extends BaseEntity {
     @JoinColumn()
     milestone: PaymentMilestones;
 
-    @Column({ type: "decimal", precision: 15, scale: 2 })
+    @Column({ type: "decimal", precision: 15, scale: 3 })
     amount: number;
 
     @Column({ type: "date" })

@@ -25,10 +25,10 @@ export class OpportunityServices extends BaseEntity {
     @Column({ type: "varchar", length: 26, nullable: true })
     opportunityPackageId: string;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     sellingPrice: number;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     costAtSale: number;
 
     @Column({ type: "int", default: 1 })

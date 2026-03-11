@@ -13,10 +13,10 @@ export class Services extends BaseEntity {
     @Column({ nullable: true })
     description: string;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     costPrice: number;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     overheadCost: number;
 
     @ManyToMany(() => Jobs, (job) => job.services)

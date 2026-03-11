@@ -124,10 +124,10 @@ export class Tasks extends BaseEntity {
     })
     pricingStatus: PricingStatus;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     sellingPrice: number;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     cost: number;
 
     @ManyToOne(() => Services)

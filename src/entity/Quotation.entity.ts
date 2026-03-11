@@ -41,7 +41,7 @@ export class Quotations extends BaseEntity {
     })
     type: QuotationType;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     totalAmount: number;
 
     @ManyToOne(() => Opportunities, (opportunity) => opportunity.quotations)

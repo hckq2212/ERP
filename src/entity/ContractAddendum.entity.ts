@@ -20,10 +20,10 @@ export class ContractAddendums extends BaseEntity {
     @ManyToOne(() => Contracts, (contract) => contract.addendums)
     contract: Contracts;
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     sellingPrice: number; // Có thể âm nếu là phụ lục cắt giảm
 
-    @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     cost: number;
 
     @Column({ type: "text", nullable: true })
