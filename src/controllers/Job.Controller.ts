@@ -6,7 +6,8 @@ export class JobController {
 
     getAll = async (req: Request, res: Response) => {
         try {
-            const result = await this.jobService.getAll();
+            const { name } = req.query;
+            const result = await this.jobService.getAll({ name: name as string });
             res.status(200).json(result);
         } catch (error: any) {
             res.status(500).json({ message: error.message });

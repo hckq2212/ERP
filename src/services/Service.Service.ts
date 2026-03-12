@@ -1,15 +1,21 @@
 import { AppDataSource } from "../data-source";
 import { Services } from "../entity/Service.entity";
 import { Jobs } from "../entity/Job.entity";
-import { In } from "typeorm";
+import { In, ILike } from "typeorm";
 
 export class ServiceService {
     private serviceRepository = AppDataSource.getRepository(Services);
 
-    async getAll() {
-        return await this.serviceRepository.find({
+    async getAll(filters: { name?: string } = {}) {
+        const query: any = {
             relations: ["jobs", "outputJob"]
-        });
+        };
+
+        if (filters.name) {
+            query.where = { name: ILike(`%${filters.name}%`) };
+        }
+
+        return await this.serviceRepository.find(query);
     }
 
     async getOne(id: string) {
