@@ -118,7 +118,7 @@ export class TaskReviewService {
         if (allPassed) {
             const task = await this.taskRepository.findOne({
                 where: { id: taskId },
-                relations: ["assignee", "contractService", "job", "contractService.service", "contractService.service.outputJob"]
+                relations: ["assignee", "contractService", "job"]
             });
             if (task) {
                 const isOutputJob = task.isOutput;
@@ -134,14 +134,21 @@ export class TaskReviewService {
                     const contractService = task.contractService;
                     if (!contractService.results) contractService.results = [];
                     
-                    // Add result to array
-                    contractService.results.push({
+                    // Add or update result in array
+                    const existingResultIndex = contractService.results.findIndex(r => r.taskId === task.id);
+                    const newResult = {
                         taskId: task.id,
                         type: task.result?.type || 'file',
                         name: task.code || task.name,
                         url: task.result?.url || '',
-                        status: 'PENDING'
-                    });
+                        status: 'PENDING' as const
+                    };
+
+                    if (existingResultIndex >= 0) {
+                        contractService.results[existingResultIndex] = newResult;
+                    } else {
+                        contractService.results.push(newResult);
+                    }
                     
                     // Service is awaiting acceptance of its results
                     contractService.status = "AWAITING_ACCEPTANCE" as any; 

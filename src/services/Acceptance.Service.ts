@@ -26,7 +26,7 @@ export class AcceptanceService {
 
         const services = await this.serviceRepo.find({
             where: { id: In(serviceIds) },
-            relations: ["contract", "contract.project"]
+            relations: ["contract", "contract.project", "tasks"]
         });
 
         if (services.length !== serviceIds.length) {
@@ -46,10 +46,15 @@ export class AcceptanceService {
             throw new Error(`Có ${invalidServices.length} dịch vụ không thuộc dự án đã chọn.`);
         }
 
-        // Check if all services have at least one result
+        // Check if all services have at least one result AND all tasks are COMPLETED
         for (const s of services) {
             if (!s.results || s.results.length === 0) {
-                throw new Error(`Dịch vụ ID ${s.id} chưa có kết quả nghiệm thu nội bộ.`);
+                throw new Error(`Dịch vụ "${s.name || s.id}" chưa có kết quả nghiệm thu nội bộ.`);
+            }
+
+            const incompleteTasks = s.tasks?.filter(t => t.status !== TaskStatus.COMPLETED);
+            if (incompleteTasks && incompleteTasks.length > 0) {
+                throw new Error(`Dịch vụ "${s.name || s.id}" còn ${incompleteTasks.length} công việc chưa hoàn thành. Vui lòng hoàn thành tất cả task trước khi nghiệm thu.`);
             }
         }
 
@@ -225,12 +230,30 @@ export class AcceptanceService {
                             result.status = rd.status;
                             result.feedback = rd.feedback;
                             
-                            // If rejected, find the specific task and reset it
+                            // If rejected, find the specific task and reset it for rework
                             if (rd.status === 'REJECTED') {
                                 const task = await this.taskRepo.findOneBy({ id: rd.taskId });
                                 if (task) {
-                                    task.status = TaskStatus.DOING;
+                                    task.status = TaskStatus.REWORKING;
+                                    task.reviewNote = rd.feedback || "Khách hàng yêu cầu sửa lại (Nghiệm thu bị từ chối)";
+                                    task.actualEndDate = null; // Clear end date for rework
                                     await this.taskRepo.save(task);
+
+                                    // Notify assignee about rework
+                                    if (task.assigneeId) {
+                                        const assignee = await this.userRepo.findOneBy({ id: task.assigneeId });
+                                        if (assignee) {
+                                            await this.notificationService.createNotification({
+                                                title: "Yêu cầu sửa lại (Rework)",
+                                                content: `Công việc "${task.name}" bị khách hàng từ chối nghiệm thu. Lý do: ${task.reviewNote}`,
+                                                type: "TASK_REJECTED",
+                                                recipient: assignee,
+                                                relatedEntityId: task.id.toString(),
+                                                relatedEntityType: "Task",
+                                                link: `/tasks/${task.id}`
+                                            });
+                                        }
+                                    }
                                 }
                             }
                         }

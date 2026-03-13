@@ -330,9 +330,8 @@ export class ProjectService {
                 const quantity = Number(sj.quantity || 1);
 
                 for (let i = 1; i <= quantity; i++) {
-                    // Unique check using sequence or identifying metadata?
-                    // For now, let's use the sequence logic but ensure we handle existing tasks properly
-                    const count = await this.taskRepository.count({
+                    // 1. Idempotency check: Have we already created 'quantity' tasks for THIS job in THIS service?
+                    const countForService = await this.taskRepository.count({
                         where: {
                             project: { id: project.id },
                             job: { id: job.id },
@@ -340,12 +339,19 @@ export class ProjectService {
                         }
                     });
 
-                    // If existing tasks match quantity, skip creation
-                    if (count >= quantity) break;
+                    if (countForService >= quantity) break;
 
-                    const seq = (count + 1).toString().padStart(2, '0');
+                    // 2. Sequence generation: Count ALL tasks for this job in the WHOLE PROJECT to ensure unique code
+                    const totalCountForProject = await this.taskRepository.count({
+                        where: {
+                            project: { id: project.id },
+                            job: { id: job.id }
+                        }
+                    });
+
+                    const seq = (totalCountForProject + 1).toString().padStart(2, '0');
                     const jobCode = job.code || `JOB${job.id}`;
-                    const taskCode = `${contract.contractCode} - ${jobCode} - ${seq}`;
+                    const taskCode = `${contract.contractCode}-${jobCode}-${seq}`;
 
                     const task = this.taskRepository.create({
                         code: taskCode,

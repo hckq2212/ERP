@@ -12,6 +12,7 @@ import { StringHelper } from "../helpers/String.helper";
 import { Contracts } from "../entity/Contract.entity";
 import { TaskReviews } from "../entity/TaskReview.entity";
 import { SecurityService } from "./Security.Service";
+import { ContractServices, ContractServiceStatus } from "../entity/ContractService.entity";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -336,11 +337,14 @@ export class TaskService {
 
             // 1.6. Reset ContractService if linked
             if (task.contractService) {
-                const contractServiceRepository = transactionalEntityManager.getRepository("ContractServices");
-                await contractServiceRepository.update(task.contractService.id, {
-                    result: null as any,
-                    status: "ACTIVE" as any // Quay về Đang thực hiện
-                });
+                const contractServiceRepository = transactionalEntityManager.getRepository(ContractServices);
+                const cs = await contractServiceRepository.findOneBy({ id: task.contractService.id });
+                if (cs && cs.results) {
+                    // Remove or update the result for this specific task
+                    cs.results = cs.results.filter(r => r.taskId !== task.id);
+                    cs.status = ContractServiceStatus.ACTIVE;
+                    await contractServiceRepository.save(cs);
+                }
             }
 
             // 2. Update Task
