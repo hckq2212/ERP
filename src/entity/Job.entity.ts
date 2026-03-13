@@ -5,6 +5,7 @@ import { Services } from "./Service.entity";
 import { Tasks } from "./Task.entity";
 import { VendorJobs } from "./VendorJob.entity";
 import { JobCriterias } from "./JobCriteria.entity";
+import { ServiceJob } from "./ServiceJob.entity";
 
 export enum PerformerType {
     VENDOR = "VENDOR",
@@ -39,8 +40,8 @@ export class Jobs extends BaseEntity {
     @Column({ type: "decimal", precision: 10, scale: 2, nullable: true })
     timeToComplete: number;
 
-    @ManyToMany(() => Services, (service) => service.jobs)
-    services: Services[];
+    @OneToMany(() => ServiceJob, (serviceJob) => serviceJob.job)
+    serviceJobs: ServiceJob[];
 
     @OneToMany(() => Tasks, (task) => task.job)
     tasks: Tasks[];

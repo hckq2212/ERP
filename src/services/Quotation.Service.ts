@@ -172,7 +172,13 @@ export class QuotationService {
             // 2. Nếu không có, tìm Service có Job đầu ra khớp với Job của Task
             if (!service) {
                 service = await serviceRepo.findOne({
-                    where: { outputJob: { id: task.job.id } }
+                    where: { 
+                        serviceJobs: { 
+                            jobId: task.job.id,
+                            isOutput: true
+                        }
+                    },
+                    relations: ["serviceJobs"]
                 });
             }
 

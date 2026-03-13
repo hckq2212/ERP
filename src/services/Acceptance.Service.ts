@@ -46,9 +46,9 @@ export class AcceptanceService {
             throw new Error(`Có ${invalidServices.length} dịch vụ không thuộc dự án đã chọn.`);
         }
 
-        // Check if all services have results
+        // Check if all services have at least one result
         for (const s of services) {
-            if (!s.result) {
+            if (!s.results || s.results.length === 0) {
                 throw new Error(`Dịch vụ ID ${s.id} chưa có kết quả nghiệm thu nội bộ.`);
             }
         }
@@ -112,8 +112,11 @@ export class AcceptanceService {
 
         await this.acceptanceRepo.save(request);
 
-        // Update services to COMPLETED
+        // Update services results status
         for (const s of request.services) {
+            if (s.results) {
+                s.results = s.results.map(r => ({ ...r, status: 'APPROVED' }));
+            }
             s.status = ContractServiceStatus.COMPLETED;
             await this.serviceRepo.save(s);
 
@@ -160,6 +163,9 @@ export class AcceptanceService {
 
         // Update services and tasks
         for (const s of request.services) {
+            if (s.results) {
+                s.results = s.results.map(r => ({ ...r, status: 'REJECTED', feedback }));
+            }
             s.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
             s.feedback = feedback;
             await this.serviceRepo.save(s);
@@ -202,36 +208,72 @@ export class AcceptanceService {
         if (!approver) throw new Error("Người duyệt không tồn tại");
 
         let anyApproved = false;
-        let anyRejected = false;
+        let anyRejectedGlobal = false;
 
         for (const decision of decisions) {
             const service = request.services.find(s => s.id === decision.serviceId);
             if (!service) continue;
 
-            if (decision.status === 'APPROVED') {
+            const resultDecisions = (decision as any).resultDecisions || [];
+            
+            if (resultDecisions.length > 0) {
+                // Granular approval
+                if (service.results) {
+                    for (const rd of resultDecisions) {
+                        const result = service.results.find(r => r.taskId === rd.taskId);
+                        if (result) {
+                            result.status = rd.status;
+                            result.feedback = rd.feedback;
+                            
+                            // If rejected, find the specific task and reset it
+                            if (rd.status === 'REJECTED') {
+                                const task = await this.taskRepo.findOneBy({ id: rd.taskId });
+                                if (task) {
+                                    task.status = TaskStatus.DOING;
+                                    await this.taskRepo.save(task);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Traditional batch approval/rejection for the whole service
+                if (decision.status === 'APPROVED') {
+                    if (service.results) {
+                        service.results = service.results.map(r => ({ ...r, status: 'APPROVED' }));
+                    }
+                } else {
+                    if (service.results) {
+                        service.results = service.results.map(r => ({ ...r, status: 'REJECTED', feedback: decision.feedback }));
+                    }
+                }
+            }
+
+            // Check if ALL output tasks (those in service.results) are APPROVED
+            const allApproved = service.results && service.results.length > 0 && 
+                               service.results.every(r => r.status === 'APPROVED');
+            
+            const anyRejected = service.results && service.results.some(r => r.status === 'REJECTED');
+
+            if (allApproved) {
                 service.status = ContractServiceStatus.COMPLETED;
                 service.feedback = null;
                 anyApproved = true;
 
-                // Fetch and complete all tasks for this service
+                // Complete all remaining tasks just in case
                 await this.taskRepo.update(
                     { contractService: { id: service.id } },
                     { status: TaskStatus.COMPLETED, actualEndDate: new Date() }
                 );
-            } else {
+            } else if (anyRejected) {
                 service.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
-                service.feedback = decision.feedback || "Từ chối nghiệm thu";
-                anyRejected = true;
-
-                // Reset tasks to DOING
-                const tasks = await this.taskRepo.find({
-                    where: { contractService: { id: service.id } }
-                });
-                for (const task of tasks) {
-                    task.status = TaskStatus.DOING;
-                    await this.taskRepo.save(task);
-                }
+                service.feedback = decision.feedback || "Một số kết quả bị từ chối";
+                anyRejectedGlobal = true;
+            } else {
+                // Still waiting for more results or decisions
+                service.status = ContractServiceStatus.AWAITING_ACCEPTANCE;
             }
+
             await this.serviceRepo.save(service);
         }
 
@@ -244,7 +286,7 @@ export class AcceptanceService {
         await this.notificationService.createNotification({
             title: "Kết quả nghiệm thu",
             content: `Đợt nghiệm thu "${request.name}" đã được xử lý.`,
-            type: anyRejected ? "ACCEPTANCE_REJECTED" : "ACCEPTANCE_APPROVED",
+            type: anyRejectedGlobal ? "ACCEPTANCE_REJECTED" : "ACCEPTANCE_APPROVED",
             recipient: request.requester,
             relatedEntityId: request.id,
             relatedEntityType: "AcceptanceRequest",

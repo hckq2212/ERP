@@ -32,6 +32,7 @@ import { TaskIterations } from "./entity/TaskIteration.entity"
 
 
 import { VendorJobs } from "./entity/VendorJob.entity"
+import { ServiceJob } from "./entity/ServiceJob.entity"
 
 import * as dotenv from "dotenv"
 dotenv.config()
@@ -84,6 +85,7 @@ export const AppDataSource = new DataSource({
         ServicePackageItems,
         OpportunityPackages,
         TaskIterations,
+        ServiceJob,
     ],
 
     migrations: [],

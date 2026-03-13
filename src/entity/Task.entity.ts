@@ -117,6 +117,9 @@ export class Tasks extends BaseEntity {
     @Column({ default: false })
     isExtra: boolean;
 
+    @Column({ default: false })
+    isOutput: boolean;
+
     @Column({
         type: "enum",
         enum: PricingStatus,

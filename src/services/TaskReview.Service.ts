@@ -121,7 +121,7 @@ export class TaskReviewService {
                 relations: ["assignee", "contractService", "job", "contractService.service", "contractService.service.outputJob"]
             });
             if (task) {
-                const isOutputJob = task.contractService && task.contractService.service?.outputJobId === task.job?.id;
+                const isOutputJob = task.isOutput;
 
                 task.status = TaskStatus.COMPLETED;
                 task.actualEndDate = new Date();
@@ -132,11 +132,19 @@ export class TaskReviewService {
                 if (isOutputJob) {
                     const contractServiceRepository = AppDataSource.getRepository(ContractServices);
                     const contractService = task.contractService;
-                    contractService.result = {
-                        ...task.result,
-                        name: task.code || task.name
-                    };
-                    contractService.status = "AWAITING_ACCEPTANCE" as any; // Sẵn sàng nghiệm thu
+                    if (!contractService.results) contractService.results = [];
+                    
+                    // Add result to array
+                    contractService.results.push({
+                        taskId: task.id,
+                        type: task.result?.type || 'file',
+                        name: task.code || task.name,
+                        url: task.result?.url || '',
+                        status: 'PENDING'
+                    });
+                    
+                    // Service is awaiting acceptance of its results
+                    contractService.status = "AWAITING_ACCEPTANCE" as any; 
                     await contractServiceRepository.save(contractService);
                 }
 

@@ -1,6 +1,7 @@
 import { AppDataSource } from "../data-source";
 import { Services } from "../entity/Service.entity";
 import { Jobs } from "../entity/Job.entity";
+import { ServiceJob } from "../entity/ServiceJob.entity";
 import { In, ILike } from "typeorm";
 
 export class ServiceService {
@@ -8,7 +9,7 @@ export class ServiceService {
 
     async getAll(filters: { name?: string } = {}) {
         const query: any = {
-            relations: ["jobs", "outputJob"]
+            relations: ["serviceJobs", "serviceJobs.job"]
         };
 
         if (filters.name) {
@@ -21,7 +22,7 @@ export class ServiceService {
     async getOne(id: string) {
         const service = await this.serviceRepository.findOne({
             where: { id },
-            relations: ["jobs", "outputJob"]
+            relations: ["serviceJobs", "serviceJobs.job"]
         });
         if (!service) throw new Error("Không tìm thấy dịch vụ");
         return service;
@@ -30,11 +31,16 @@ export class ServiceService {
     async recalculateCost(serviceId: string) {
         const service = await this.serviceRepository.findOne({
             where: { id: serviceId },
-            relations: ["jobs"]
+            relations: ["serviceJobs", "serviceJobs.job"]
         });
         if (!service) return;
 
-        const jobsTotal = (service.jobs || []).reduce((sum, job) => sum + Number(job.costPrice || 0), 0);
+        const jobsTotal = (service.serviceJobs || []).reduce((sum, sj) => {
+            const cost = Number(sj.job?.costPrice || 0);
+            const qty = Number(sj.quantity || 1);
+            return sum + (cost * qty);
+        }, 0);
+        
         service.costPrice = jobsTotal;
 
         return await this.serviceRepository.save(service);
@@ -42,51 +48,46 @@ export class ServiceService {
 
 
     async create(data: any = {}) {
-        const { jobIds, outputJobId, ...serviceData } = data;
-        const service = this.serviceRepository.create(serviceData) as any;
+        const { jobIds, outputJobIds, ...serviceData } = data;
+        const service = this.serviceRepository.create(serviceData as Partial<Services>);
+        const savedService = (await this.serviceRepository.save(service)) as unknown as Services;
 
-        const jobRepository = AppDataSource.getRepository(Jobs);
-        const allJobIds = new Set(jobIds && Array.isArray(jobIds) ? jobIds : []);
-        if (outputJobId) allJobIds.add(outputJobId);
-
-        if (allJobIds.size > 0) {
-            const jobs = await jobRepository.findBy({ id: In(Array.from(allJobIds)) });
-            service.jobs = jobs;
-            if (outputJobId) {
-                service.outputJob = jobs.find(j => j.id === outputJobId);
-            }
+        if (jobIds && Array.isArray(jobIds)) {
+            const sjRepo = AppDataSource.getRepository(ServiceJob);
+            const serviceJobs = jobIds.map(jobId => sjRepo.create({
+                serviceId: savedService.id,
+                jobId,
+                quantity: 1,
+                isOutput: (outputJobIds || []).includes(jobId)
+            }));
+            await sjRepo.save(serviceJobs);
         }
 
-        const savedService = await this.serviceRepository.save(service);
         return await this.recalculateCost(savedService.id);
     }
 
 
     async update(id: string, data: any = {}) {
-        const { jobIds, outputJobId, ...serviceData } = data;
-        const service = await this.getOne(id) as any;
+        const { jobConfigs, ...serviceData } = data; // jobConfigs: [{ jobId, quantity, isOutput }]
+        const service = await this.getOne(id);
 
         Object.assign(service, serviceData);
-
-        const jobRepository = AppDataSource.getRepository(Jobs);
-        const allJobIds = new Set(jobIds && Array.isArray(jobIds) ? jobIds : []);
-        if (outputJobId) allJobIds.add(outputJobId);
-
-        if (allJobIds.size > 0) {
-            const jobs = await jobRepository.findBy({ id: In(Array.from(allJobIds)) });
-            service.jobs = jobs;
-            if (outputJobId) {
-                service.outputJob = jobs.find(j => j.id === outputJobId);
-            }
-        } else if (jobIds) {
-            service.jobs = [];
-        }
-
-        if (outputJobId === null) {
-            service.outputJob = null;
-        }
-
         await this.serviceRepository.save(service);
+
+        if (jobConfigs && Array.isArray(jobConfigs)) {
+            const sjRepo = AppDataSource.getRepository(ServiceJob);
+            // Simple approach: clear and recreation or sync
+            await sjRepo.delete({ serviceId: id });
+            
+            const newSjs = jobConfigs.map(config => sjRepo.create({
+                serviceId: id,
+                jobId: config.jobId,
+                quantity: config.quantity || 1,
+                isOutput: config.isOutput || false
+            }));
+            await sjRepo.save(newSjs);
+        }
+
         return await this.recalculateCost(id);
     }
 
@@ -98,16 +99,12 @@ export class ServiceService {
     }
 
     async addJob(serviceId: string, jobId: string) {
-        const service = await this.getOne(serviceId);
-        const jobRepository = AppDataSource.getRepository(Jobs);
-        const job = await jobRepository.findOneBy({ id: jobId });
+        const sjRepo = AppDataSource.getRepository(ServiceJob);
+        const existing = await sjRepo.findOneBy({ serviceId, jobId });
 
-        if (!job) throw new Error("Không tìm thấy công việc");
-
-        if (!service.jobs) service.jobs = [];
-        if (!service.jobs.find(j => j.id === jobId)) {
-            service.jobs.push(job);
-            await this.serviceRepository.save(service);
+        if (!existing) {
+            const sj = sjRepo.create({ serviceId, jobId, quantity: 1, isOutput: false });
+            await sjRepo.save(sj);
             await this.recalculateCost(serviceId);
         }
 
@@ -115,12 +112,9 @@ export class ServiceService {
     }
 
     async removeJob(serviceId: string, jobId: string) {
-        const service = await this.getOne(serviceId);
-        if (service.jobs) {
-            service.jobs = service.jobs.filter(j => j.id !== jobId);
-            await this.serviceRepository.save(service);
-            await this.recalculateCost(serviceId);
-        }
+        const sjRepo = AppDataSource.getRepository(ServiceJob);
+        await sjRepo.delete({ serviceId, jobId });
+        await this.recalculateCost(serviceId);
         return await this.getOne(serviceId);
     }
 }

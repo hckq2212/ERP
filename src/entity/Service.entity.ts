@@ -1,8 +1,8 @@
-import { Entity, Column, ManyToMany, JoinTable, OneToMany, ManyToOne, JoinColumn } from "typeorm";
+import { Entity, Column, OneToMany } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
-import { Jobs } from "./Job.entity";
 import { OpportunityServices } from "./OpportunityService.entity";
 import { ContractServices } from "./ContractService.entity";
+import { ServiceJob } from "./ServiceJob.entity";
 
 @Entity()
 export class Services extends BaseEntity {
@@ -19,16 +19,8 @@ export class Services extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     overheadCost: number;
 
-    @ManyToMany(() => Jobs, (job) => job.services)
-    @JoinTable({ name: "service_jobs" })
-    jobs: Jobs[];
-
-    @Column({ type: "varchar", length: 26, nullable: true })
-    outputJobId: string;
-
-    @ManyToOne(() => Jobs)
-    @JoinColumn({ name: "outputJobId" })
-    outputJob: Jobs;
+    @OneToMany(() => ServiceJob, (serviceJob) => serviceJob.service, { cascade: true })
+    serviceJobs: ServiceJob[];
 
     @OneToMany(() => OpportunityServices, (oppService) => oppService.service)
     opportunityServices: OpportunityServices[];

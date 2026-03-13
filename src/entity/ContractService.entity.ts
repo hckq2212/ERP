@@ -60,8 +60,8 @@ export class ContractServices extends BaseEntity {
     @ManyToOne("AcceptanceRequests", "services", { nullable: true })
     acceptanceRequest: any;
 
-    @Column({ type: "json", nullable: true })
-    result: { type: string, name: string, url: string, size?: number, publicId?: string };
+    @Column({ type: "jsonb", nullable: true, default: [] })
+    results: { taskId: string, type: string, name: string, url: string, status: 'PENDING' | 'APPROVED' | 'REJECTED', feedback?: string }[];
 
     @Column({ nullable: true })
     name: string; // Snapshot of service name

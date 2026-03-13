@@ -132,7 +132,9 @@ export class ProjectService {
                 "tasks.quotation",
                 "contract.services",
                 "contract.services.service",
-                "contract.services.outputTask",
+                "contract.services.service",
+                "contract.services.tasks",
+                "contract.services.tasks.job",
             ],
 
             select: {
@@ -152,7 +154,7 @@ export class ProjectService {
                         id: true,
                         sellingPrice: true,
                         status: true,
-                        result: true,
+                        results: true,
                         name: true,
                         packageName: true,
                         isPackageService: true,
@@ -160,12 +162,13 @@ export class ProjectService {
                             id: true,
                             name: true
                         },
-                        outputTask: {
+                        tasks: {
                             id: true,
                             name: true,
                             status: true,
                             result: true,
-                            code: true
+                            code: true,
+                            isOutput: true
                         }
 
                     }
@@ -313,40 +316,32 @@ export class ProjectService {
         // 2. Fetch Contract Services with their Jobs
         const contractServices = await this.contractServiceRepository.find({
             where: { contract: { id: contract.id } },
-            relations: ["service", "service.jobs", "service.outputJob"]
+            relations: ["service", "service.serviceJobs", "service.serviceJobs.job"]
         });
 
         // 3. Generate Tasks for each Job in each Service
         for (const cs of contractServices) {
-            if (!cs.service) continue;
+            if (!cs.service || !cs.service.serviceJobs) continue;
 
-            const jobsToProcess: Jobs[] = [];
-            if (cs.service.jobs) jobsToProcess.push(...cs.service.jobs);
-            if (cs.service.outputJob && !jobsToProcess.find(j => j.id === cs.service.outputJob.id)) {
-                jobsToProcess.push(cs.service.outputJob);
-            }
+            for (const sj of cs.service.serviceJobs) {
+                const job = sj.job;
+                if (!job) continue;
 
-            for (const job of jobsToProcess) {
-                // Avoid duplicate tasks for the same job and contract service
-                const existingTask = await this.taskRepository.findOne({
-                    where: {
-                        project: { id: project.id },
-                        job: { id: job.id },
-                        contractService: { id: cs.id }
-                    }
-                });
+                const quantity = Number(sj.quantity || 1);
 
-                let savedTask;
-                if (existingTask) {
-                    savedTask = existingTask;
-                } else {
-                    // Calculate Sequence for this specific job in this project
+                for (let i = 1; i <= quantity; i++) {
+                    // Unique check using sequence or identifying metadata?
+                    // For now, let's use the sequence logic but ensure we handle existing tasks properly
                     const count = await this.taskRepository.count({
                         where: {
                             project: { id: project.id },
-                            job: { id: job.id }
+                            job: { id: job.id },
+                            contractService: { id: cs.id }
                         }
                     });
+
+                    // If existing tasks match quantity, skip creation
+                    if (count >= quantity) break;
 
                     const seq = (count + 1).toString().padStart(2, '0');
                     const jobCode = job.code || `JOB${job.id}`;
@@ -360,16 +355,11 @@ export class ProjectService {
                         contractService: cs,
                         status: TaskStatus.PENDING,
                         performerType: job.defaultPerformerType === "INTERNAL" ? "INTERNAL" : "VENDOR",
-                        attachments: contract.attachments || []
+                        attachments: contract.attachments || [],
+                        isOutput: sj.isOutput // Flag as output if service-job is marked as output
                     });
 
-                    savedTask = await this.taskRepository.save(task);
-                }
-
-                // If this job is the output job of the service, mark it as outputTask
-                if (cs.service.outputJobId === job.id) {
-                    cs.outputTaskId = savedTask.id;
-                    await this.contractServiceRepository.save(cs);
+                    await this.taskRepository.save(task);
                 }
             }
         }
