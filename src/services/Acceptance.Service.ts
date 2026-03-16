@@ -47,7 +47,18 @@ export class AcceptanceService {
         }
 
         // Check if all services have at least one result AND all tasks are COMPLETED
+        // ALSO: Check if any service is already in AWAITING_ACCEPTANCE or COMPLETED
         for (const s of services) {
+            if (s.status === ContractServiceStatus.AWAITING_ACCEPTANCE) {
+                throw new Error(`Dịch vụ "${s.name || s.id}" đã được gửi nghiệm thu và đang chờ duyệt. Không thể gửi thêm yêu cầu mới.`);
+            }
+            if (s.status === ContractServiceStatus.COMPLETED) {
+                throw new Error(`Dịch vụ "${s.name || s.id}" đã hoàn thành nghiệm thu.`);
+            }
+            if (s.status === ContractServiceStatus.CANCELLED) {
+                throw new Error(`Dịch vụ "${s.name || s.id}" đã bị hủy.`);
+            }
+
             if (!s.results || s.results.length === 0) {
                 throw new Error(`Dịch vụ "${s.name || s.id}" chưa có kết quả nghiệm thu nội bộ.`);
             }
@@ -225,8 +236,13 @@ export class AcceptanceService {
                 // Granular approval
                 if (service.results) {
                     for (const rd of resultDecisions) {
-                        const result = service.results.find(r => r.taskId === rd.taskId);
+                        // find the LAST matching result (the newest uploaded file for this task)
+                        const resultsArray = [...service.results];
+                        resultsArray.reverse();
+                        const result = resultsArray.find(r => r.taskId === rd.taskId);
+                        
                         if (result) {
+                            // Because result is a reference to the object in the original array, mutating it here works.
                             result.status = rd.status;
                             result.feedback = rd.feedback;
                             
@@ -272,11 +288,20 @@ export class AcceptanceService {
                 }
             }
 
-            // Check if ALL output tasks (those in service.results) are APPROVED
-            const allApproved = service.results && service.results.length > 0 && 
-                               service.results.every(r => r.status === 'APPROVED');
+            // Extract the latest result for each task to evaluate overall status
+            const latestResultsMap = new Map();
+            if (service.results) {
+                for (const r of service.results) {
+                    latestResultsMap.set(r.taskId, r);
+                }
+            }
+            const latestResults = Array.from(latestResultsMap.values());
+
+            // Check if ALL output tasks (those in service.results) are APPROVED based on LATEST files
+            const allApproved = latestResults.length > 0 && 
+                               latestResults.every(r => r.status === 'APPROVED');
             
-            const anyRejected = service.results && service.results.some(r => r.status === 'REJECTED');
+            const anyRejected = latestResults.some(r => r.status === 'REJECTED');
 
             if (allApproved) {
                 service.status = ContractServiceStatus.COMPLETED;

@@ -150,8 +150,6 @@ export class TaskReviewService {
                         contractService.results.push(newResult);
                     }
                     
-                    // Service is awaiting acceptance of its results
-                    contractService.status = "AWAITING_ACCEPTANCE" as any; 
                     await contractServiceRepository.save(contractService);
                 }
 
