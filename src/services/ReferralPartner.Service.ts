@@ -1,5 +1,6 @@
 import { AppDataSource } from "../data-source";
 import { ReferralPartners } from "../entity/ReferralPartner.entity";
+import { validatePartnerData } from "../validations/Partner.Validation";
 
 export class ReferralPartnerService {
     private referralPartnerRepository = AppDataSource.getRepository(ReferralPartners);
@@ -23,11 +24,13 @@ export class ReferralPartnerService {
     }
 
     async create(data: any) {
+        validatePartnerData(data);
         const partner = this.referralPartnerRepository.create(data);
         return await this.referralPartnerRepository.save(partner);
     }
 
     async update(id: string, data: any) {
+        validatePartnerData(data);
         const partner = await this.getOne(id);
         Object.assign(partner, data);
         return await this.referralPartnerRepository.save(partner);

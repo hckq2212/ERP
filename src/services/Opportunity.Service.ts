@@ -12,6 +12,7 @@ import { SecurityService } from "./Security.Service";
 import { NotificationService } from "./Notification.Service";
 import { UserRole } from "../entity/Account.entity";
 import { Not } from "typeorm";
+import { validateLeadData } from "../validations/Customer.Validation";
 
 export class OpportunityService {
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
@@ -225,6 +226,8 @@ export class OpportunityService {
             ...opportunityData
         } = data;
 
+        validateLeadData(data);
+
         if (leadTaxId) {
             await this.checkTaxIdUniqueness(leadTaxId);
         }
@@ -340,6 +343,8 @@ export class OpportunityService {
             packages,
             ...opportunityData
         } = data;
+
+        validateLeadData(data);
 
         let opportunity = await this.getOne(id) as Opportunities;
 

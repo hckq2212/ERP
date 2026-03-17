@@ -30,7 +30,7 @@ import taskReviewRoute from "./routes/TaskReview.Route"
 import acceptanceRoute from "./routes/Acceptance.Route"
 import cloudinaryRoute from "./routes/Cloudinary.Route"
 import servicePackageRoute from "./routes/ServicePackage.Route"
-
+import { loggingMiddleware } from "./middlewares/Logging.Middleware";
 
 
 
@@ -63,6 +63,9 @@ app.use(cors({
     credentials: true
 }))
 app.use(passport.initialize())
+
+// Apply logging middleware globally
+app.use(loggingMiddleware);
 
 app.use("/api/auth", authRoute)
 app.use("/api/opportunities", opportunityRoute)

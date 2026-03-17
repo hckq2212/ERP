@@ -2,6 +2,7 @@ import { AppDataSource } from "../data-source";
 import { Vendors } from "../entity/Vendor.entity";
 import { VendorJobs } from "../entity/VendorJob.entity";
 import { Jobs } from "../entity/Job.entity";
+import { validatePartnerData } from "../validations/Partner.Validation";
 
 export class VendorService {
     private vendorRepository = AppDataSource.getRepository(Vendors);
@@ -23,11 +24,13 @@ export class VendorService {
     }
 
     async create(data: any) {
+        validatePartnerData(data);
         const vendor = this.vendorRepository.create(data);
         return await this.vendorRepository.save(vendor);
     }
 
     async update(id: string, data: any) {
+        validatePartnerData(data);
         const vendor = await this.getOne(id);
         Object.assign(vendor, data);
         return await this.vendorRepository.save(vendor);

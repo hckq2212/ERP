@@ -4,6 +4,7 @@ import { Opportunities } from "../entity/Opportunity.entity";
 import { Users } from "../entity/User.entity";
 import { SecurityService } from "./Security.Service";
 import { Not } from "typeorm";
+import { validateCustomerData } from "../validations/Customer.Validation";
 
 export class CustomerService {
     private customerRepository = AppDataSource.getRepository(Customers);
@@ -68,6 +69,7 @@ export class CustomerService {
     }
 
     async create(data: any, userInfo?: { id: string, userId?: string }) {
+        validateCustomerData(data);
         if (data.taxId) {
             await this.checkTaxIdUniqueness(data.taxId);
         }
@@ -79,6 +81,7 @@ export class CustomerService {
     }
 
     async update(id: string, data: any) {
+        validateCustomerData(data);
         if (data.taxId) {
             await this.checkTaxIdUniqueness(data.taxId, id);
         }

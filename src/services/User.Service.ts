@@ -1,7 +1,9 @@
-import { AppDataSource } from "../data-source";
 import { Users } from "../entity/User.entity";
 import { Accounts } from "../entity/Account.entity";
 import { encrypt } from "../helpers/helpers";
+import { validateUserData } from "../validations/User.Validation";
+import { AppDataSource } from "../data-source";
+
 
 export class UserService {
     private userRepository = AppDataSource.getRepository(Users);
@@ -57,6 +59,7 @@ export class UserService {
     }
 
     async create(data: any) {
+        validateUserData(data);
         const { username, password, email, fullName, phoneNumber, role } = data;
 
         const existingAccount = await this.accountRepository.findOne({
@@ -89,6 +92,7 @@ export class UserService {
     }
 
     async update(id: string, data: any) {
+        validateUserData(data);
         const user = await this.getOne(id);
         const { fullName, phoneNumber, email, role, isActive, username } = data;
 
