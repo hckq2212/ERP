@@ -5,6 +5,7 @@ import { Users } from "../entity/User.entity";
 import { SecurityService } from "./Security.Service";
 import { Not } from "typeorm";
 import { validateCustomerData } from "../validations/Customer.Validation";
+import { RedisService } from "./Redis.Service";
 
 export class CustomerService {
     private customerRepository = AppDataSource.getRepository(Customers);
@@ -48,9 +49,14 @@ export class CustomerService {
             }
         }
 
-        return await this.customerRepository.find({
-            where: rbacWhere,
-            relations: ["referralPartner"]
+        // We prefix with user role and id to avoid RBAC leaking across different caches
+        const cacheKey = userInfo ? `customers:all:role_${userInfo.role}:user_${userInfo.id}` : 'customers:all';
+
+        return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            return await this.customerRepository.find({
+                where: rbacWhere,
+                relations: ["referralPartner"]
+            });
         });
     }
 
@@ -60,10 +66,15 @@ export class CustomerService {
             rbacWhere = SecurityService.getCustomerFilters(userInfo);
         }
 
-        const customer = await this.customerRepository.findOne({
-            where: { id, ...rbacWhere },
-            relations: ["referralPartner", "contracts", "opportunities"]
+        const cacheKey = userInfo ? `customers:detail:${id}:role_${userInfo.role}:user_${userInfo.id}` : `customers:detail:${id}`;
+
+        const customer = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            return await this.customerRepository.findOne({
+                where: { id, ...rbacWhere },
+                relations: ["referralPartner", "contracts", "opportunities"]
+            });
         });
+
         if (!customer) throw new Error("Không tìm thấy khách hàng hoặc bạn không có quyền xem");
         return customer;
     }
@@ -77,7 +88,12 @@ export class CustomerService {
         if (userInfo?.userId) {
             customer.createdBy = { id: userInfo.userId } as Users;
         }
-        return await this.customerRepository.save(customer);
+        const savedCustomer = await this.customerRepository.save(customer);
+
+        // Invalidate all customer list caches (all roles and users)
+        await RedisService.deleteCache('customers:all*');
+        
+        return savedCustomer;
     }
 
     async update(id: string, data: any) {
@@ -87,12 +103,23 @@ export class CustomerService {
         }
         const customer = await this.getOne(id);
         Object.assign(customer, data);
-        return await this.customerRepository.save(customer);
+        const savedCustomer = await this.customerRepository.save(customer);
+
+        // Invalidate all list caches and this specific customer's detail caches
+        await RedisService.deleteCache('customers:all*');
+        await RedisService.deleteCache(`customers:detail:${id}*`);
+
+        return savedCustomer;
     }
 
     async delete(id: string) {
         const customer = await this.getOne(id);
         await this.customerRepository.remove(customer);
+
+        // Invalidate all list caches and this specific customer's detail caches
+        await RedisService.deleteCache('customers:all*');
+        await RedisService.deleteCache(`customers:detail:${id}*`);
+
         return { message: "Xóa khách hàng thành công" };
     }
 }

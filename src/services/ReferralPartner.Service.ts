@@ -1,39 +1,55 @@
 import { AppDataSource } from "../data-source";
 import { ReferralPartners } from "../entity/ReferralPartner.entity";
 import { validatePartnerData } from "../validations/Partner.Validation";
+import { RedisService } from "./Redis.Service";
 
 export class ReferralPartnerService {
     private referralPartnerRepository = AppDataSource.getRepository(ReferralPartners);
 
     async getAll() {
-        return await this.referralPartnerRepository.find({
-            relations: ["customers", "opportunities", "contracts"],
-            order: {
-                createdAt: "DESC"
-            }
+        return await RedisService.fetchWithCache('referral-partners:all', 3600, async () => {
+            return await this.referralPartnerRepository.find({
+                relations: ["customers", "opportunities", "contracts"],
+                order: {
+                    createdAt: "DESC"
+                }
+            });
         });
     }
 
     async getOne(id: string) {
-        const partner = await this.referralPartnerRepository.findOne({
-            where: { id },
-            relations: ["customers", "opportunities", "contracts"]
+        return await RedisService.fetchWithCache(`referral-partners:detail:${id}`, 3600, async () => {
+            const partner = await this.referralPartnerRepository.findOne({
+                where: { id },
+                relations: ["customers", "opportunities", "contracts"]
+            });
+            if (!partner) throw new Error("Không tìm thấy đối tác");
+            return partner;
         });
-        if (!partner) throw new Error("Không tìm thấy đối tác");
-        return partner;
     }
 
     async create(data: any) {
         validatePartnerData(data);
         const partner = this.referralPartnerRepository.create(data);
-        return await this.referralPartnerRepository.save(partner);
+        const saved = await this.referralPartnerRepository.save(partner);
+
+        // Invalidate list cache
+        await RedisService.deleteCache('referral-partners:all*');
+
+        return saved;
     }
 
     async update(id: string, data: any) {
         validatePartnerData(data);
         const partner = await this.getOne(id);
         Object.assign(partner, data);
-        return await this.referralPartnerRepository.save(partner);
+        const saved = await this.referralPartnerRepository.save(partner);
+
+        // Invalidate caches
+        await RedisService.deleteCache('referral-partners:all*');
+        await RedisService.deleteCache(`referral-partners:detail:${id}*`);
+
+        return saved;
     }
 
     async delete(id: string) {
@@ -45,6 +61,11 @@ export class ReferralPartnerService {
         }
 
         await this.referralPartnerRepository.remove(partner);
+
+        // Invalidate caches
+        await RedisService.deleteCache('referral-partners:all*');
+        await RedisService.deleteCache(`referral-partners:detail:${id}*`);
+
         return { message: "Xóa đối tác thành công" };
     }
 

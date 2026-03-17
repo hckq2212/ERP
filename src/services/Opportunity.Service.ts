@@ -13,6 +13,7 @@ import { NotificationService } from "./Notification.Service";
 import { UserRole } from "../entity/Account.entity";
 import { Not } from "typeorm";
 import { validateLeadData } from "../validations/Customer.Validation";
+import { RedisService } from "./Redis.Service";
 
 export class OpportunityService {
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
@@ -139,23 +140,29 @@ export class OpportunityService {
             }
         }
 
-        const [items, total] = await this.opportunityRepository.findAndCount({
-            where: finalWhereConditions.length > 1 ? finalWhereConditions : finalWhereConditions[0],
-            relations: ["customer", "referralPartner", "createdBy"],
-            order: { [sortBy]: sortDir },
-            skip: (page - 1) * limit,
-            take: limit
-        });
+        const filtersKey = JSON.stringify(filters);
+        const userInfoKey = userInfo ? `role_${userInfo.role}:user_${userInfo.id}` : 'no_user';
+        const cacheKey = `opportunities:all:${userInfoKey}:${filtersKey}`;
 
-        return {
-            data: items,
-            meta: {
-                total,
-                page,
-                limit,
-                totalPages: Math.ceil(total / limit)
-            }
-        };
+        return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            const [items, total] = await this.opportunityRepository.findAndCount({
+                where: finalWhereConditions.length > 1 ? finalWhereConditions : finalWhereConditions[0],
+                relations: ["customer", "referralPartner", "createdBy"],
+                order: { [sortBy]: sortDir },
+                skip: (page - 1) * limit,
+                take: limit
+            });
+
+            return {
+                data: items,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit)
+                }
+            };
+        });
     }
 
     async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
@@ -172,25 +179,31 @@ export class OpportunityService {
             rbacWhere = { id };
         }
 
-        const opportunity = await this.opportunityRepository.findOne({
-            where: rbacWhere,
-            relations: [
-                "customer",
-                "referralPartner",
-                "services",
-                "services.service",
-                "packages",
-                "packages.services",
-                "packages.services.service",
-                "quotations",
-                "contracts",
-                "createdBy"
-            ]
+        const userInfoKey = userInfo ? `:role_${userInfo.role}:user_${userInfo.id}` : '';
+        const cacheKey = `opportunities:detail:${id}${userInfoKey}`;
+
+        const result = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            const opportunity = await this.opportunityRepository.findOne({
+                where: rbacWhere,
+                relations: [
+                    "customer",
+                    "referralPartner",
+                    "services",
+                    "services.service",
+                    "packages",
+                    "packages.services",
+                    "packages.services.service",
+                    "quotations",
+                    "contracts",
+                    "createdBy"
+                ]
+            });
+            return opportunity;
         });
-        if (!opportunity) {
+        if (!result) {
             throw new Error("Không tìm thấy cơ hội kinh doanh hoặc bạn không có quyền xem");
         }
-        return opportunity;
+        return result;
     }
 
     private async generateOpportunityCode(): Promise<string> {
@@ -325,6 +338,9 @@ export class OpportunityService {
             }
         }
 
+        // Invalidate list caches
+        await RedisService.deleteCache('opportunities:all*');
+
         return await this.getOne(savedOpportunity.id);
     }
 
@@ -415,12 +431,21 @@ export class OpportunityService {
             await this.syncServicesAndPackages(savedOpportunity, services, packages);
         }
 
+        // Invalidate list and detail caches
+        await RedisService.deleteCache('opportunities:all*');
+        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+
         return await this.getOne(savedOpportunity.id);
     }
 
     async delete(id: string) {
         const opportunity = await this.getOne(id);
         await this.opportunityRepository.remove(opportunity);
+
+        // Invalidate list and detail caches
+        await RedisService.deleteCache('opportunities:all*');
+        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+
         return { message: "Xóa cơ hội kinh doanh thành công" };
     }
 
@@ -451,6 +476,10 @@ export class OpportunityService {
                 });
             }
         }
+
+        // Invalidate list and detail caches
+        await RedisService.deleteCache('opportunities:all*');
+        await RedisService.deleteCache(`opportunities:detail:${id}*`);
 
         return { message: "Duyệt cơ hội thành công", opportunity: result };
     }

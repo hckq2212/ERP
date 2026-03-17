@@ -40,6 +40,7 @@ export class AuthController {
 
             res.status(200).json({
                 message: "Đăng nhập thành công",
+                accessToken: result.accessToken,
                 user: result.user
             });
         } catch (error: any) {

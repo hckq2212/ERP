@@ -3,6 +3,7 @@ import { Services } from "../entity/Service.entity";
 import { Jobs } from "../entity/Job.entity";
 import { ServiceJob } from "../entity/ServiceJob.entity";
 import { In, ILike } from "typeorm";
+import { RedisService } from "./Redis.Service";
 
 export class ServiceService {
     private serviceRepository = AppDataSource.getRepository(Services);
@@ -16,13 +17,21 @@ export class ServiceService {
             query.where = { name: ILike(`%${filters.name}%`) };
         }
 
-        return await this.serviceRepository.find(query);
+        const filtersKey = JSON.stringify(filters);
+        const cacheKey = `services:all:${filtersKey}`;
+
+        return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            return await this.serviceRepository.find(query);
+        });
     }
 
     async getOne(id: string) {
-        const service = await this.serviceRepository.findOne({
-            where: { id },
-            relations: ["serviceJobs", "serviceJobs.job"]
+        const cacheKey = `services:detail:${id}`;
+        const service = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            return await this.serviceRepository.findOne({
+                where: { id },
+                relations: ["serviceJobs", "serviceJobs.job"]
+            });
         });
         if (!service) throw new Error("Không tìm thấy dịch vụ");
         return service;
@@ -52,6 +61,9 @@ export class ServiceService {
         const service = this.serviceRepository.create(serviceData as Partial<Services>);
         const savedService = (await this.serviceRepository.save(service)) as unknown as Services;
 
+        // Invalidate list cache
+        await RedisService.deleteCache('services:all*');
+
         if (jobIds && Array.isArray(jobIds)) {
             const sjRepo = AppDataSource.getRepository(ServiceJob);
             const serviceJobs = jobIds.map(jobId => sjRepo.create({
@@ -74,6 +86,10 @@ export class ServiceService {
         Object.assign(service, serviceData);
         await this.serviceRepository.save(service);
 
+        // Invalidate caches
+        await RedisService.deleteCache('services:all*');
+        await RedisService.deleteCache(`services:detail:${id}*`);
+
         if (jobConfigs && Array.isArray(jobConfigs)) {
             const sjRepo = AppDataSource.getRepository(ServiceJob);
             // Simple approach: clear and recreation or sync
@@ -95,6 +111,11 @@ export class ServiceService {
     async delete(id: string) {
         const service = await this.getOne(id);
         await this.serviceRepository.remove(service);
+
+        // Invalidate caches
+        await RedisService.deleteCache('services:all*');
+        await RedisService.deleteCache(`services:detail:${id}*`);
+
         return { message: "Xóa dịch vụ thành công" };
     }
 
@@ -106,6 +127,10 @@ export class ServiceService {
             const sj = sjRepo.create({ serviceId, jobId, quantity: 1, isOutput: false });
             await sjRepo.save(sj);
             await this.recalculateCost(serviceId);
+
+            // Invalidate caches
+            await RedisService.deleteCache('services:all*');
+            await RedisService.deleteCache(`services:detail:${serviceId}*`);
         }
 
         return await this.getOne(serviceId);
@@ -115,6 +140,11 @@ export class ServiceService {
         const sjRepo = AppDataSource.getRepository(ServiceJob);
         await sjRepo.delete({ serviceId, jobId });
         await this.recalculateCost(serviceId);
+
+        // Invalidate caches
+        await RedisService.deleteCache('services:all*');
+        await RedisService.deleteCache(`services:detail:${serviceId}*`);
+
         return await this.getOne(serviceId);
     }
 }

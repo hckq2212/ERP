@@ -22,6 +22,7 @@
       "passport": "^0.7.0",
       "passport-jwt": "^4.0.1",
       "pg": "^8.17.2",
+      "redis": "^5.11.0",
       "ts-node": "^10.9.2",
       "typeorm": "^0.3.28",
       "typescript": "^5.9.3",
@@ -31,11 +32,15 @@
       "postinstall": "tsc",
       "build": "tsc",
       "start": "node build/index.js",
-      "dev": "nodemon --exec ts-node src/index.ts"
+      "dev": "nodemon --exec ts-node src/index.ts",
+      "test": "jest"
    },
    "devDependencies": {
       "@types/cookie-parser": "^1.4.10",
+      "@types/jest": "^30.0.0",
       "@types/passport": "^1.0.17",
-      "@types/passport-jwt": "^4.0.1"
+      "@types/passport-jwt": "^4.0.1",
+      "jest": "^30.3.0",
+      "ts-jest": "^29.4.6"
    }
 }

@@ -13,6 +13,7 @@ import { ProjectService } from "./Project.Service";
 import { DebtService } from "./Debt.Service";
 import { NotificationService } from "./Notification.Service";
 import { Users } from "../entity/User.entity";
+import { RedisService } from "./Redis.Service";
 
 
 
@@ -96,23 +97,29 @@ export class ContractService {
             }
         }
 
-        const [items, total] = await this.contractRepository.findAndCount({
-            where: where.length > 1 ? where : where[0],
-            relations: ["customer", "opportunity", "opportunity.referralPartner", "debts", "addendums"],
-            order: { [sortBy]: sortDir },
-            skip: (page - 1) * limit,
-            take: limit
-        });
+        const filtersKey = JSON.stringify(filters);
+        const userInfoKey = userInfo ? `role_${userInfo.role}:user_${userInfo.id}` : 'no_user';
+        const cacheKey = `contracts:all:${userInfoKey}:${filtersKey}`;
 
-        return {
-            data: items,
-            meta: {
-                total,
-                page,
-                limit,
-                totalPages: Math.ceil(total / limit)
-            }
-        };
+        return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            const [items, total] = await this.contractRepository.findAndCount({
+                where: where.length > 1 ? where : where[0],
+                relations: ["customer", "opportunity", "opportunity.referralPartner", "debts", "addendums"],
+                order: { [sortBy]: sortDir },
+                skip: (page - 1) * limit,
+                take: limit
+            });
+
+            return {
+                data: items,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit)
+                }
+            };
+        });
     }
 
     async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
@@ -129,9 +136,14 @@ export class ContractService {
             rbacWhere = { id };
         }
 
-        const contract = await this.contractRepository.findOne({
-            where: rbacWhere,
-            relations: ["customer", "opportunity", "milestones", "services", "debts", "addendums"]
+        const userInfoKey = userInfo ? `:role_${userInfo.role}:user_${userInfo.id}` : '';
+        const cacheKey = `contracts:detail:${id}${userInfoKey}`;
+
+        const contract = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            return await this.contractRepository.findOne({
+                where: rbacWhere,
+                relations: ["customer", "opportunity", "milestones", "services", "debts", "addendums"]
+            });
         });
         if (!contract) {
             throw new Error("Không tìm thấy hợp đồng hoặc bạn không có quyền xem");
@@ -330,6 +342,9 @@ export class ContractService {
         });
         await this.milestoneRepository.save(defaultMilestone);
 
+        // Invalidate list cache
+        await RedisService.deleteCache('contracts:all*');
+
         return savedContract;
     }
 
@@ -340,7 +355,13 @@ export class ContractService {
         contract.rejectionReason = null; // Clear rejection reason on re-upload
 
 
-        return await this.contractRepository.save(contract);
+        const savedResult = await this.contractRepository.save(contract);
+
+        // Invalidate caches
+        await RedisService.deleteCache('contracts:all*');
+        await RedisService.deleteCache(`contracts:detail:${id}*`);
+
+        return savedResult;
     }
 
     async approveProposal(id: string, userInfo?: { id: string, userId?: string }) {
@@ -356,6 +377,9 @@ export class ContractService {
         // Auto Create Project (Draft)
         await this.projectService.createFromContract(savedContract, userInfo);
 
+        // Invalidate caches
+        await RedisService.deleteCache('contracts:all*');
+        await RedisService.deleteCache(`contracts:detail:${id}*`);
 
         return savedContract;
     }
@@ -395,6 +419,10 @@ export class ContractService {
             await this.projectService.start(contract.project.id);
         }
 
+        // Invalidate caches
+        await RedisService.deleteCache('contracts:all*');
+        await RedisService.deleteCache(`contracts:detail:${id}*`);
+
         return savedContract;
     }
 
@@ -419,7 +447,12 @@ export class ContractService {
             status: MilestoneStatus.PENDING
         });
 
-        return await this.milestoneRepository.save(milestone);
+        const savedMilestone = await this.milestoneRepository.save(milestone);
+
+        // Invalidate detail cache (milestones are often included in detail)
+        await RedisService.deleteCache(`contracts:detail:${contractId}*`);
+
+        return savedMilestone;
     }
 
     async updateMilestone(id: string, data: Partial<PaymentMilestones>) {
@@ -440,18 +473,38 @@ export class ContractService {
         }
 
         Object.assign(milestone, data);
-        return await this.milestoneRepository.save(milestone);
+        const savedMilestone = await this.milestoneRepository.save(milestone);
+
+        // Invalidate detail cache
+        await RedisService.deleteCache(`contracts:detail:${milestone.contract.id}*`);
+
+        return savedMilestone;
     }
 
     async deleteMilestone(id: string) {
         const milestone = await this.milestoneRepository.findOne({ where: { id } });
         if (!milestone) throw new Error("Không tìm thấy đợt thanh toán");
-        return await this.milestoneRepository.remove(milestone);
+        const result = await this.milestoneRepository.remove(milestone);
+
+        // Invalidate detail cache
+        if (milestone.contract?.id) {
+            await RedisService.deleteCache(`contracts:detail:${milestone.contract.id}*`);
+        } else {
+            // Fallback if relation not loaded
+            await RedisService.deleteCache('contracts:detail*');
+        }
+
+        return result;
     }
 
     async delete(id: string) {
         const contract = await this.getOne(id);
         await this.contractRepository.remove(contract);
+
+        // Invalidate caches
+        await RedisService.deleteCache('contracts:all*');
+        await RedisService.deleteCache(`contracts:detail:${id}*`);
+
         return { message: "Xóa hợp đồng thành công" };
     }
 
@@ -470,6 +523,10 @@ export class ContractService {
         contract.rejectionReason = reason;
 
         const savedContract = await this.contractRepository.save(contract);
+
+        // Invalidate caches
+        await RedisService.deleteCache('contracts:all*');
+        await RedisService.deleteCache(`contracts:detail:${id}*`);
 
         // Notify Opportunity Creator
         if (contract.opportunity?.createdBy) {

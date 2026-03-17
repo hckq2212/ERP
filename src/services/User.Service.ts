@@ -3,6 +3,7 @@ import { Accounts } from "../entity/Account.entity";
 import { encrypt } from "../helpers/helpers";
 import { validateUserData } from "../validations/User.Validation";
 import { AppDataSource } from "../data-source";
+import { RedisService } from "./Redis.Service";
 
 
 export class UserService {
@@ -10,50 +11,55 @@ export class UserService {
     private accountRepository = AppDataSource.getRepository(Accounts);
 
     async getAll() {
-        return await this.userRepository.find({
-            relations: ["tasks", "account"],
-            select: {
-                id: true,
-                fullName: true,
-                phoneNumber: true,
-                account: {
+        return await RedisService.fetchWithCache('users:all', 3600, async () => {
+            return await this.userRepository.find({
+                relations: ["tasks", "account"],
+                select: {
                     id: true,
-                    username: true,
-                    email: true,
-                    role: true
-                },
-                tasks: {
-                    id: true,
-                    code: true,
-                    name: true,
-                    status: true
+                    fullName: true,
+                    phoneNumber: true,
+                    account: {
+                        id: true,
+                        username: true,
+                        email: true,
+                        role: true
+                    },
+                    tasks: {
+                        id: true,
+                        code: true,
+                        name: true,
+                        status: true
+                    }
                 }
-            }
+            });
         });
     }
 
     async getOne(id: string) {
-        const user = await this.userRepository.findOne({
-            where: { id },
-            relations: ["tasks", "account"],
-            select: {
-                id: true,
-                fullName: true,
-                phoneNumber: true,
-                account: {
+        const user = await RedisService.fetchWithCache(`users:detail:${id}`, 3600, async () => {
+            return await this.userRepository.findOne({
+                where: { id },
+                relations: ["tasks", "account"],
+                select: {
                     id: true,
-                    username: true,
-                    email: true,
-                    role: true
-                },
-                tasks: {
-                    id: true,
-                    code: true,
-                    name: true,
-                    status: true
+                    fullName: true,
+                    phoneNumber: true,
+                    account: {
+                        id: true,
+                        username: true,
+                        email: true,
+                        role: true
+                    },
+                    tasks: {
+                        id: true,
+                        code: true,
+                        name: true,
+                        status: true
+                    }
                 }
-            }
+            });
         });
+
         if (!user) throw new Error("Không tìm thấy người dùng");
         return user;
     }
@@ -88,6 +94,9 @@ export class UserService {
             await transactionalEntityManager.save(user);
         });
 
+        // Xóa cache danh sách khi có user mới
+        await RedisService.deleteCache('users:all');
+
         return { message: "Tạo người dùng thành công" };
     }
 
@@ -108,7 +117,13 @@ export class UserService {
             await this.accountRepository.save(user.account);
         }
 
-        return await this.userRepository.save(user);
+        const savedUser = await this.userRepository.save(user);
+
+        // Xóa cache danh sách và cache chi tiết của user vừa update
+        await RedisService.deleteCache('users:all');
+        await RedisService.deleteCache(`users:detail:${id}`);
+
+        return savedUser;
     }
 
     async delete(id: string) {
@@ -120,6 +135,10 @@ export class UserService {
             }
             await transactionalEntityManager.remove(user);
         });
+
+        // Xóa cache danh sách và cache chi tiết của user vừa xóa
+        await RedisService.deleteCache('users:all');
+        await RedisService.deleteCache(`users:detail:${id}`);
 
         return { message: "Xóa người dùng thành công" };
     }

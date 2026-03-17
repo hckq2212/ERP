@@ -1,0 +1,49 @@
+services:
+  # Backend Service
+  # api:
+  #   build: .
+  #   container_name: erp_backend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - NODE_ENV=development
+  #     - REDIS_HOST=redis_cache
+  #     - REDIS_PORT=6379
+  #     - DB_HOST=host.docker.internal # Cho phép app gọi DB đang chạy local của bạn
+  #   depends_on:
+  #     - redis_cache
+  #   networks:
+  #     - erp_network
+
+  # Redis Service
+  redis_cache:
+    image: redis:7-alpine
+    container_name: erp_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - erp_network
+    volumes:
+      - redis_data:/data
+
+  # n8n Service
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+
+networks:
+  erp_network:
+    driver: bridge
+
+volumes:
+  redis_data:
