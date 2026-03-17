@@ -7,11 +7,14 @@ export class RedisService {
     static async getCache(key: string): Promise<any | null> {
         try {
             const data = await redisClient.get(key);
-            console.log("lấy dl từ redis")
-            return data ? JSON.parse(data.toString()) : null;
-
-        } catch (error) {
-            console.error(`Lỗi Redis getCache (${key}):`, error);
+            if (data) {
+                console.log(`[Redis] HIT: ${key}`);
+                return JSON.parse(data.toString());
+            }
+            console.log(`[Redis] MISS: ${key}`);
+            return null;
+        } catch (error: any) {
+            console.error(`[Redis] ERROR GET (${key}):`, error.message);
             return null; // Trả về null để fallback gọi DB
         }
     }
@@ -23,8 +26,9 @@ export class RedisService {
     static async setCache(key: string, data: any, ttl: number = 3600): Promise<void> {
         try {
             await redisClient.setEx(key, ttl, JSON.stringify(data));
-        } catch (error) {
-            console.error(`Lỗi Redis setCache (${key}):`, error);
+            console.log(`[Redis] SET: ${key} (TTL: ${ttl}s)`);
+        } catch (error: any) {
+            console.error(`[Redis] ERROR SET (${key}):`, error.message);
         }
     }
 
@@ -38,12 +42,14 @@ export class RedisService {
                 const keys = await redisClient.keys(pattern);
                 if (keys.length > 0) {
                     await redisClient.del(keys);
+                    console.log(`[Redis] DEL PATTERN: ${pattern} (${keys.length} keys)`);
                 }
             } else {
                 await redisClient.del(pattern);
+                console.log(`[Redis] DEL: ${pattern}`);
             }
-        } catch (error) {
-            console.error(`Lỗi Redis deleteCache (${pattern}):`, error);
+        } catch (error: any) {
+            console.error(`[Redis] ERROR DEL (${pattern}):`, error.message);
         }
     }
 
@@ -54,54 +60,56 @@ export class RedisService {
      * @param fetchFromDbFn Hàm lấy dữ liệu từ Backend/Database
      */
     static async fetchWithCache<T>(key: string, ttlExpire: number, fetchFromDbFn: () => Promise<T>): Promise<T> {
-        // 1. Kiểm tra cache
-        let data = await this.getCache(key);
-        if (data) return data;
+        try {
+            // 1. Kiểm tra cache
+            let data = await this.getCache(key);
+            if (data) return data;
 
-        // 2. Không có cache -> Thử lấy Lock (cho 1 request duy nhất làm leader)
-        const lockKey = `lock:${key}`;
-        // Lấy khóa. EX 7 -> Lock tối đa 7s. NX -> Chỉ tạo nếu khóa chưa tồn tại
-        const lockAcquired = await redisClient.set(lockKey, "1", { EX: 7, NX: true });
+            // 2. Không có cache -> Thử lấy Lock (cho 1 request duy nhất làm leader)
+            const lockKey = `lock:${key}`;
+            // Lấy khóa. EX 7 -> Lock tối đa 7s. NX -> Chỉ tạo nếu khóa chưa tồn tại
+            const lockAcquired = await redisClient.set(lockKey, "1", { EX: 7, NX: true });
 
-        if (lockAcquired) {
-            // ---> REQUEST ĐẦU TIÊN (LEADER)
-            try {
-                // Lấy dữ liệu nặng từ Database
-                const freshData = await fetchFromDbFn();
-
-                // Set dữ liệu vào cache thật
-                await this.setCache(key, freshData, ttlExpire);
-
-                return freshData;
-            } finally {
-                // Nhả khóa để lỡ sau này còn xử lý tiếp, tuy nhiên lockKey cũng tự huỷ sau 7s.
+            if (lockAcquired) {
+                // ---> REQUEST ĐẦU TIÊN (LEADER)
                 try {
-                    await redisClient.del(lockKey);
-                } catch (e) {
-                    console.error("Lỗi xóa redis lock", e);
+                    // Lấy dữ liệu nặng từ Database
+                    const freshData = await fetchFromDbFn();
+
+                    // Set dữ liệu vào cache thật
+                    await this.setCache(key, freshData, ttlExpire);
+
+                    return freshData;
+                } finally {
+                    // Nhả khóa
+                    try {
+                        await redisClient.del(lockKey);
+                    } catch (e) {
+                        console.error("Lỗi xóa redis lock", e);
+                    }
                 }
-            }
-        } else {
-            // ---> CÁC REQUEST ĐẾN SAU (FOLLOWER) 
-            // Không lấy được lock -> Có 1 request khác đang query DB rồi. 
-            // -> Chờ (Polling)
-            const waitMaxMs = 7000;
-            const sleepMs = 200;
-            let waited = 0;
+            } else {
+                // ---> CÁC REQUEST ĐẾN SAU (FOLLOWER) 
+                const waitMaxMs = 7000;
+                const sleepMs = 200;
+                let waited = 0;
 
-            while (waited < waitMaxMs) {
-                // Ngủ 200ms
-                await new Promise((resolve) => setTimeout(resolve, sleepMs));
-                waited += sleepMs;
+                while (waited < waitMaxMs) {
+                    await new Promise((resolve) => setTimeout(resolve, sleepMs));
+                    waited += sleepMs;
 
-                // Thức dậy và kiểm tra lại cache thật
-                data = await this.getCache(key);
-                if (data) {
-                    return data; // Request đầu tiên đã nấu xong cơm
+                    data = await this.getCache(key);
+                    if (data) return data;
                 }
-            }
 
-            throw new Error("Lấy dữ liệu quá thời gian chờ (Timeout 7s)");
+                // Nếu đợi quá lâu mà vẫn không có cơm, thì tự nấu luôn (fallback DB)
+                return await fetchFromDbFn();
+            }
+        } catch (error) {
+            // ---> CƠ CHẾ RESILIENCE (fallback khi Redis sập)
+            console.error(`Redis Error (fetchWithCache) for key ${key}:`, error);
+            console.log("Fallback to Database query...");
+            return await fetchFromDbFn();
         }
     }
 }
