@@ -5,7 +5,7 @@ import { AuthRequest } from "../middlewares/Auth.Middleware";
 export class ChatController {
     sendMessage = async (req: AuthRequest, res: Response) => {
         try {
-            const { message } = req.body;
+            const { message, sessionId } = req.body;
             const user = req.user;
 
             if (!message) {
@@ -16,10 +16,14 @@ export class ChatController {
                 return res.status(401).json({ message: "Unauthorized" });
             }
 
+            const token = req.cookies?.accessToken || req.headers.authorization?.split(" ")[1];
+
             const result = await ChatService.sendMessage(
                 message, 
                 user.id, 
-                user.username || "User"
+                user.username || "User",
+                token,
+                sessionId
             );
 
             res.status(200).json(result);

@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export class ChatService {
-    static async sendMessage(message: string, userId: string, fullName: string) {
+    static async sendMessage(message: string, userId: string, fullName: string, token?: string, sessionId?: string) {
         const n8nUrl = process.env.N8N_URL;
         
         if (!n8nUrl) {
@@ -13,6 +13,8 @@ export class ChatService {
                 chatInput: message,
                 userId: userId,
                 userFullName: fullName,
+                accessToken: token, // Pass token to n8n
+                sessionId: sessionId, // Pass session ID to n8n
                 timestamp: new Date().toISOString()
             });
 
