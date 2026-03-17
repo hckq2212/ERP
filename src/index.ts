@@ -30,6 +30,7 @@ import taskReviewRoute from "./routes/TaskReview.Route"
 import acceptanceRoute from "./routes/Acceptance.Route"
 import cloudinaryRoute from "./routes/Cloudinary.Route"
 import servicePackageRoute from "./routes/ServicePackage.Route"
+import chatRoute from "./routes/Chat.Route"
 import { loggingMiddleware } from "./middlewares/Logging.Middleware";
 
 
@@ -91,6 +92,7 @@ app.use("/api/task-reviews", taskReviewRoute)
 app.use("/api/acceptance", acceptanceRoute)
 app.use("/api/cloudinary", cloudinaryRoute)
 app.use("/api/service-packages", servicePackageRoute)
+app.use("/api/chat", chatRoute)
 
 
 

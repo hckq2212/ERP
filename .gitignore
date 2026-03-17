@@ -10,3 +10,4 @@ temp/
 *.txt
 scripts/
 test/
+n8n_data/
