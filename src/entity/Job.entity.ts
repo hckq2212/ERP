@@ -6,11 +6,8 @@ import { Tasks } from "./Task.entity";
 import { VendorJobs } from "./VendorJob.entity";
 import { JobCriterias } from "./JobCriteria.entity";
 import { ServiceJob } from "./ServiceJob.entity";
+import { PerformerType } from "./Enums";
 
-export enum PerformerType {
-    VENDOR = "VENDOR",
-    INTERNAL = "INTERNAL"
-}
 
 @Entity()
 export class Jobs extends BaseEntity {

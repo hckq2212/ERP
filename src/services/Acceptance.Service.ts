@@ -2,7 +2,8 @@ import { AppDataSource } from "../data-source";
 import { AcceptanceRequests, AcceptanceStatus } from "../entity/AcceptanceRequest.entity";
 import { ContractServices, ContractServiceStatus } from "../entity/ContractService.entity";
 import { Users } from "../entity/User.entity";
-import { Tasks, TaskStatus } from "../entity/Task.entity";
+import { Tasks } from "../entity/Task.entity";
+import { TaskStatus } from "../entity/Enums";
 import { Projects } from "../entity/Project.entity";
 import { NotificationService } from "./Notification.Service";
 import { In } from "typeorm";
@@ -299,7 +300,7 @@ export class AcceptanceService {
 
             // Check if ALL output tasks (those in service.results) are APPROVED based on LATEST files
             const allApproved = latestResults.length > 0 && 
-                               latestResults.every(r => r.status === 'APPROVED');
+                                latestResults.every(r => r.status === 'APPROVED');
             
             const anyRejected = latestResults.some(r => r.status === 'REJECTED');
 

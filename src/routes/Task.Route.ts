@@ -16,12 +16,15 @@ const upload = multer({
     }
 });
 
+import { validationMiddleware } from "../middlewares/Validation.Middleware";
+import { CreateTaskDTO, TaskAssignmentDTO } from "../dto/Task.dto";
+
 router.get("/", authMiddleware, taskController.getAll);
 router.get("/:id", authMiddleware, taskController.getOne);
-router.post("/", authMiddleware, taskController.create);
+router.post("/", authMiddleware, validationMiddleware(CreateTaskDTO), taskController.create);
 router.post("/internal", authMiddleware, taskController.createInternal);
 router.put("/:id", authMiddleware, taskController.update);
-router.put("/:id/assign", authMiddleware, taskController.assign);
+router.put("/:id/assign", authMiddleware, validationMiddleware(TaskAssignmentDTO), taskController.assign);
 router.patch("/:id/submit-result", authMiddleware, taskController.submitResult);
 router.delete("/:id", authMiddleware, taskController.delete);
 router.patch("/:id/reassign", authMiddleware, taskController.reassign);

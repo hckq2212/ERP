@@ -39,7 +39,7 @@ export class Opportunities extends BaseEntity {
     @Column({ type: "text", nullable: true })
     description: string;
 
-    @Column()
+    @Column({ nullable: true })
     field: string;
 
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
@@ -54,7 +54,7 @@ export class Opportunities extends BaseEntity {
     @Column({ type: "date", nullable: true })
     endDate: Date;
 
-    @Column()
+    @Column({ nullable: true })
     priority: string;
 
     @Column({ type: "int", default: 0 })

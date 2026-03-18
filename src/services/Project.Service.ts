@@ -6,8 +6,10 @@ import { ProjectTeams } from "../entity/ProjectTeam.entity";
 import { Users } from "../entity/User.entity";
 import { OpportunityStatus } from "../entity/Opportunity.entity";
 import { ContractServices } from "../entity/ContractService.entity";
-import { Tasks, TaskStatus } from "../entity/Task.entity";
+import { Tasks } from "../entity/Task.entity";
+import { TaskStatus } from "../entity/Enums";
 import { Jobs } from "../entity/Job.entity";
+import { PerformerType } from "../entity/Enums";
 import { NotificationService } from "./Notification.Service";
 
 import { SecurityService } from "./Security.Service";
@@ -360,7 +362,7 @@ export class ProjectService {
                         job: job,
                         contractService: cs,
                         status: TaskStatus.PENDING,
-                        performerType: job.defaultPerformerType === "INTERNAL" ? "INTERNAL" : "VENDOR",
+                        performerType: job.defaultPerformerType,
                         attachments: contract.attachments || [],
                         isOutput: sj.isOutput // Flag as output if service-job is marked as output
                     });

@@ -16,6 +16,9 @@ const upload = multer({
     }
 });
 
+import { CreateUserDTO, UpdateUserDTO } from "../dto/User.dto";
+import { validationMiddleware } from "../middlewares/Validation.Middleware";
+
 // All user routes protected by authMiddleware
 router.use(authMiddleware);
 
@@ -23,8 +26,8 @@ router.get("/", userController.getAll);
 router.get("/:id", userController.getOne);
 
 // Only BOD and ADMIN can manage users (Create, Update, Delete)
-router.post("/", roleMiddleware(["BOD", "ADMIN"]), userController.create);
-router.put("/:id", roleMiddleware(["BOD", "ADMIN"]), upload.array("laborContract", 3), userController.update);
+router.post("/", roleMiddleware(["BOD", "ADMIN"]), validationMiddleware(CreateUserDTO), userController.create);
+router.put("/:id", roleMiddleware(["BOD", "ADMIN"]), upload.array("laborContract", 3), validationMiddleware(UpdateUserDTO), userController.update);
 router.delete("/:id", roleMiddleware(["BOD", "ADMIN"]), userController.delete);
 
 export default router;

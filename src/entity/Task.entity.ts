@@ -8,28 +8,8 @@ import { Vendors } from "./Vendor.entity";
 import { TaskReviews } from "./TaskReview.entity";
 import { Services } from "./Service.entity";
 import { TaskIterations } from "./TaskIteration.entity";
+import { TaskStatus, PerformerType, PricingStatus } from "./Enums";
 
-export enum TaskStatus {
-    PENDING = "PENDING",
-    DOING = "DOING",
-    DONE = "DONE",
-    AWAITING_ACCEPTANCE = "AWAITING_ACCEPTANCE",
-    COMPLETED = "COMPLETED",
-    AWAITING_REVIEW = "AWAITING_REVIEW",
-    REJECTED = "REJECTED",
-    REJECTED_BILLABLE = "Từ chối có phí",
-    REJECTED_SUPPORT = "Từ chối hỗ trợ",
-    OVERDUE = "OVERDUE",
-    AWAITING_PRICING = "AWAITING_PRICING",
-    AWAITING_SUPPORT = "AWAITING_SUPPORT",
-    REWORKING = "REWORKING"
-}
-
-export enum PricingStatus {
-    PENDING = "PENDING",
-    BILLABLE = "BILLABLE",
-    NON_BILLABLE = "NON_BILLABLE"
-}
 
 @Entity()
 export class Tasks extends BaseEntity {
@@ -72,10 +52,10 @@ export class Tasks extends BaseEntity {
 
     @Column({
         type: "enum",
-        enum: ["INTERNAL", "VENDOR"],
-        default: "INTERNAL"
+        enum: PerformerType,
+        default: PerformerType.INTERNAL
     })
-    performerType: "INTERNAL" | "VENDOR";
+    performerType: PerformerType;
 
     @ManyToOne(() => Vendors, { nullable: true })
     vendor: Vendors;

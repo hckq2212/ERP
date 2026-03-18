@@ -1,13 +1,15 @@
 import { Router } from "express";
 import { ContractController } from "../controllers/Contract.Controller";
 import { authMiddleware } from "../middlewares/Auth.Middleware";
+import { validationMiddleware } from "../middlewares/Validation.Middleware";
+import { CreateContractDTO, UpdateContractDTO } from "../dto/Contract.dto";
 
 const router = Router();
 const contractController = new ContractController();
 
 router.get("/", authMiddleware, contractController.getAll);
 router.get("/:id", authMiddleware, contractController.getOne);
-router.post("/", authMiddleware, contractController.create);
+router.post("/", authMiddleware, validationMiddleware(CreateContractDTO), contractController.create);
 router.delete("/:id", authMiddleware, contractController.delete);
 
 // Proposal Workflow

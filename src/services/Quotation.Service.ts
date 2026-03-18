@@ -5,7 +5,8 @@ import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
 import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { OpportunityPackages } from "../entity/OpportunityPackage.entity";
 import { Services } from "../entity/Service.entity";
-import { Tasks, PricingStatus, TaskStatus } from "../entity/Task.entity";
+import { Tasks } from "../entity/Task.entity";
+import { PricingStatus, TaskStatus } from "../entity/Enums";
 import { ContractAddendums, AddendumStatus } from "../entity/ContractAddendum.entity";
 import { Users } from "../entity/User.entity";
 

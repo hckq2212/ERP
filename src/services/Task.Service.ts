@@ -1,5 +1,6 @@
 import { AppDataSource } from "../data-source";
-import { Tasks, TaskStatus, PricingStatus } from "../entity/Task.entity";
+import { Tasks } from "../entity/Task.entity";
+import { TaskStatus, PerformerType, PricingStatus } from "../entity/Enums";
 import { ILike, Like, Between, IsNull } from "typeorm";
 import { Projects } from "../entity/Project.entity";
 import { Jobs } from "../entity/Job.entity";
@@ -190,7 +191,7 @@ export class TaskService {
         projectId?: string,
         jobId: string,
         assigneeId?: string,
-        performerType?: "INTERNAL" | "VENDOR",
+        performerType?: PerformerType,
         vendorId?: string,
         description?: string,
         plannedStartDate?: Date,
@@ -424,7 +425,7 @@ export class TaskService {
 
     async assign(id: string, data: {
         assigneeId: string;
-        performerType?: "INTERNAL" | "VENDOR";
+        performerType?: PerformerType;
         plannedEndDate: Date;
         plannedStartDate: Date;
         description?: string;
@@ -439,7 +440,7 @@ export class TaskService {
         const oldCost = Number(task.cost || 0);
         let newCost = 0;
 
-        if (data.performerType === "VENDOR") {
+        if (data.performerType === PerformerType.VENDOR) {
             const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
             if (!vendor) throw new Error("Vendor không tồn tại");
 
@@ -456,14 +457,14 @@ export class TaskService {
             newCost = Number(vendorJob.price);
             task.vendor = vendor;
             task.assignee = null as any;
-            task.performerType = "VENDOR";
+            task.performerType = PerformerType.VENDOR;
             task.cost = newCost;
         } else {
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
             if (!user) throw new Error("Người thực hiện không tồn tại");
             task.assignee = user;
             task.vendor = null as any;
-            task.performerType = "INTERNAL";
+            task.performerType = PerformerType.INTERNAL;
             task.cost = 0; // Internal tasks have 0 cost in this context
 
             await this.notificationService.createNotification({
@@ -569,7 +570,7 @@ export class TaskService {
 
     async reassign(id: string, data: {
         assigneeId: string;
-        performerType: "INTERNAL" | "VENDOR";
+        performerType: PerformerType;
         reason: string;
     }, currentUser: { id: string }) {
         const task = await this.taskRepository.findOne({
@@ -582,10 +583,10 @@ export class TaskService {
         // Identify old performer info for notification
         let oldPerformerName = "";
         let oldRecipient: Users | null = null;
-        if (task.performerType === "INTERNAL" && task.assignee) {
+        if (task.performerType === PerformerType.INTERNAL && task.assignee) {
             oldPerformerName = task.assignee.fullName;
             oldRecipient = task.assignee;
-        } else if (task.performerType === "VENDOR" && task.vendor) {
+        } else if (task.performerType === PerformerType.VENDOR && task.vendor) {
             oldPerformerName = task.vendor.name;
             // For vendors, we might not have a direct User recipient object unless they have accounts.
             // Based on existing logic, notifications go to Users.
@@ -596,7 +597,7 @@ export class TaskService {
         let newPerformerName = "";
         let newRecipient: Users | null = null;
 
-        if (data.performerType === "VENDOR") {
+        if (data.performerType === PerformerType.VENDOR) {
             const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
             if (!vendor) throw new Error("Vendor không tồn tại");
 
@@ -613,7 +614,7 @@ export class TaskService {
             newPerformerName = vendor.name;
             task.vendor = vendor;
             task.assignee = null as any;
-            task.performerType = "VENDOR";
+            task.performerType = PerformerType.VENDOR;
             task.cost = newCost;
         } else {
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
@@ -623,7 +624,7 @@ export class TaskService {
             newRecipient = user;
             task.assignee = user;
             task.vendor = null as any;
-            task.performerType = "INTERNAL";
+            task.performerType = PerformerType.INTERNAL;
             task.cost = 0;
         }
 

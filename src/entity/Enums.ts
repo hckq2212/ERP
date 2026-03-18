@@ -1,0 +1,26 @@
+export enum PerformerType {
+    VENDOR = "VENDOR",
+    INTERNAL = "INTERNAL"
+}
+
+export enum TaskStatus {
+    PENDING = "PENDING",
+    DOING = "DOING",
+    DONE = "DONE",
+    AWAITING_ACCEPTANCE = "AWAITING_ACCEPTANCE",
+    COMPLETED = "COMPLETED",
+    AWAITING_REVIEW = "AWAITING_REVIEW",
+    REJECTED = "REJECTED",
+    REJECTED_BILLABLE = "Từ chối có phí",
+    REJECTED_SUPPORT = "Từ chối hỗ trợ",
+    OVERDUE = "OVERDUE",
+    AWAITING_PRICING = "AWAITING_PRICING",
+    AWAITING_SUPPORT = "AWAITING_SUPPORT",
+    REWORKING = "REWORKING"
+}
+
+export enum PricingStatus {
+    PENDING = "PENDING",
+    BILLABLE = "BILLABLE",
+    NON_BILLABLE = "NON_BILLABLE"
+}

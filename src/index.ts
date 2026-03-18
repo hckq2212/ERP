@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import "./entity/Enums";
 
 import { AppDataSource } from "./data-source"
 import express from "express"

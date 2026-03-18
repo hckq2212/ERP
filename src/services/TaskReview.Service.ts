@@ -1,6 +1,7 @@
 import { AppDataSource } from "../data-source";
 import { TaskReviews, ReviewerType } from "../entity/TaskReview.entity";
-import { Tasks, TaskStatus } from "../entity/Task.entity";
+import { Tasks } from "../entity/Task.entity";
+import { TaskStatus } from "../entity/Enums";
 import { JobCriterias } from "../entity/JobCriteria.entity";
 import { NotificationService } from "./Notification.Service";
 import { ContractServices } from "../entity/ContractService.entity";
@@ -101,8 +102,6 @@ export class TaskReviewService {
             where: { task: { id: taskId } }
         });
 
-        if (reviews.length === 0) return;
-
         // Group by ReviewerType
         const groups: Record<string, TaskReviews[]> = {};
         for (const r of reviews) {
@@ -110,8 +109,8 @@ export class TaskReviewService {
             groups[r.reviewerType].push(r);
         }
 
-        // All groups must have 100% isPassed
-        const allPassed = Object.values(groups).every(groupItems =>
+        // All groups must have 100% isPassed. If no reviews, it counts as passed.
+        const allPassed = reviews.length === 0 || Object.values(groups).every(groupItems =>
             groupItems.every(item => item.isPassed)
         );
 
