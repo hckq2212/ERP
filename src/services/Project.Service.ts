@@ -386,19 +386,37 @@ export class ProjectService {
         const userConfirming = await this.userRepository.findOneBy({ id: userId });
         if (!userConfirming) throw new Error("Không tìm thấy thông tin người xác nhận");
 
-        project.status = ProjectStatus.CONFIRMED;
+        // Check if contract is already signed
+        const contract = await this.contractRepository.findOneBy({ id: project.contract.id });
+        if (contract?.status === ContractStatus.SIGNED) {
+            project.status = ProjectStatus.IN_PROGRESS;
+            project.actualStartDate = new Date();
+
+            // Update Opportunity Status
+            if (contract.opportunity) {
+                const fullContract = await this.contractRepository.findOne({ where: { id: contract.id }, relations: ["opportunity"] });
+                if (fullContract?.opportunity) {
+                    const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
+                    fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
+                    await oppRepo.save(fullContract.opportunity);
+                }
+            }
+        } else {
+            project.status = ProjectStatus.CONFIRMED;
+        }
+
         const savedProject = await this.projectRepository.save(project);
 
         // Notify BOD members
         const bodUsers = await this.userRepository.find({
             relations: ["account"],
-            where: { account: { role: "BOD" as any } } // Using 'as any' if enum import is tricky, but let's try to do it right if possible
+            where: { account: { role: "BOD" as any } }
         });
 
         for (const bod of bodUsers) {
             await this.notificationService.createNotification({
                 title: "Dự án đã được tiếp nhận",
-                content: `${userConfirming.fullName} đã nhận thông tin dự án ${savedProject.name}`,
+                content: `${userConfirming.fullName} đã nhận thông tin dự án ${savedProject.name}${savedProject.status === ProjectStatus.IN_PROGRESS ? " và đã bắt đầu thực hiện" : ""}`,
                 type: "PROJECT_CONFIRMED",
                 recipient: bod,
                 relatedEntityId: savedProject.id,
@@ -414,6 +432,12 @@ export class ProjectService {
     async start(id: string) {
         const project = await this.getOne(id);
 
+        // Requirement: Only transition to IN_PROGRESS if Team Lead has already accepted (CONFIRMED)
+        if (project.status !== ProjectStatus.CONFIRMED) {
+            console.log(`[ProjectService] Project ${id} is not in CONFIRMED state (current: ${project.status}). Skipping automatic IN_PROGRESS transition.`);
+            return project;
+        }
+
         // Check contract signed
         const contract = await this.contractRepository.findOneBy({ id: project.contract.id });
         if (contract?.status !== ContractStatus.SIGNED) {
@@ -424,15 +448,11 @@ export class ProjectService {
         project.actualStartDate = new Date();
 
         // Update Opportunity Status
-        if (contract?.opportunity) {
-            // Need to fetch opportunity again or update via relation if eager loaded?
-            // Relations are loaded in getOne: "contract" but not "contract.opportunity"
-            const fullContract = await this.contractRepository.findOne({ where: { id: project.contract.id }, relations: ["opportunity"] });
-            if (fullContract?.opportunity) {
-                const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
-                fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
-                await oppRepo.save(fullContract.opportunity);
-            }
+        const fullContract = await this.contractRepository.findOne({ where: { id: project.contract.id }, relations: ["opportunity"] });
+        if (fullContract?.opportunity) {
+            const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
+            fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
+            await oppRepo.save(fullContract.opportunity);
         }
 
         return await this.projectRepository.save(project);

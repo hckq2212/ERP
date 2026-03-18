@@ -403,16 +403,16 @@ export class ContractService {
         const savedContract = await this.contractRepository.save(contract);
 
         // Auto activate all milestones as debts
-        if (contract.milestones && contract.milestones.length > 0) {
-            for (const milestone of contract.milestones) {
-                try {
-                    await this.debtService.createFromMilestone(milestone.id);
-                } catch (error) {
-                    console.error(`Lỗi kích hoạt nợ cho milestone ${milestone.id}:`, error.message);
-                    // Continue to others if one fails (e.g. already activated)
-                }
-            }
-        }
+        // if (contract.milestones && contract.milestones.length > 0) {
+        //     for (const milestone of contract.milestones) {
+        //         try {
+        //             await this.debtService.createFromMilestone(milestone.id);
+        //         } catch (error) {
+        //             console.error(`Lỗi kích hoạt nợ cho milestone ${milestone.id}:`, error.message);
+        //             // Continue to others if one fails (e.g. already activated)
+        //         }
+        //     }
+        // }
 
         // Auto start project if it exists
         if (contract.project) {
