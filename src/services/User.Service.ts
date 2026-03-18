@@ -18,6 +18,7 @@ export class UserService {
                     id: true,
                     fullName: true,
                     phoneNumber: true,
+                    laborContract: true,
                     account: {
                         id: true,
                         username: true,
@@ -44,6 +45,7 @@ export class UserService {
                     id: true,
                     fullName: true,
                     phoneNumber: true,
+                    laborContract: true,
                     account: {
                         id: true,
                         username: true,
@@ -107,6 +109,7 @@ export class UserService {
 
         if (fullName !== undefined) user.fullName = fullName;
         if (phoneNumber !== undefined) user.phoneNumber = phoneNumber;
+        if (data.laborContract !== undefined) user.laborContract = data.laborContract;
 
         if (user.account) {
             if (email !== undefined) user.account.email = email;

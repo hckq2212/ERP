@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { UserService } from "../services/User.Service";
+import { uploadToCloudinary } from "../helpers/cloudinary.helper";
 
 export class UserController {
     private userService = new UserService();
@@ -33,7 +34,21 @@ export class UserController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const result = await this.userService.update(req.params.id as string, req.body);
+            const data = { ...req.body };
+            
+            // Handle file uploads if present
+            if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+                const uploadPromises = (req.files as Express.Multer.File[]).map(file => 
+                    uploadToCloudinary(file, "GETVINI/ERP/user/labor_contract")
+                );
+                const uploadedFiles = await Promise.all(uploadPromises);
+                data.laborContract = uploadedFiles;
+            } else if (req.body.laborContract === '[]' || req.body.laborContract === null || (Array.isArray(req.body.laborContract) && req.body.laborContract.length === 0)) {
+                // Handle explicit clearing of contracts if sent as empty array, string '[]', or null
+                data.laborContract = [];
+            }
+
+            const result = await this.userService.update(req.params.id as string, data);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });

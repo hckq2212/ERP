@@ -2,9 +2,19 @@ import { Router } from "express";
 import { UserController } from "../controllers/User.Controller";
 import { authMiddleware } from "../middlewares/Auth.Middleware";
 import { roleMiddleware } from "../middlewares/Role.Middleware";
+import multer from "multer";
 
 const router = Router();
 const userController = new UserController();
+
+const storage = multer.memoryStorage();
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+        files: 3
+    }
+});
 
 // All user routes protected by authMiddleware
 router.use(authMiddleware);
@@ -14,7 +24,7 @@ router.get("/:id", userController.getOne);
 
 // Only BOD and ADMIN can manage users (Create, Update, Delete)
 router.post("/", roleMiddleware(["BOD", "ADMIN"]), userController.create);
-router.put("/:id", roleMiddleware(["BOD", "ADMIN"]), userController.update);
+router.put("/:id", roleMiddleware(["BOD", "ADMIN"]), upload.array("laborContract", 3), userController.update);
 router.delete("/:id", roleMiddleware(["BOD", "ADMIN"]), userController.delete);
 
 export default router;

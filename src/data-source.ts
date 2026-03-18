@@ -52,7 +52,7 @@ export const AppDataSource = new DataSource({
             ssl: false
         }
     ),
-    synchronize: !isProduction,
+    synchronize: true,
     logging: isProduction ? false : ["error", "warn"], // Enabled some logging in dev
     entities: [
         Accounts,

@@ -30,4 +30,7 @@ export class Users extends BaseEntity {
 
     @OneToMany(() => Opportunities, (opportunity) => opportunity.createdBy)
     opportunities: Opportunities[]
+
+    @Column({ type: "simple-json", nullable: true })
+    laborContract: any[]
 }
