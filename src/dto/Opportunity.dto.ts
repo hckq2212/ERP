@@ -1,4 +1,5 @@
 import { IsString, IsNotEmpty, IsOptional, IsEmail, IsEnum, IsNumber, IsArray, ValidateIf } from "class-validator";
+import { Transform } from "class-transformer";
 import { OpportunityStatus, CustomerType } from "../entity/Opportunity.entity";
 
 export class CreateOpportunityDTO {
@@ -18,9 +19,10 @@ export class CreateOpportunityDTO {
     @IsOptional()
     priority?: string;
 
-    @IsString()
+    @IsArray()
+    @IsString({ each: true })
     @IsOptional()
-    region?: string;
+    region?: string[];
 
     @IsString()
     @IsOptional()
@@ -59,10 +61,12 @@ export class CreateOpportunityDTO {
     @IsOptional()
     description?: string;
 
+    @Transform(({ value }) => Number(value))
     @IsNumber()
     @IsOptional()
     expectedRevenue?: number;
 
+    @Transform(({ value }) => Number(value))
     @IsNumber()
     @IsOptional()
     budget?: number;
@@ -75,21 +79,15 @@ export class CreateOpportunityDTO {
     @IsOptional()
     endDate?: string;
 
+    @Transform(({ value }) => Number(value))
     @IsNumber()
     @IsOptional()
     durationMonths?: number;
 
+    @Transform(({ value }) => Number(value))
     @IsNumber()
     @IsOptional()
     successChance?: number;
-
-    @IsNumber()
-    @IsOptional()
-    partnerCommissionRate?: number;
-
-    @IsNumber()
-    @IsOptional()
-    expectedPartnerCommission?: number;
 
     @IsArray()
     @IsOptional()
@@ -125,9 +123,10 @@ export class UpdateOpportunityDTO {
     @IsOptional()
     priority?: string;
 
-    @IsString()
+    @IsArray()
+    @IsString({ each: true })
     @IsOptional()
-    region?: string;
+    region?: string[];
 
     @IsString()
     @IsOptional()
@@ -166,10 +165,12 @@ export class UpdateOpportunityDTO {
     @IsOptional()
     description?: string;
 
+    @Transform(({ value }) => Number(value))
     @IsNumber()
     @IsOptional()
     expectedRevenue?: number;
 
+    @Transform(({ value }) => Number(value))
     @IsNumber()
     @IsOptional()
     budget?: number;
@@ -182,21 +183,15 @@ export class UpdateOpportunityDTO {
     @IsOptional()
     endDate?: string;
 
+    @Transform(({ value }) => Number(value))
     @IsNumber()
     @IsOptional()
     durationMonths?: number;
 
+    @Transform(({ value }) => Number(value))
     @IsNumber()
     @IsOptional()
     successChance?: number;
-
-    @IsNumber()
-    @IsOptional()
-    partnerCommissionRate?: number;
-
-    @IsNumber()
-    @IsOptional()
-    expectedPartnerCommission?: number;
 
     @IsArray()
     @IsOptional()
