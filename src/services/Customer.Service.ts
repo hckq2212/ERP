@@ -71,7 +71,7 @@ export class CustomerService {
         const customer = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             return await this.customerRepository.findOne({
                 where: { id, ...rbacWhere },
-                relations: ["referralPartner", "contracts", "opportunities"]
+                relations: ["referralPartner", "contracts", "opportunities", "createdBy", "createdBy.account"]
             });
         });
 
@@ -79,11 +79,17 @@ export class CustomerService {
         return customer;
     }
 
-    async create(data: any, userInfo?: { id: string, userId?: string }) {
+    async create(data: any, userInfo?: { id: string, role: string, userId?: string }) {
         validateCustomerData(data);
         if (data.taxId) {
             await this.checkTaxIdUniqueness(data.taxId);
         }
+
+        // Handle phoneNumber from frontend
+        if (!data.phone && data.phoneNumber) {
+            data.phone = data.phoneNumber;
+        }
+
         const customer = this.customerRepository.create(data as Partial<Customers>);
         if (userInfo?.userId) {
             customer.createdBy = { id: userInfo.userId } as Users;
@@ -92,17 +98,31 @@ export class CustomerService {
 
         // Invalidate all customer list caches (all roles and users)
         await RedisService.deleteCache('customers:all*');
-        
+
         return savedCustomer;
     }
 
-    async update(id: string, data: any) {
+    async update(id: string, data: any, userInfo?: { id: string, role: string, userId?: string }) {
         validateCustomerData(data);
         if (data.taxId) {
             await this.checkTaxIdUniqueness(data.taxId, id);
         }
-        const customer = await this.getOne(id);
-        Object.assign(customer, data);
+
+        console.log(`[CustomerService] Updating customer ${id} with data:`, JSON.stringify(data, null, 2));
+
+        // Handle phoneNumber from frontend
+        if (!data.phone && data.phoneNumber) {
+            data.phone = data.phoneNumber;
+        }
+
+        const customer = await this.getOne(id, userInfo);
+
+        // Filter out empty string values to avoid overwriting existing data
+        const updateData = Object.fromEntries(
+            Object.entries(data).filter(([_, v]) => v !== '' && v !== undefined)
+        );
+
+        Object.assign(customer, updateData);
         const savedCustomer = await this.customerRepository.save(customer);
 
         // Invalidate all list caches and this specific customer's detail caches
@@ -112,8 +132,8 @@ export class CustomerService {
         return savedCustomer;
     }
 
-    async delete(id: string) {
-        const customer = await this.getOne(id);
+    async delete(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+        const customer = await this.getOne(id, userInfo);
         await this.customerRepository.remove(customer);
 
         // Invalidate all list caches and this specific customer's detail caches

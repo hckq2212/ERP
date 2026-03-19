@@ -227,6 +227,7 @@ export class ContractService {
                     newCustomer.email = opportunity.leadEmail || "";
                     newCustomer.address = opportunity.leadAddress || "";
                     newCustomer.taxId = opportunity.leadTaxId;
+                    newCustomer.idNumber = opportunity.leadIdNumber;
 
                     if (opportunity.customerType === CustomerType.REFERRAL && opportunity.referralPartner) {
                         newCustomer.source = CustomerSource.REFERRAL_PARTNER;

@@ -344,98 +344,112 @@ export class OpportunityService {
         return await this.getOne(savedOpportunity.id);
     }
 
-    async update(id: string, data: any = {}) {
+    async update(id: string, data: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
         const {
             customerId,
             referralPartnerId,
             customerType,
+            source,
             // Lead fields
             leadName,
             leadPhone,
             leadEmail,
             leadAddress,
             leadTaxId,
+            leadIdNumber,
             services,
             packages,
-            ...opportunityData
+            ...rest
         } = data;
 
         validateLeadData(data);
 
-        let opportunity = await this.getOne(id) as Opportunities;
+        // Prepare the updated object
+        const updateObj: any = { id };
 
-        if (opportunityData.opportunityCode && opportunityData.opportunityCode !== opportunity.opportunityCode) {
-            const existing = await this.opportunityRepository.findOne({
-                where: { opportunityCode: opportunityData.opportunityCode }
-            });
-            if (existing) {
-                throw new Error("Mã cơ hội đã tồn tại");
-            }
-        }
-
-        // Handle Customer updates
-        if (customerId) {
-            const customer = await this.customerRepository.findOneBy({ id: customerId });
-            if (!customer) {
-                throw new Error("Không tìm thấy khách hàng");
-            }
-            opportunity.customer = customer;
-            // Clear lead fields
-            opportunity.leadName = null;
-            opportunity.leadPhone = null;
-            opportunity.leadEmail = null;
-            opportunity.leadAddress = null;
-            opportunity.leadTaxId = null;
-        } else if (customerId === null) {
-            opportunity.customer = null;
-        }
-
-        // Handle Referral Logic updates
-        if (customerType) {
-            opportunity.customerType = customerType;
-        }
-
-        const pId = referralPartnerId !== undefined ? referralPartnerId : undefined;
-
-        if (pId) {
-            const partner = await this.referralPartnerRepository.findOneBy({ id: pId });
-            if (!partner) {
-                throw new Error("Không tìm thấy đối tác giới thiệu");
-            }
-            opportunity.referralPartner = partner;
-            // Nếu có đối tác thì tự động chuyển sang loại REFERRAL nếu chưa là REFERRAL
-            if (opportunity.customerType !== CustomerType.REFERRAL) {
-                opportunity.customerType = CustomerType.REFERRAL;
-            }
-        } else if (pId === null || (customerType === CustomerType.DIRECT)) {
-            opportunity.referralPartner = null;
-        }
-
-        // Update Lead fields
-        if (leadName !== undefined) opportunity.leadName = leadName;
-        if (leadPhone !== undefined) opportunity.leadPhone = leadPhone;
-        if (leadEmail !== undefined) opportunity.leadEmail = leadEmail;
-        if (leadAddress !== undefined) opportunity.leadAddress = leadAddress;
+        // 1. Manually update simple fields
+        if (leadName !== undefined) updateObj.leadName = leadName;
+        if (leadPhone !== undefined) updateObj.leadPhone = leadPhone;
+        if (leadEmail !== undefined) updateObj.leadEmail = leadEmail;
+        if (leadAddress !== undefined) updateObj.leadAddress = leadAddress;
         if (leadTaxId !== undefined) {
-            if (leadTaxId && leadTaxId !== opportunity.leadTaxId) {
+            if (leadTaxId) {
                 await this.checkTaxIdUniqueness(leadTaxId, id);
             }
-            opportunity.leadTaxId = leadTaxId;
+            updateObj.leadTaxId = leadTaxId;
+        }
+        if (leadIdNumber !== undefined) updateObj.leadIdNumber = leadIdNumber;
+
+        if (customerType) updateObj.customerType = customerType;
+
+        // Apply remaining simple fields
+        const allowedFields = ['name', 'description', 'field', 'expectedRevenue', 'budget', 'startDate', 'endDate', 'priority', 'successChance', 'region', 'durationMonths', 'status', 'partnerCommissionRate', 'expectedPartnerCommission', 'attachments'];
+        for (const key of allowedFields) {
+            if (rest[key] !== undefined) {
+                updateObj[key] = rest[key];
+            }
         }
 
-        Object.assign(opportunity, opportunityData);
-        const savedOpportunity = await this.opportunityRepository.save(opportunity);
+        // 2. Handle Customer relationship
+        if (customerId) {
+            const customer = await this.customerRepository.findOneBy({ id: customerId });
+            if (!customer) throw new Error("Không tìm thấy khách hàng");
+            updateObj.customer = customer;
+            // Clear lead fields when linking a customer
+            updateObj.leadName = null;
+            updateObj.leadPhone = null;
+            updateObj.leadEmail = null;
+            updateObj.leadAddress = null;
+            updateObj.leadTaxId = null;
+            updateObj.leadIdNumber = null;
+        } else if (customerId === null || customerId === "") {
+            updateObj.customer = null;
+        }
 
-        // Update services and packages if provided
+        // 3. Handle Referral relationship
+        const pId = referralPartnerId !== undefined ? referralPartnerId : undefined;
+        if (pId) {
+            const partner = await this.referralPartnerRepository.findOneBy({ id: pId });
+            if (!partner) throw new Error("Không tìm thấy đối tác giới thiệu");
+            updateObj.referralPartner = partner;
+            if (updateObj.customerType !== CustomerType.REFERRAL) {
+                updateObj.customerType = CustomerType.REFERRAL;
+            }
+        } else if (pId === null || pId === "" || (customerType === CustomerType.DIRECT)) {
+            updateObj.referralPartner = null;
+        }
+
+        // 4. Save main entity using the update object
+        const savedOpportunity = await this.opportunityRepository.save(updateObj);
+
+        // 5. Update services and packages if provided
         if ((services && Array.isArray(services)) || (packages && Array.isArray(packages))) {
-            await this.syncServicesAndPackages(savedOpportunity, services, packages);
+            const fullEntity = await this.opportunityRepository.findOneBy({ id });
+            if (fullEntity) {
+                await this.syncServicesAndPackages(fullEntity, services, packages);
+            }
         }
 
-        // Invalidate list and detail caches
+        // 6. Invalidate caches
         await RedisService.deleteCache('opportunities:all*');
         await RedisService.deleteCache(`opportunities:detail:${id}*`);
 
-        return await this.getOne(savedOpportunity.id);
+        // 7. Return FRESH data from DB (bypassing the getOne cache)
+        return await this.opportunityRepository.findOne({
+            where: { id },
+            relations: [
+                "customer",
+                "referralPartner",
+                "services",
+                "services.service",
+                "packages",
+                "packages.services",
+                "packages.services.service",
+                "quotations",
+                "contracts",
+                "createdBy"
+            ]
+        });
     }
 
     async delete(id: string) {

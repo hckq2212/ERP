@@ -28,6 +28,9 @@ export class Customers extends BaseEntity {
     @Column({ nullable: true })
     taxId: string;
 
+    @Column({ nullable: true })
+    idNumber: string;
+
     @Column({
         type: "enum",
         enum: CustomerSource,

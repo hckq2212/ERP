@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEmail, IsEnum } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsEmail, IsEnum, ValidateIf } from "class-validator";
 import { CustomerSource } from "../entity/Customer.entity";
 
 export class CreateCustomerDTO {
@@ -7,11 +7,16 @@ export class CreateCustomerDTO {
     name: string;
 
     @IsString()
-    @IsNotEmpty({ message: "Số điện thoại không được để trống" })
-    phone: string;
+    @IsOptional()
+    phone?: string;
+
+    @IsString()
+    @IsOptional()
+    phoneNumber?: string;
 
     @IsEmail({}, { message: "Email không hợp lệ" })
     @IsOptional()
+    @ValidateIf(o => o.email !== "" && o.email !== null && o.email !== undefined)
     email?: string;
 
     @IsString()
@@ -40,8 +45,13 @@ export class UpdateCustomerDTO {
     @IsOptional()
     phone?: string;
 
+    @IsString()
+    @IsOptional()
+    phoneNumber?: string;
+
     @IsEmail({}, { message: "Email không hợp lệ" })
     @IsOptional()
+    @ValidateIf(o => o.email !== "" && o.email !== null && o.email !== undefined)
     email?: string;
 
     @IsString()
