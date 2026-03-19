@@ -2,6 +2,8 @@ import { Router } from "express";
 import { UserController } from "../controllers/User.Controller";
 import { authMiddleware } from "../middlewares/Auth.Middleware";
 import { roleMiddleware } from "../middlewares/Role.Middleware";
+import { validationMiddleware } from "../middlewares/Validation.Middleware";
+import { CreateUserDTO, UpdateUserDTO } from "../dto/User.dto";
 import multer from "multer";
 
 const router = Router();
@@ -16,8 +18,6 @@ const upload = multer({
     }
 });
 
-import { CreateUserDTO, UpdateUserDTO } from "../dto/User.dto";
-import { validationMiddleware } from "../middlewares/Validation.Middleware";
 
 // All user routes protected by authMiddleware
 router.use(authMiddleware);
