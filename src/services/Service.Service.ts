@@ -8,9 +8,15 @@ import { RedisService } from "./Redis.Service";
 export class ServiceService {
     private serviceRepository = AppDataSource.getRepository(Services);
 
-    async getAll(filters: { name?: string } = {}) {
+    async getAll(filters: { name?: string, page?: number, limit?: number } = {}) {
+        const page = Number(filters.page) || 1;
+        const limit = Number(filters.limit) || 1000; // Use a large default if not specified
+        const skip = (page - 1) * limit;
+
         const query: any = {
-            relations: ["serviceJobs", "serviceJobs.job"]
+            relations: ["serviceJobs", "serviceJobs.job"],
+            skip,
+            take: limit
         };
 
         if (filters.name) {
@@ -21,7 +27,16 @@ export class ServiceService {
         const cacheKey = `services:all:${filtersKey}`;
 
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
-            return await this.serviceRepository.find(query);
+            const [items, total] = await this.serviceRepository.findAndCount(query);
+            return {
+                data: items,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit)
+                }
+            };
         });
     }
 
