@@ -3,14 +3,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const isProduction = process.env.NODE_ENV === 'production';
+// const isProduction = process.env.NODE_ENV === 'production';
 
-const redisClient = createClient({
-    url: isProduction ? process.env.REDIS_URL : 'redis://localhost:6379'
-});
+// // const redisClient = createClient({
+// //     url: isProduction ? process.env.REDIS_URL : 'redis://localhost:6379'
+// // });
 
-redisClient.on('error', (err) => console.error('Redis Client Error', err));
-redisClient.on('connect', () => console.log('Redis Client Connected'));
+// redisClient.on('error', (err) => console.error('Redis Client Error', err));
+// redisClient.on('connect', () => console.log('Redis Client Connected'));
 
 // Khởi tạo connection - TEMPORARILY DISABLED
 // const connectRedis = async () => {
@@ -24,4 +24,3 @@ redisClient.on('connect', () => console.log('Redis Client Connected'));
 // };
 // connectRedis();
 
-export default redisClient;

@@ -75,9 +75,9 @@ export class SecurityService {
         if (role === UserRole.BD || role === UserRole.SALE) {
             return [
                 { createdBy: { id: userInfo.userId } }, // Created by the user (using userId relation)
-                { customer: { createdBy: { id: userInfo.userId } } } // Customer created by the user
+                { customer: { createdBy: { id: userInfo.userId } } }, // Customer created by the user
+                { opportunity: { createdBy: { id: userInfo.userId } } } // Opportunity created by the user
             ];
-            // return {};
         }
 
         // HR and MEMBER have no access to the contract list
