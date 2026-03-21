@@ -3,6 +3,8 @@ import { Notifications } from "../entity/Notification.entity";
 import { Users } from "../entity/User.entity";
 import { EntityManager } from "typeorm";
 
+import { notificationEmitter, NOTIFICATION_EVENTS } from "../events/NotificationEmitter";
+
 export class NotificationService {
     private notificationRepository = AppDataSource.getRepository(Notifications);
 
@@ -22,7 +24,15 @@ export class NotificationService {
             isRead: false
         });
 
-        return await repo.save(notification);
+        const savedNotification = await repo.save(notification);
+
+        // Emit real-time event via SSE emitter
+        notificationEmitter.emit(NOTIFICATION_EVENTS.NEW_NOTIFICATION, {
+            recipientId: data.recipient.id,
+            notification: savedNotification
+        });
+
+        return savedNotification;
     }
 
     async getMyNotifications(userId: string) {

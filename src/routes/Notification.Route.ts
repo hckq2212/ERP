@@ -9,6 +9,7 @@ const notificationController = new NotificationController();
 router.use(authMiddleware);
 
 router.get("/me", notificationController.getMyNotifications);
+router.get("/stream", notificationController.streamNotifications);
 router.put("/:id/read", notificationController.markAsRead);
 
 export default router;
