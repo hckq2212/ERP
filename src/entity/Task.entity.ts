@@ -70,16 +70,16 @@ export class Tasks extends BaseEntity {
     @Column({ type: "json", nullable: true })
     result: { type: string, name: string, url: string, size?: number, publicId?: string }; // Store JSON of result (file or link)
 
-    @Column({ type: "date", nullable: true })
+    @Column({ type: "timestamptz", nullable: true })
     plannedStartDate: Date;
 
-    @Column({ type: "date", nullable: true })
+    @Column({ type: "timestamptz", nullable: true })
     plannedEndDate: Date;
 
-    @Column({ type: "date", nullable: true })
+    @Column({ type: "timestamptz", nullable: true })
     actualStartDate: Date;
 
-    @Column({ type: "date", nullable: true })
+    @Column({ type: "timestamptz", nullable: true })
     actualEndDate: Date;
 
     @Column({ type: "text", nullable: true })

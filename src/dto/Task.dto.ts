@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString, IsBoolean, IsNumber } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber } from "class-validator";
+import { Type } from "class-transformer";
 import { TaskStatus, PerformerType } from "../entity/Enums";
 
 export class CreateTaskDTO {
@@ -22,13 +23,22 @@ export class CreateTaskDTO {
     @IsOptional()
     performerType?: PerformerType;
 
-    @IsDateString()
+    @IsDate({ message: "Ngày bắt đầu không hợp lệ" })
     @IsOptional()
-    deadline?: string;
+    @Type(() => Date)
+    plannedStartDate?: Date;
+
+    @IsDate({ message: "Ngày kết thúc không hợp lệ" })
+    @IsOptional()
+    @Type(() => Date)
+    plannedEndDate?: Date;
 
     @IsBoolean()
     @IsOptional()
     isOutput?: boolean;
+
+    @IsOptional()
+    attachments?: any[];
 }
 
 export class UpdateTaskStatusDTO {
@@ -45,4 +55,29 @@ export class TaskAssignmentDTO {
     @IsString()
     @IsNotEmpty({ message: "ID người thực hiện không được để trống" })
     assigneeId: string;
+
+    @IsEnum(PerformerType)
+    @IsOptional()
+    performerType?: PerformerType;
+
+    @IsDate({ message: "Ngày bắt đầu không hợp lệ" })
+    @IsOptional()
+    @Type(() => Date)
+    plannedStartDate?: Date;
+
+    @IsDate({ message: "Ngày kết thúc không hợp lệ" })
+    @IsOptional()
+    @Type(() => Date)
+    plannedEndDate?: Date;
+
+    @IsString()
+    @IsOptional()
+    description?: string;
+
+    @IsOptional()
+    attachments?: any[];
+
+    @IsString()
+    @IsOptional()
+    projectId?: string;
 }

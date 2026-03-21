@@ -20,4 +20,7 @@ export class ServicePackages extends BaseEntity {
 
     @OneToMany(() => OpportunityPackages, (oppPackage) => oppPackage.servicePackage)
     opportunityPackages: OpportunityPackages[];
+
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
+    price: number;
 }

@@ -44,6 +44,8 @@ export class ServicePackageService {
                 await this.itemRepository.save(serviceItem);
             }
         }
+        
+        await this.recalculatePackagePrice(savedPkg.id);
 
         // Invalidate list cache
         await RedisService.deleteCache('service-packages:all*');
@@ -74,6 +76,8 @@ export class ServicePackageService {
             }
         }
 
+        await this.recalculatePackagePrice(id);
+
         // Invalidate caches
         await RedisService.deleteCache('service-packages:all*');
         await RedisService.deleteCache(`service-packages:detail:${id}*`);
@@ -91,5 +95,27 @@ export class ServicePackageService {
         await RedisService.deleteCache(`service-packages:detail:${id}*`);
 
         return { message: "Xóa gói dịch vụ thành công" };
+    }
+
+    private async recalculatePackagePrice(packageId: string) {
+        const pkg = await this.packageRepository.findOne({
+            where: { id: packageId },
+            relations: ["items", "items.service"]
+        });
+
+        if (!pkg) return;
+
+        let totalPrice = 0;
+        if (pkg.items) {
+            totalPrice = pkg.items.reduce((sum, item) => {
+                const servicePrice = Number(item.service?.costPrice || 0);
+                return sum + (servicePrice * (item.defaultQuantity || 1));
+            }, 0);
+        }
+
+        await this.packageRepository.update(packageId, { price: totalPrice });
+        
+        // Invalidate detail cache after price update
+        await RedisService.deleteCache(`service-packages:detail:${packageId}*`);
     }
 }

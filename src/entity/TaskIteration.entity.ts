@@ -24,6 +24,6 @@ export class TaskIterations extends BaseEntity {
     @Column({ type: "json", nullable: true })
     feedbackAttachments: { type: string, name: string, url: string, size?: number, publicId?: string }[];
 
-    @Column({ type: "date", nullable: true })
+    @Column({ type: "timestamptz", nullable: true })
     deadlineAt: Date;
 }
