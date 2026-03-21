@@ -356,7 +356,6 @@ export class OpportunityService {
             leadEmail,
             leadAddress,
             leadTaxId,
-            leadIdNumber,
             services,
             packages,
             ...rest
@@ -378,7 +377,6 @@ export class OpportunityService {
             }
             updateObj.leadTaxId = leadTaxId;
         }
-        if (leadIdNumber !== undefined) updateObj.leadIdNumber = leadIdNumber;
 
         if (customerType) updateObj.customerType = customerType;
 
@@ -401,7 +399,6 @@ export class OpportunityService {
             updateObj.leadEmail = null;
             updateObj.leadAddress = null;
             updateObj.leadTaxId = null;
-            updateObj.leadIdNumber = null;
         } else if (customerId === null || customerId === "") {
             updateObj.customer = null;
         }
