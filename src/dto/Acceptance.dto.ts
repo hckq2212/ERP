@@ -6,10 +6,6 @@ export class CreateAcceptanceDTO {
     @IsNotEmpty({ message: "ID dự án không được để trống" })
     projectId: string;
 
-    @IsString()
-    @IsNotEmpty({ message: "Nội dung nghiệm thu không được để trống" })
-    content: string;
-
     @IsArray()
     @IsOptional()
     attachments?: any[];
