@@ -19,6 +19,10 @@ export class AcceptanceService {
     async createRequest(data: { serviceIds: string[], userId: string, name: string, projectId: string, note?: string }) {
         const { serviceIds, userId, name, projectId, note } = data;
 
+        if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
+            throw new Error("Danh sách dịch vụ không hợp lệ hoặc trống");
+        }
+
         const requester = await this.userRepo.findOneBy({ id: userId });
         if (!requester) throw new Error("Người yêu cầu không tồn tại");
 
@@ -232,7 +236,7 @@ export class AcceptanceService {
             if (!service) continue;
 
             const resultDecisions = (decision as any).resultDecisions || [];
-            
+
             if (resultDecisions.length > 0) {
                 // Granular approval
                 if (service.results) {
@@ -241,12 +245,12 @@ export class AcceptanceService {
                         const resultsArray = [...service.results];
                         resultsArray.reverse();
                         const result = resultsArray.find(r => r.taskId === rd.taskId);
-                        
+
                         if (result) {
                             // Because result is a reference to the object in the original array, mutating it here works.
                             result.status = rd.status;
                             result.feedback = rd.feedback;
-                            
+
                             // If rejected, find the specific task and reset it for rework
                             if (rd.status === 'REJECTED') {
                                 const task = await this.taskRepo.findOneBy({ id: rd.taskId });
@@ -299,9 +303,9 @@ export class AcceptanceService {
             const latestResults = Array.from(latestResultsMap.values());
 
             // Check if ALL output tasks (those in service.results) are APPROVED based on LATEST files
-            const allApproved = latestResults.length > 0 && 
-                                latestResults.every(r => r.status === 'APPROVED');
-            
+            const allApproved = latestResults.length > 0 &&
+                latestResults.every(r => r.status === 'APPROVED');
+
             const anyRejected = latestResults.some(r => r.status === 'REJECTED');
 
             if (allApproved) {

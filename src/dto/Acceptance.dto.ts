@@ -7,6 +7,14 @@ export class CreateAcceptanceDTO {
     projectId: string;
 
     @IsArray()
+    @IsNotEmpty({ message: "Danh sách dịch vụ không được để trống" })
+    serviceIds: string[];
+
+    @IsString()
+    @IsOptional()
+    note?: string;
+
+    @IsArray()
     @IsOptional()
     attachments?: any[];
 }
