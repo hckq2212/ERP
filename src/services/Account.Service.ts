@@ -1,6 +1,7 @@
 import { AppDataSource } from "../data-source";
 import { Accounts } from "../entity/Account.entity";
 import { Users } from "../entity/User.entity";
+import { encrypt } from "../helpers/helpers";
 
 export class AccountService {
     private accountRepository = AppDataSource.getRepository(Accounts);
@@ -54,7 +55,7 @@ export class AccountService {
             await transactionalEntityManager.save(account);
         });
 
-        return account;
+        return "Cập nhật tài khoản thành công";
     }
 
     async softDeleteAccount(id: string) {
@@ -65,6 +66,19 @@ export class AccountService {
         }
 
         account.isActive = false;
+        return await this.accountRepository.save(account);
+    }
+
+    async resetPassword(id: string, newPassword: string) {
+        const account = await this.accountRepository.findOne({ where: { id } });
+
+        if (!account) {
+            throw new Error("Không tìm thấy tài khoản");
+        }
+
+        const hashedPassword = await encrypt.encryptPassword(newPassword);
+        account.password = hashedPassword;
+        
         return await this.accountRepository.save(account);
     }
 }

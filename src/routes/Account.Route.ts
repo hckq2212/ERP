@@ -13,6 +13,7 @@ router.use(roleMiddleware(["ADMIN", "BOD"]));
 router.get("/", accountController.index);
 router.get("/:id", accountController.show);
 router.put("/:id", accountController.update);
+router.put("/:id/reset-password", accountController.resetPassword);
 router.delete("/:id", accountController.delete);
 
 export default router;

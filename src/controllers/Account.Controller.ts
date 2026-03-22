@@ -42,4 +42,17 @@ export class AccountController {
             res.status(400).json({ message: error.message });
         }
     }
+
+    resetPassword = async (req: Request, res: Response) => {
+        try {
+            const { newPassword } = req.body;
+            if (!newPassword) {
+                return res.status(400).json({ message: "Vui lòng cung cấp mật khẩu mới" });
+            }
+            await this.accountService.resetPassword(req.params.id as string, newPassword);
+            res.status(200).json({ message: "Đặt lại mật khẩu thành công" });
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
 }
