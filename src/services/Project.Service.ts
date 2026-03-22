@@ -182,6 +182,11 @@ export class ProjectService {
                         id: true,
                         fullName: true,
                         phoneNumber: true,
+                    },
+                    members: {
+                        user: {
+                            id: true
+                        }
                     }
                 }
             }

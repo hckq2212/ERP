@@ -19,7 +19,7 @@ export class AuthController {
 
             // Set HttpOnly Cookies
             const isRememberMe = result.rememberMe;
-            const accessMaxAge = isRememberMe ? 30 * 24 * 60 * 60 * 1000 : 15 * 60 * 1000;
+            const accessMaxAge = isRememberMe ? 30 * 24 * 60 * 60 * 1000 : 120 * 60 * 1000;
             const refreshMaxAge = isRememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
 
             res.cookie("accessToken", result.accessToken, {
