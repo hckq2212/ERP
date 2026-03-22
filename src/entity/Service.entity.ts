@@ -13,6 +13,9 @@ export class Services extends BaseEntity {
     @Column({ nullable: true })
     description: string;
 
+    @Column({ nullable: true })
+    unit: string;
+
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     costPrice: number;
 
