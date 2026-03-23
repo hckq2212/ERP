@@ -144,7 +144,7 @@ export class AcceptanceService {
             // Fetch and complete all tasks for this service
             await this.taskRepo.update(
                 { contractService: { id: s.id } },
-                { status: TaskStatus.COMPLETED, actualEndDate: new Date() }
+                { status: TaskStatus.ACCEPTED, actualEndDate: new Date() }
             );
         }
 
@@ -276,6 +276,14 @@ export class AcceptanceService {
                                         }
                                     }
                                 }
+                            } else if (rd.status === 'APPROVED') {
+                                // Transition to ACCEPTED if individual task is approved
+                                const task = await this.taskRepo.findOneBy({ id: rd.taskId });
+                                if (task) {
+                                    task.status = TaskStatus.ACCEPTED;
+                                    task.actualEndDate = new Date();
+                                    await this.taskRepo.save(task);
+                                }
                             }
                         }
                     }
@@ -316,7 +324,7 @@ export class AcceptanceService {
                 // Complete all remaining tasks just in case
                 await this.taskRepo.update(
                     { contractService: { id: service.id } },
-                    { status: TaskStatus.COMPLETED, actualEndDate: new Date() }
+                    { status: TaskStatus.ACCEPTED, actualEndDate: new Date() }
                 );
             } else if (anyRejected) {
                 service.status = ContractServiceStatus.ACCEPTANCE_REJECTED;

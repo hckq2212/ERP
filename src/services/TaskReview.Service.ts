@@ -36,22 +36,17 @@ export class TaskReviewService {
         task.reviewNote = null;
         await this.taskRepository.save(task);
 
-        // Determine evaluators and their types
-        const definitions: { user: Users, type: ReviewerType }[] = [];
-
+        // Only one reviewer: Team Lead of the project team
         const lead = task.project?.team?.teamLead;
         const assigner = task.assigner;
 
-        if (lead && assigner && lead.id !== assigner.id) {
-            // Different people: both need to review
+        const definitions: { user: Users, type: ReviewerType }[] = [];
+
+        if (lead) {
             definitions.push({ user: lead, type: ReviewerType.TEAM_LEAD });
-            definitions.push({ user: assigner, type: ReviewerType.ASSIGNER });
         } else if (assigner) {
-            // Same person OR no Team Lead: only assigner reviews (as ASSIGNER type)
+            // Fallback to assigner if no project team exists
             definitions.push({ user: assigner, type: ReviewerType.ASSIGNER });
-        } else if (lead) {
-            // Case where assigner is missing but lead exists (shouldn't happen often)
-            definitions.push({ user: lead, type: ReviewerType.ASSIGNER });
         }
 
         const reviews: TaskReviews[] = [];
@@ -122,7 +117,7 @@ export class TaskReviewService {
             if (task) {
                 const isOutputJob = task.isOutput;
 
-                task.status = TaskStatus.COMPLETED;
+                task.status = TaskStatus.INTERNAL_COMPLETED;
                 task.actualEndDate = new Date();
                 if (reviewNote) task.reviewNote = reviewNote;
                 await this.taskRepository.save(task);
@@ -156,7 +151,7 @@ export class TaskReviewService {
                 if (task.assignee) {
                     const message = isOutputJob
                         ? `Công việc đầu ra "${task.name}" đã được duyệt nội bộ và đang chờ khách hàng nghiệm thu.`
-                        : `Công việc nội bộ "${task.name}" đã hoàn thành.`;
+                        : `Công việc nội bộ "${task.name}" đã hoàn thành nội bộ.`;
 
                     await this.notificationService.createNotification({
                         title: "Công việc đã được duyệt",

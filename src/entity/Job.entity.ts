@@ -18,6 +18,9 @@ export class Jobs extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     costPrice: number;
 
+    @Column({ nullable: true })
+    unit: string;
+
     @Column({
         type: "enum",
         enum: PerformerType,

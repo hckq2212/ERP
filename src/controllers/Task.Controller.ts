@@ -178,4 +178,13 @@ export class TaskController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    approveByCustomer = async (req: Request, res: Response) => {
+        try {
+            const result = await this.taskService.approveByCustomer(req.params.id as string);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 }

@@ -710,4 +710,29 @@ export class TaskService {
 
         return await this.taskRepository.save(task);
     }
+
+    async approveByCustomer(id: string) {
+        const task = await this.getOne(id);
+
+        if (task.status !== TaskStatus.INTERNAL_COMPLETED) {
+            throw new Error(`Công việc chưa ở trạng thái Hoàn thành nội bộ (Hiện tại: ${task.status})`);
+        }
+
+        task.status = TaskStatus.COMPLETED;
+        const savedTask = await this.taskRepository.save(task);
+
+        if (task.assignee) {
+            await this.notificationService.createNotification({
+                title: "Khách hàng đã duyệt",
+                content: `Khách hàng đã duyệt công việc: ${task.name}. Trạng thái: Hoàn thành.`,
+                type: "TASK_COMPLETED",
+                recipient: task.assignee,
+                relatedEntityId: task.id.toString(),
+                relatedEntityType: "Task",
+                link: `/tasks/${task.id}`
+            });
+        }
+
+        return savedTask;
+    }
 }

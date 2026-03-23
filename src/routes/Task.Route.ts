@@ -32,5 +32,6 @@ router.post("/:id/pricing", authMiddleware, taskController.assessExtraTask);
 router.patch("/:id/request-support", authMiddleware, taskController.requestSupport);
 router.put("/:id/assign-support-team", authMiddleware, taskController.assignSupportTeam);
 router.patch("/:id/rework", authMiddleware, taskController.rework);
+router.patch("/:id/customer-approve", authMiddleware, taskController.approveByCustomer);
 
 export default router;
