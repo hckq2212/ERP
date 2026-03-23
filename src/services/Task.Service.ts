@@ -499,13 +499,14 @@ export class TaskService {
         }
 
         // Logic check for support mode
-        if (task.isSupportRequested && task.supportLeadId) {
-            // If task is in support mode, the helperId should be assigned
+        if (task.isSupportRequested && task.supportLeadId && task.isSupportAccepted) {
+            // If task is in support mode and accepted, the helperId should be assigned
             task.helperId = data.assigneeId;
             task.status = TaskStatus.DOING;
-            // Clear support requested flag if helper is assigned
-            // Or keep it? The user said "cho phân công lại", so once assigned to a helper, it's being done.
-            task.isSupportRequested = false;
+            // Note: Keep isSupportRequested=true or false? 
+            // The plan-v2 says clear isSupportRequested when returning, 
+            // but for now let's keep it true to indicate it's a supported task.
+            // Or use isSupportAccepted = true as the continuous flag.
         }
 
         return await this.taskRepository.save(task);
@@ -552,7 +553,8 @@ export class TaskService {
         task.supportTeamId = teamId;
         task.supportLeadId = team.teamLead.id;
         task.isSupportRequested = true;
-        task.status = TaskStatus.AWAITING_SUPPORT;
+        task.isSupportAccepted = false;
+        task.status = TaskStatus.SUPPORT_PENDING;
 
         const savedTask = await this.taskRepository.save(task);
 
@@ -734,5 +736,67 @@ export class TaskService {
         }
 
         return savedTask;
+    }
+    
+    async respondToSupport(id: string, action: 'ACCEPT' | 'REJECT', currentUser: { id: string }) {
+        const task = await this.getOne(id);
+        
+        // Security check: Only the designated support lead can respond
+        if (task.supportLeadId !== (currentUser as any).userId && task.supportLeadId !== currentUser.id) {
+            throw new Error("Chỉ Lead của team được nhờ mới có quyền phản hồi");
+        }
+
+        if (action === 'ACCEPT') {
+            task.isSupportAccepted = true;
+            task.status = TaskStatus.PENDING; 
+            
+            // Notify original lead
+            const originalLead = task.project?.team?.teamLead;
+            if (originalLead) {
+                await this.notificationService.createNotification({
+                    title: "Yêu cầu hỗ trợ được chấp nhận",
+                    content: `Team hỗ trợ đã đồng ý giúp đỡ cho công việc: ${task.name}. Đang chờ phân công nhân sự.`,
+                    type: "TASK_ASSIGNED",
+                    recipient: originalLead,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task"
+                });
+            }
+        } else {
+            // REJECT
+            task.supportTeamId = null as any;
+            task.supportLeadId = null as any;
+            task.isSupportRequested = true; // Still needs support
+            task.isSupportAccepted = false;
+            task.status = TaskStatus.AWAITING_SUPPORT; // Back to original lead to pick another team
+
+            // Notify original lead
+            const originalLead = task.project?.team?.teamLead;
+            if (originalLead) {
+                await this.notificationService.createNotification({
+                    title: "Yêu cầu hỗ trợ bị từ chối",
+                    content: `Team hỗ trợ đã từ chối yêu cầu cho công việc: ${task.name}. Vui lòng thực hiện phương án khác.`,
+                    type: "TASK_REJECTED",
+                    recipient: originalLead,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task"
+                });
+            }
+        }
+
+        return await this.taskRepository.save(task);
+    }
+
+    async returnSupport(id: string) {
+        const task = await this.getOne(id);
+        
+        task.supportTeamId = null as any;
+        task.supportLeadId = null as any;
+        task.helperId = null as any;
+        task.isSupportRequested = true; // Still needs support
+        task.isSupportAccepted = false;
+        task.status = TaskStatus.AWAITING_SUPPORT;
+
+        return await this.taskRepository.save(task);
     }
 }

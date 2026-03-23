@@ -29,8 +29,10 @@ router.patch("/:id/submit-result", authMiddleware, taskController.submitResult);
 router.delete("/:id", authMiddleware, taskController.delete);
 router.patch("/:id/reassign", authMiddleware, taskController.reassign);
 router.post("/:id/pricing", authMiddleware, taskController.assessExtraTask);
-router.patch("/:id/request-support", authMiddleware, taskController.requestSupport);
-router.put("/:id/assign-support-team", authMiddleware, taskController.assignSupportTeam);
+router.post('/:id/request-support', authMiddleware, taskController.requestSupport);
+router.post('/:id/respond-support', authMiddleware, taskController.respondToSupport);
+router.post('/:id/return-support', authMiddleware, taskController.returnSupport);
+router.post('/:id/assign-support-team', authMiddleware, taskController.assignSupportTeam);
 router.patch("/:id/rework", authMiddleware, taskController.rework);
 router.patch("/:id/customer-approve", authMiddleware, taskController.approveByCustomer);
 

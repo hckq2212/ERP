@@ -160,6 +160,25 @@ export class TaskController {
         }
     }
 
+    respondToSupport = async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const result = await this.taskService.respondToSupport(req.params.id as string, req.body.action, user);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    returnSupport = async (req: Request, res: Response) => {
+        try {
+            const result = await this.taskService.returnSupport(req.params.id as string);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     assignSupportTeam = async (req: Request, res: Response) => {
         try {
             const result = await this.taskService.assignSupportTeam(req.params.id as string, req.body.teamId);

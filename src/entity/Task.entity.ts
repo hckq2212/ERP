@@ -128,6 +128,9 @@ export class Tasks extends BaseEntity {
     @Column({ default: false })
     isSupportRequested: boolean;
 
+    @Column({ default: false })
+    isSupportAccepted: boolean;
+
     @Column({ type: "varchar", length: 26, nullable: true })
     supportTeamId: string;
 
