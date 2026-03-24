@@ -35,6 +35,9 @@ export class Accounts extends BaseEntity {
     @Column({ default: true })
     isActive: boolean;
 
+    @Column({ default: 0 })
+    vinicoin: number;
+
     @OneToOne(() => Users, (user) => user.account)
     user: Users;
 }

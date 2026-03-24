@@ -3,9 +3,10 @@ import { AcceptanceRequests, AcceptanceStatus } from "../entity/AcceptanceReques
 import { ContractServices, ContractServiceStatus } from "../entity/ContractService.entity";
 import { Users } from "../entity/User.entity";
 import { Tasks } from "../entity/Task.entity";
-import { TaskStatus } from "../entity/Enums";
+import { TaskStatus, PerformerType } from "../entity/Enums";
 import { Projects } from "../entity/Project.entity";
 import { NotificationService } from "./Notification.Service";
+import { VinicoinService } from "./Vinicoin.Service";
 import { In } from "typeorm";
 
 export class AcceptanceService {
@@ -15,6 +16,7 @@ export class AcceptanceService {
     private taskRepo = AppDataSource.getRepository(Tasks);
     private projectRepo = AppDataSource.getRepository(Projects);
     private notificationService = new NotificationService();
+    private vinicoinService = new VinicoinService();
 
     async createRequest(data: { serviceIds: string[], userId: string, name: string, projectId: string, note?: string }) {
         const { serviceIds, userId, name, projectId, note } = data;
@@ -118,7 +120,7 @@ export class AcceptanceService {
     async approveRequest(requestId: string, approverId: string, feedback?: string) {
         const request = await this.acceptanceRepo.findOne({
             where: { id: requestId },
-            relations: ["services", "requester"]
+            relations: ["services", "services.tasks", "services.tasks.job", "services.tasks.assignee", "services.tasks.assignee.account", "services.tasks.helper", "services.tasks.helper.account", "requester"]
         });
 
         if (!request) throw new Error("Không tìm thấy yêu cầu nghiệm thu");
@@ -146,6 +148,9 @@ export class AcceptanceService {
                 { contractService: { id: s.id } },
                 { status: TaskStatus.ACCEPTED, actualEndDate: new Date() }
             );
+
+            // Reward Vinicoin
+            await this.triggerRewards(s);
         }
 
         // Notify requester
@@ -219,7 +224,7 @@ export class AcceptanceService {
     async processRequest(requestId: string, approverId: string, decisions: { serviceId: string, status: 'APPROVED' | 'REJECTED', feedback?: string }[]) {
         const request = await this.acceptanceRepo.findOne({
             where: { id: requestId },
-            relations: ["services", "services.tasks", "requester"]
+            relations: ["services", "services.tasks", "services.tasks.job", "services.tasks.assignee", "services.tasks.assignee.account", "services.tasks.helper", "services.tasks.helper.account", "requester"]
         });
 
         if (!request) throw new Error("Không tìm thấy yêu cầu nghiệm thu");
@@ -326,6 +331,9 @@ export class AcceptanceService {
                     { contractService: { id: service.id } },
                     { status: TaskStatus.ACCEPTED, actualEndDate: new Date() }
                 );
+
+                // Reward Vinicoin
+                await this.triggerRewards(service);
             } else if (anyRejected) {
                 service.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
                 service.feedback = decision.feedback || "Một số kết quả bị từ chối";
@@ -368,5 +376,34 @@ export class AcceptanceService {
         return await this.acceptanceRepo.find({
             relations: ["requester", "approver", "project", "services", "services.tasks"]
         });
+    }
+
+    private async triggerRewards(service: ContractServices) {
+        if (!service.tasks) return;
+
+        for (const task of service.tasks) {
+            const rewardAmount = task.job?.vinicoin;
+            if (!rewardAmount || rewardAmount <= 0) continue;
+
+            // Reward Assignee
+            if (task.assignee?.account?.id && task.performerType === PerformerType.INTERNAL) {
+                await this.vinicoinService.rewardForTask(
+                    task.assignee.account.id,
+                    rewardAmount,
+                    task.id,
+                    service.id
+                );
+            }
+
+            // Reward Helper (if internal)
+            if (task.helper?.account?.id && task.performerType === PerformerType.INTERNAL) {
+                 await this.vinicoinService.rewardForTask(
+                    task.helper.account.id,
+                    rewardAmount,
+                    task.id,
+                    service.id
+                );
+            }
+        }
     }
 }

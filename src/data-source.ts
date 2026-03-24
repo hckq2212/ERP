@@ -29,6 +29,7 @@ import { ServicePackages } from "./entity/ServicePackage.entity"
 import { ServicePackageItems } from "./entity/ServicePackageItem.entity"
 import { OpportunityPackages } from "./entity/OpportunityPackage.entity"
 import { TaskIterations } from "./entity/TaskIteration.entity"
+import { VinicoinTransactions } from "./entity/VinicoinTransaction.entity"
 
 
 import { VendorJobs } from "./entity/VendorJob.entity"
@@ -86,6 +87,7 @@ export const AppDataSource = new DataSource({
         ServicePackageItems,
         OpportunityPackages,
         TaskIterations,
+        VinicoinTransactions,
         ServiceJob,
     ],
 
