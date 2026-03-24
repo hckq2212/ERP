@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Tasks } from "./Task.entity";
+import { Users } from "./User.entity";
 
 @Entity()
 export class TaskIterations extends BaseEntity {
@@ -26,4 +27,11 @@ export class TaskIterations extends BaseEntity {
 
     @Column({ type: "timestamptz", nullable: true })
     deadlineAt: Date;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    submittedById: string;
+
+    @ManyToOne(() => Users, { nullable: true })
+    @JoinColumn({ name: "submittedById" })
+    submittedBy: Users;
 }

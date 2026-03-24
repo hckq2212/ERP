@@ -146,4 +146,11 @@ export class Tasks extends BaseEntity {
 
     @Column({ type: "text", nullable: true })
     supportRequestNote: string;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    lastSubmittedById: string;
+
+    @ManyToOne(() => Users, { nullable: true })
+    @JoinColumn({ name: "lastSubmittedById" })
+    lastSubmittedBy: Users;
 }

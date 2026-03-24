@@ -180,7 +180,7 @@ export class TaskService {
     async getOne(id: string) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation", "supervisor", "iterations"]
+            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation", "supervisor", "iterations", "lastSubmittedBy", "iterations.submittedBy"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
@@ -258,12 +258,13 @@ export class TaskService {
         return await this.taskRepository.save(task);
     }
 
-    async submitResult(id: string, data: { result: any }) {
+    async submitResult(id: string, data: { result: any }, currentUser: { id: string, userId?: string }) {
         const task = await this.getOne(id);
 
         task.result = data.result;
         task.status = TaskStatus.AWAITING_REVIEW;
         task.actualEndDate = new Date();
+        task.lastSubmittedById = (currentUser as any).userId || currentUser.id;
 
         const savedTask = await this.taskRepository.save(task);
 
@@ -329,7 +330,8 @@ export class TaskService {
                 submittedResult: task.result,
                 leadFeedback: data.feedback,
                 feedbackAttachments: data.attachments,
-                deadlineAt: data.deadlineAt
+                deadlineAt: data.deadlineAt,
+                submittedById: task.lastSubmittedById
             });
             await iterationRepository.save(iteration);
 

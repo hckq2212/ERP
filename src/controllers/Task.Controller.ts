@@ -115,7 +115,8 @@ export class TaskController {
                 return res.status(400).json({ message: "Vui lòng cung cấp link hoặc file kết quả" });
             }
 
-            const result = await this.taskService.submitResult(taskId, { result: resultData });
+            const user = (req as any).user;
+            const result = await this.taskService.submitResult(taskId, { result: resultData }, user);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
