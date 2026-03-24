@@ -99,13 +99,14 @@ app.use("/api/chat", chatRoute)
 app.use("/api/accounts", accountRoute)
 app.use("/api/me", profileRoute)
 
-
+import { CronHelper } from "./helpers/Cron.Helper";
 
 
 AppDataSource.initialize().then(async () => {
 
     app.listen(port, () => {
         console.log(`Server is running on ${port}`)
+        CronHelper.init();
     })
 
 }).catch(error => console.log(error))

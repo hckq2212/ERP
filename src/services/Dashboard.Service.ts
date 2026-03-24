@@ -64,27 +64,79 @@ export class DashboardService {
             };
         }
 
-        // 4. Member Data (Tasks assigned to user)
+        // 4. Member Data (Tasks assigned to user or where user is a helper)
         const myTasks = await this.taskRepo.find({
-            where: { assignee: { id: userId } },
+            where: [
+                { assignee: { id: userId } },
+                { helper: { id: userId } }
+            ],
+            relations: ["project", "assignee", "helper"],
             order: { plannedEndDate: "ASC" }
         });
 
-        const now = new Date();
+        // Get Account for Vinicoin
+        const userWithAccount = await AppDataSource.getRepository("Users").findOne({
+            where: { id: userId },
+            relations: ["account"]
+        }) as any;
+
+        const vinicoin = userWithAccount?.account?.vinicoin || 0;
+
+        // Participating Projects
+        const projectMap = new Map();
+        myTasks.forEach(t => {
+            if (t.project && !projectMap.has(t.project.id)) {
+                projectMap.set(t.project.id, {
+                    id: t.project.id,
+                    name: t.project.name,
+                    status: t.project.status
+                });
+            }
+        });
+        const participatingProjects = Array.from(projectMap.values());
+
+        // Monthly Stats (Completed tasks this year)
+        const currentYear = new Date().getFullYear();
+        const completionStats = Array(12).fill(0);
+        myTasks.forEach(t => {
+            if (t.status === TaskStatus.COMPLETED && t.actualEndDate) {
+                const date = new Date(t.actualEndDate);
+                if (date.getFullYear() === currentYear) {
+                    completionStats[date.getMonth()]++;
+                }
+            }
+        });
+
         data.member = {
+            vinicoin,
             totalTasks: myTasks.length,
             pendingCount: myTasks.filter(t => t.status === TaskStatus.PENDING).length,
             doingCount: myTasks.filter(t => t.status === TaskStatus.DOING).length,
-            completedCount: myTasks.filter(t => t.status === TaskStatus.COMPLETED).length,
+            completedCount: myTasks.filter(t => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.DONE).length,
+            participatingProjects,
             upcomingDeadlines: myTasks
-                .filter(t => t.status !== TaskStatus.COMPLETED && t.plannedEndDate)
-                .slice(0, 5)
+                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.DONE && t.plannedEndDate)
+                .slice(0, 10)
                 .map(t => ({
                     id: t.id,
                     name: t.name,
                     deadline: t.plannedEndDate,
+                    status: t.status,
+                    projectName: t.project?.name
+                })),
+            calendarTasks: myTasks
+                .filter(t => t.plannedStartDate || t.plannedEndDate)
+                .map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    start: t.plannedStartDate,
+                    end: t.plannedEndDate,
                     status: t.status
-                }))
+                })),
+            completionStats: completionStats.map((count, index) => ({
+                month: index + 1,
+                count
+            }))
         };
 
         return data;
