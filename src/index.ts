@@ -33,6 +33,7 @@ import cloudinaryRoute from "./routes/Cloudinary.Route"
 import servicePackageRoute from "./routes/ServicePackage.Route"
 import chatRoute from "./routes/Chat.Route"
 import accountRoute from "./routes/Account.Route"
+import profileRoute from "./routes/Profile.Route"
 import { loggingMiddleware } from "./middlewares/Logging.Middleware";
 
 
@@ -96,6 +97,7 @@ app.use("/api/cloudinary", cloudinaryRoute)
 app.use("/api/service-packages", servicePackageRoute)
 app.use("/api/chat", chatRoute)
 app.use("/api/accounts", accountRoute)
+app.use("/api/me", profileRoute)
 
 
 
