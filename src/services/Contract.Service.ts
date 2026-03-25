@@ -13,6 +13,7 @@ import { ProjectService } from "./Project.Service";
 import { DebtService } from "./Debt.Service";
 import { NotificationService } from "./Notification.Service";
 import { Users } from "../entity/User.entity";
+import { UserRole } from "../entity/Account.entity";
 import { RedisService } from "./Redis.Service";
 
 
@@ -30,6 +31,30 @@ export class ContractService {
     private projectService = new ProjectService();
     private debtService = new DebtService();
     private notificationService = new NotificationService();
+
+    private async getManagementUsers() {
+        return await AppDataSource.getRepository(Users).find({
+            where: [
+                { account: { role: UserRole.BOD } },
+                { account: { role: UserRole.ADMIN } }
+            ],
+            relations: ["account"]
+        });
+    }
+
+    private async notifyManagement(data: { title: string, content: string, contractId: string }) {
+        const managers = await this.getManagementUsers();
+        for (const manager of managers) {
+            await this.notificationService.createNotification({
+                ...data,
+                type: "CONTRACT_UPDATE",
+                recipient: manager,
+                link: `/contracts/${data.contractId}`,
+                relatedEntityId: data.contractId,
+                relatedEntityType: "CONTRACT"
+            });
+        }
+    }
 
 
     async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
@@ -345,10 +370,17 @@ export class ContractService {
         // Invalidate list cache
         await RedisService.deleteCache('contracts:all*');
 
+        // Notify management
+        await this.notifyManagement({
+            title: "Hợp đồng mới",
+            content: `Hợp đồng nháp ${savedContract.contractCode}-${savedContract.name} đã được tạo bởi ${userInfo?.userId || 'Hệ thống'}`,
+            contractId: savedContract.id
+        });
+
         return savedContract;
     }
 
-    async uploadProposal(id: string, fileData: any) {
+    async uploadProposal(id: string, fileData: any, userInfo?: { id: string, userId?: string }) {
         const contract = await this.getOne(id);
         contract.proposal_contract = fileData.url;
         contract.status = ContractStatus.PROPOSAL_UPLOADED;
@@ -356,6 +388,13 @@ export class ContractService {
 
 
         const savedResult = await this.contractRepository.save(contract);
+
+        // Notify management
+        await this.notifyManagement({
+            title: "Hợp đồng đã upload bản thảo",
+            content: `Bản thảo hợp đồng ${savedResult.contractCode}-${savedResult.name} đã được upload bởi ${userInfo?.userId || 'Hệ thống'}.`,
+            contractId: savedResult.id
+        });
 
         // Invalidate caches
         await RedisService.deleteCache('contracts:all*');
@@ -377,6 +416,13 @@ export class ContractService {
         // Auto Create Project (Draft)
         await this.projectService.createFromContract(savedContract, userInfo);
 
+        // Notify management
+        await this.notifyManagement({
+            title: "Hợp đồng đã duyệt bản thảo",
+            content: `Bản thảo hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được duyệt. Dự án tương ứng đã được khởi tạo nháp.`,
+            contractId: savedContract.id
+        });
+
         // Invalidate caches
         await RedisService.deleteCache('contracts:all*');
         await RedisService.deleteCache(`contracts:detail:${id}*`);
@@ -385,7 +431,7 @@ export class ContractService {
     }
 
 
-    async uploadSigned(id: string, fileData: any) {
+    async uploadSigned(id: string, fileData: any, userInfo?: { id: string, userId?: string }) {
         const contract = await this.contractRepository.findOne({
             where: { id },
             relations: ["project", "customer", "opportunity", "milestones", "services", "debts"]
@@ -401,6 +447,13 @@ export class ContractService {
 
 
         const savedContract = await this.contractRepository.save(contract);
+
+        // Notify management
+        await this.notifyManagement({
+            title: "Hợp đồng đã upload bản ký",
+            content: `Bản ký hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được upload bởi ${userInfo?.userId || 'Hệ thống'}.`,
+            contractId: savedContract.id
+        });
 
         // Auto activate all milestones as debts
         // if (contract.milestones && contract.milestones.length > 0) {
@@ -527,6 +580,13 @@ export class ContractService {
         // Invalidate caches
         await RedisService.deleteCache('contracts:all*');
         await RedisService.deleteCache(`contracts:detail:${id}*`);
+
+        // Notify management
+        await this.notifyManagement({
+            title: "Hợp đồng bị từ chối bản thảo",
+            content: `Bản thảo hợp đồng ${savedContract.contractCode}-${savedContract.name} bị từ chối. Lý do: ${reason}`,
+            contractId: savedContract.id
+        });
 
         // Notify Opportunity Creator
         if (contract.opportunity?.createdBy) {

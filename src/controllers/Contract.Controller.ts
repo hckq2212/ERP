@@ -57,7 +57,8 @@ export class ContractController {
                 return res.status(400).json({ message: "Không tìm thấy file metadata" });
             }
 
-            const contract = await this.contractService.uploadProposal(req.params.id as string, file);
+            const userInfo = (req as any).user;
+            const contract = await this.contractService.uploadProposal(req.params.id as string, file, userInfo);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -95,7 +96,8 @@ export class ContractController {
                 return res.status(400).json({ message: "Không tìm thấy file metadata" });
             }
 
-            const contract = await this.contractService.uploadSigned(req.params.id as string, file);
+            const userInfo = (req as any).user;
+            const contract = await this.contractService.uploadSigned(req.params.id as string, file, userInfo);
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });

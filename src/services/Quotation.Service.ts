@@ -9,6 +9,8 @@ import { Tasks } from "../entity/Task.entity";
 import { PricingStatus, TaskStatus } from "../entity/Enums";
 import { ContractAddendums, AddendumStatus } from "../entity/ContractAddendum.entity";
 import { Users } from "../entity/User.entity";
+import { UserRole } from "../entity/Account.entity";
+import { NotificationService } from "./Notification.Service";
 
 export class QuotationService {
     private quotationRepository = AppDataSource.getRepository(Quotations);
@@ -17,6 +19,31 @@ export class QuotationService {
     private opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
     private opportunityPackageRepository = AppDataSource.getRepository(OpportunityPackages);
     private taskRepository = AppDataSource.getRepository(Tasks);
+    private notificationService = new NotificationService();
+
+    private async getManagementUsers() {
+        return await AppDataSource.getRepository(Users).find({
+            where: [
+                { account: { role: UserRole.BOD } },
+                { account: { role: UserRole.ADMIN } }
+            ],
+            relations: ["account"]
+        });
+    }
+
+    private async notifyManagement(data: { title: string, content: string, quotationId: string }) {
+        const managers = await this.getManagementUsers();
+        for (const manager of managers) {
+            await this.notificationService.createNotification({
+                ...data,
+                type: "QUOTATION_UPDATE",
+                recipient: manager,
+                link: `/quotations/${data.quotationId}`,
+                relatedEntityId: data.quotationId,
+                relatedEntityType: "Quotations"
+            });
+        }
+    }
 
     async getAll() {
         return await this.quotationRepository.find({
@@ -123,7 +150,16 @@ export class QuotationService {
             await this.opportunityRepository.save(opportunity);
         }
 
-        return await this.quotationRepository.save(savedQuotation);
+        const saved = await this.quotationRepository.save(savedQuotation);
+
+        // Notify management
+        await this.notifyManagement({
+            title: "Báo giá mới",
+            content: `Báo giá Ver ${saved.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được tạo bởi ${userInfo?.userId || 'Hệ thống'}`,
+            quotationId: saved.id
+        });
+
+        return saved;
     }
 
     async createAddendumQuotation(data: { opportunityId: string, taskIds: string[], note?: string }, userInfo?: { id: string, userId?: string }) {
@@ -211,11 +247,20 @@ export class QuotationService {
 
         savedQuotation.totalAmount = total;
         savedQuotation.tasks = tasks; // Link tasks to quotation
-        return await this.quotationRepository.save(savedQuotation);
+        const saved = await this.quotationRepository.save(savedQuotation);
+
+        // Notify management
+        await this.notifyManagement({
+            title: "Báo giá phụ lục mới",
+            content: `Báo giá phụ lục Ver ${saved.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được tạo bởi ${userInfo?.userId || 'Hệ thống'}`,
+            quotationId: saved.id
+        });
+
+        return saved;
     }
 
     // 2. Update Quotation Details (Price, Qty)
-    async update(id: string, data: { status?: QuotationStatus, note?: string, details?: any[] }) {
+    async update(id: string, data: { status?: QuotationStatus, note?: string, details?: any[] }, userInfo?: { id: string, userId?: string }) {
         const quotation = await this.getOne(id);
 
         if (quotation.status === QuotationStatus.APPROVED) {
@@ -266,7 +311,16 @@ export class QuotationService {
             quotation.totalAmount = total;
         }
 
-        return await this.quotationRepository.save(quotation);
+        const saved = await this.quotationRepository.save(quotation);
+
+        // Notify management
+        await this.notifyManagement({
+            title: "Báo giá được cập nhật",
+            content: `Báo giá Ver ${saved.version} cho cơ hội ${saved.opportunity?.opportunityCode}-${saved.opportunity?.name} đã được cập nhật bởi ${userInfo?.userId || 'Hệ thống'}.`,
+            quotationId: saved.id
+        });
+
+        return saved;
     }
 
     // 3. Approve Quotation: Sync BACK to Opportunity
@@ -364,6 +418,13 @@ export class QuotationService {
 
         await this.opportunityRepository.save(opportunity);
 
+        // Notify management
+        await this.notifyManagement({
+            title: "Báo giá đã duyệt",
+            content: `Báo giá Ver ${quotation.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được duyệt.`,
+            quotationId: quotation.id
+        });
+
         return { message: "Đã duyệt báo giá và cập nhật cơ hội kinh doanh", quotation };
     }
 
@@ -377,12 +438,16 @@ export class QuotationService {
 
         quotation.status = QuotationStatus.REJECTED;
         quotation.description = description;
-        await this.quotationRepository.save(quotation);
+        const saved = await this.quotationRepository.save(quotation);
 
-        // Optionally revert opportunity status if needed, 
-        // but typically it stays in "Quotation Drafting" phase
+        // Notify management
+        await this.notifyManagement({
+            title: "Báo giá bị từ chối",
+            content: `Báo giá Ver ${saved.version} cho cơ hội ${saved.opportunity?.opportunityCode}-${saved.opportunity?.name} bị từ chối. Lý do: ${description || 'N/A'}`,
+            quotationId: saved.id
+        });
 
-        return { message: "Đã từ chối báo giá", quotation };
+        return { message: "Đã từ chối báo giá", quotation: saved };
     }
 
     async delete(id: string) {
