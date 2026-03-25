@@ -415,9 +415,9 @@ export class ContractService {
         // }
 
         // Auto start project if it exists
-        if (contract.project) {
-            await this.projectService.start(contract.project.id);
-        }
+        // if (contract.project) {
+        //     await this.projectService.start(contract.project.id);
+        // }
 
         // Invalidate caches
         await RedisService.deleteCache('contracts:all*');
@@ -532,8 +532,8 @@ export class ContractService {
         if (contract.opportunity?.createdBy) {
             const sender = userInfo?.userId ? { id: userInfo.userId } as Users : undefined;
             await this.notificationService.createNotification({
-                title: "Bản dự thảo hợp đồng bị từ chối",
-                content: `Bản dự thảo cho hợp đồng ${contract.contractCode} đã bị từ chối với lý do: ${reason}`,
+                title: "Hợp đồng bị từ chối",
+                content: `Hợp đồng ${contract.contractCode}-${contract.name} đã bị từ chối với lý do: ${reason}`,
                 type: "CONTRACT_REJECTION",
                 recipient: contract.opportunity.createdBy,
                 sender: sender,

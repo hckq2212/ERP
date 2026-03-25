@@ -127,7 +127,7 @@ export class TaskReviewService {
                     const contractServiceRepository = AppDataSource.getRepository(ContractServices);
                     const contractService = task.contractService;
                     if (!contractService.results) contractService.results = [];
-                    
+
                     // Add or update result in array
                     const existingResultIndex = contractService.results.findIndex(r => r.taskId === task.id);
                     const newResult = {
@@ -143,24 +143,20 @@ export class TaskReviewService {
                     } else {
                         contractService.results.push(newResult);
                     }
-                    
+
                     await contractServiceRepository.save(contractService);
                 }
 
                 // Notify assignee
                 if (task.assignee) {
-                    const message = isOutputJob
-                        ? `Công việc đầu ra "${task.name}" đã được duyệt nội bộ và đang chờ khách hàng nghiệm thu.`
-                        : `Công việc nội bộ "${task.name}" đã hoàn thành nội bộ.`;
 
                     await this.notificationService.createNotification({
                         title: "Công việc đã được duyệt",
-                        content: message,
+                        content: `Công việc đầu ra "${task.name}" của dự án ${task.project?.name} đã được duyệt và đang chờ khách hàng duyệt.`,
                         type: "TASK_COMPLETED",
                         recipient: task.assignee,
                         relatedEntityId: task.id.toString(),
                         relatedEntityType: "Task",
-                        link: `/tasks/${task.id}`
                     });
                 }
             }
@@ -193,7 +189,7 @@ export class TaskReviewService {
         if (task.assignee) {
             await this.notificationService.createNotification({
                 title: "Công việc cần sửa lại",
-                content: `Công việc "${task.name}" bị từ chối/yêu cầu sửa lại. Lý do: ${reviewNote}`,
+                content: `Công việc "${task.name}" của dự án ${task.project?.name} bị từ chối/yêu cầu sửa lại. Lý do: ${reviewNote}`,
                 type: "TASK_REJECTED",
                 recipient: task.assignee,
                 relatedEntityId: task.id.toString(),

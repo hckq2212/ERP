@@ -326,13 +326,14 @@ export class OpportunityService {
 
                 for (const user of managementUsers) {
                     await this.notificationService.createNotification({
-                        title: "Cơ hội kinh doanh mới",
-                        content: `Cơ hội "${savedOpportunity.name}" (${savedOpportunity.opportunityCode}) đã được tạo bởi ${opportunity.createdBy.fullName}.`,
+                        title: "Cơ hội mới",
+                        content: `Cơ hội (${savedOpportunity.opportunityCode})-${savedOpportunity.name}  đã được tạo bởi ${opportunity.createdBy.fullName}.`,
                         type: "OPPORTUNITY_CREATED",
                         recipient: user,
                         sender: opportunity.createdBy,
                         relatedEntityId: savedOpportunity.id,
-                        relatedEntityType: "Opportunities"
+                        relatedEntityType: "Opportunities",
+                        link: `/opportunities/${savedOpportunity.id}`
                     });
                 }
             }

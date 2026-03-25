@@ -15,7 +15,7 @@ router.get("/contract/:contractId", authMiddleware, projectController.getByContr
 
 router.post("/assign", authMiddleware, validationMiddleware(AssignTeamDTO), projectController.assign);
 router.post("/:id/confirm", authMiddleware, projectController.confirm);
-router.post("/:id/start", authMiddleware, projectController.start);
+// router.post("/:id/start", authMiddleware, projectController.start);
 
 
 export default router;

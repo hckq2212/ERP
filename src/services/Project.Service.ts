@@ -216,8 +216,6 @@ export class ProjectService {
 
                 // Mask sensitive contract info
                 if (project.contract) {
-                    project.contract.description = "Bị giới hạn (Dành cho Team hỗ trợ)";
-                    project.contract.attachments = [];
                     if (project.contract.services) {
                         project.contract.services.forEach(s => {
                             s.sellingPrice = 0;
@@ -409,7 +407,7 @@ export class ProjectService {
                 }
             }
         } else {
-            project.status = ProjectStatus.CONFIRMED;
+            project.status = ProjectStatus.IN_PROGRESS;
         }
 
         const savedProject = await this.projectRepository.save(project);
@@ -436,32 +434,32 @@ export class ProjectService {
     }
 
 
-    async start(id: string) {
-        const project = await this.getOne(id);
+    // async start(id: string) {
+    //     const project = await this.getOne(id);
 
-        // Requirement: Only transition to IN_PROGRESS if Team Lead has already accepted (CONFIRMED)
-        if (project.status !== ProjectStatus.CONFIRMED) {
-            console.log(`[ProjectService] Project ${id} is not in CONFIRMED state (current: ${project.status}). Skipping automatic IN_PROGRESS transition.`);
-            return project;
-        }
+    //     // Requirement: Only transition to IN_PROGRESS if Team Lead has already accepted (CONFIRMED)
+    //     if (project.status !== ProjectStatus.CONFIRMED) {
+    //         console.log(`[ProjectService] Project ${id} is not in CONFIRMED state (current: ${project.status}). Skipping automatic IN_PROGRESS transition.`);
+    //         return project;
+    //     }
 
-        // Check contract signed
-        const contract = await this.contractRepository.findOneBy({ id: project.contract.id });
-        if (contract?.status !== ContractStatus.SIGNED) {
-            throw new Error("Hợp đồng chưa được ký (Signed), không thể bắt đầu dự án");
-        }
+    //     // Check contract signed
+    //     const contract = await this.contractRepository.findOneBy({ id: project.contract.id });
+    //     if (contract?.status !== ContractStatus.SIGNED) {
+    //         throw new Error("Hợp đồng chưa được ký (Signed), không thể bắt đầu dự án");
+    //     }
 
-        project.status = ProjectStatus.IN_PROGRESS;
-        project.actualStartDate = new Date();
+    //     project.status = ProjectStatus.IN_PROGRESS;
+    //     project.actualStartDate = new Date();
 
-        // Update Opportunity Status
-        const fullContract = await this.contractRepository.findOne({ where: { id: project.contract.id }, relations: ["opportunity"] });
-        if (fullContract?.opportunity) {
-            const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
-            fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
-            await oppRepo.save(fullContract.opportunity);
-        }
+    //     // Update Opportunity Status
+    //     const fullContract = await this.contractRepository.findOne({ where: { id: project.contract.id }, relations: ["opportunity"] });
+    //     if (fullContract?.opportunity) {
+    //         const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
+    //         fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
+    //         await oppRepo.save(fullContract.opportunity);
+    //     }
 
-        return await this.projectRepository.save(project);
-    }
+    //     return await this.projectRepository.save(project);
+    // }
 }

@@ -66,12 +66,12 @@ export class ProjectController {
     }
 
 
-    start = async (req: Request, res: Response) => {
-        try {
-            const project = await this.projectService.start(req.params.id as string);
-            res.status(200).json(project);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    }
+    // start = async (req: Request, res: Response) => {
+    //     try {
+    //         const project = await this.projectService.start(req.params.id as string);
+    //         res.status(200).json(project);
+    //     } catch (error) {
+    //         res.status(500).json({ message: error.message });
+    //     }
+    // }
 }

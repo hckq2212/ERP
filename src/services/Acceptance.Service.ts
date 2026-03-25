@@ -105,7 +105,7 @@ export class AcceptanceService {
         for (const bod of bods) {
             await this.notificationService.createNotification({
                 title: "Yêu cầu nghiệm thu mới",
-                content: `Team Lead ${requester.fullName} yêu cầu nghiệm thu đợt: ${name}`,
+                content: `Team Lead ${requester.fullName} yêu cầu nghiệm thu đợt: ${name} của dự án ${request.project?.name}`,
                 type: "ACCEPTANCE_REQUESTED",
                 recipient: bod,
                 relatedEntityId: savedRequest.id,
@@ -156,12 +156,11 @@ export class AcceptanceService {
         // Notify requester
         await this.notificationService.createNotification({
             title: "Yêu cầu nghiệm thu được DUYỆT",
-            content: `Đợt nghiệm thu "${request.name}" đã được phê duyệt.`,
+            content: `Đợt nghiệm thu "${request.name}" đã được duyệt.`,
             type: "ACCEPTANCE_APPROVED",
             recipient: request.requester,
             relatedEntityId: request.id,
             relatedEntityType: "AcceptanceRequest",
-            link: `/acceptance/${request.id}`
         });
 
         return request;
@@ -209,8 +208,8 @@ export class AcceptanceService {
 
         // Notify requester
         await this.notificationService.createNotification({
-            title: "Yêu cầu nghiệm thu bị TỪ CHỐI",
-            content: `Đợt nghiệm thu "${request.name}" bị từ chối. Lý do: ${feedback}`,
+            title: "Yêu cầu nghiệm thu bị từ chối",
+            content: `Đợt nghiệm thu "${request.name}" của dự án ${request.project?.name} bị từ chối. Lý do: ${feedback}`,
             type: "ACCEPTANCE_REJECTED",
             recipient: request.requester,
             relatedEntityId: request.id,
@@ -271,7 +270,7 @@ export class AcceptanceService {
                                         if (assignee) {
                                             await this.notificationService.createNotification({
                                                 title: "Yêu cầu sửa lại (Rework)",
-                                                content: `Công việc "${task.name}" bị khách hàng từ chối nghiệm thu. Lý do: ${task.reviewNote}`,
+                                                content: `Công việc "${task.name}" của dự án ${request.project?.name} bị từ chối nghiệm thu. Lý do: ${task.reviewNote}`,
                                                 type: "TASK_REJECTED",
                                                 recipient: assignee,
                                                 relatedEntityId: task.id.toString(),
@@ -354,7 +353,7 @@ export class AcceptanceService {
         // Notify requester
         await this.notificationService.createNotification({
             title: "Kết quả nghiệm thu",
-            content: `Đợt nghiệm thu "${request.name}" đã được xử lý.`,
+            content: `Yêu cầu nghiệm thu "${request.name}" của dự án ${request.project?.name} đã được xử lý.`,
             type: anyRejectedGlobal ? "ACCEPTANCE_REJECTED" : "ACCEPTANCE_APPROVED",
             recipient: request.requester,
             relatedEntityId: request.id,
@@ -368,6 +367,7 @@ export class AcceptanceService {
     async getRequest(id: string) {
         return await this.acceptanceRepo.findOne({
             where: { id },
+            order: { createdAt: "DESC" },
             relations: ["services", "services.tasks", "requester", "approver", "project"]
         });
     }
@@ -397,7 +397,7 @@ export class AcceptanceService {
 
             // Reward Helper (if internal)
             if (task.helper?.account?.id && task.performerType === PerformerType.INTERNAL) {
-                 await this.vinicoinService.rewardForTask(
+                await this.vinicoinService.rewardForTask(
                     task.helper.account.id,
                     rewardAmount,
                     task.id,
