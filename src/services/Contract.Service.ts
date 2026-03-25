@@ -197,7 +197,7 @@ export class ContractService {
 
             // Check Status: Must be QUOTE_APPROVED
             if (opportunity.status !== OpportunityStatus.QUOTE_APPROVED) {
-                throw new Error("Cơ hội chưa được duyệt báo giá (Status phải là QUOTE_APPROVED)");
+                throw new Error("Cơ hội đã được tạo hợp đồng");
             }
 
             // PROMOTION LOGIC: Lead -> Customer

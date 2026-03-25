@@ -3,6 +3,7 @@ import { Contracts, ContractStatus } from "../entity/Contract.entity";
 import { Customers } from "../entity/Customer.entity";
 import { Debts, DebtStatus } from "../entity/Debt.entity";
 import { Projects, ProjectStatus } from "../entity/Project.entity";
+import { ContractServiceStatus } from "../entity/ContractService.entity";
 import { Tasks } from "../entity/Task.entity";
 import { TaskStatus } from "../entity/Enums";
 import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
@@ -28,39 +29,93 @@ export class DashboardService {
         // 2. Team Lead Data (Projects where user is TL)
         const ledProjects = await this.projectRepo.find({
             where: { team: { teamLead: { id: userId } } },
-            relations: ["tasks"]
+            relations: ["contract", "contract.services"]
         });
 
         if (ledProjects.length > 0) {
             data.teamLead = ledProjects.map(p => {
-                const totalTasks = p.tasks.length;
-                const completedTasks = p.tasks.filter(t => t.status === TaskStatus.COMPLETED).length;
+                const services = p.contract?.services || [];
+                const totalServices = services.length;
+                const completedServices = services.filter(s => s.status === ContractServiceStatus.COMPLETED).length;
                 return {
                     id: p.id,
                     name: p.name,
                     status: p.status,
-                    taskCount: totalTasks,
-                    completedTaskCount: completedTasks,
-                    progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+                    serviceCount: totalServices,
+                    completedServiceCount: completedServices,
+                    progress: totalServices > 0 ? Math.round((completedServices / totalServices) * 100) : 0
                 };
             });
         }
 
-        // 3. Sale Data (Opportunities created by user)
-        const myOpportunities = await this.opportunityRepo.find({
-            where: { createdBy: { id: userId } }
-        });
+        // 3. Sale Data (Opportunities, Customers, Projects, Debts)
+        if (role === UserRole.BD) {
+            const [myOpportunities, myCustomers, myContracts] = await Promise.all([
+                this.opportunityRepo.find({ where: { createdBy: { id: userId } } }),
+                this.customerRepo.count({ where: { createdBy: { id: userId } } }),
+                this.contractRepo.find({
+                    where: [
+                        { customer: { createdBy: { id: userId } } },
+                        { opportunity: { createdBy: { id: userId } } }
+                    ],
+                    relations: ["debts", "debts.payments", "project", "customer"]
+                })
+            ]);
 
-        if (myOpportunities.length > 0 || role === UserRole.SALE) {
             const statusCounts = myOpportunities.reduce((acc: any, opp) => {
                 acc[opp.status] = (acc[opp.status] || 0) + 1;
                 return acc;
             }, {});
 
+            let totalDebt = 0;
+            const upcomingDebts: any[] = [];
+            const saleProjects: any[] = [];
+            const processedProjectIds = new Set();
+
+            myContracts.forEach(contract => {
+                // Calculate debt for this contract
+                contract.debts?.forEach(debt => {
+                    const paidAmount = debt.payments?.reduce((sum, p) => sum + parseFloat(p.amount as any), 0) || 0;
+                    const remaining = parseFloat(debt.amount as any) - paidAmount;
+                    if (remaining > 0 && debt.status !== DebtStatus.PAID) {
+                        totalDebt += remaining;
+                        upcomingDebts.push({
+                            id: debt.id,
+                            name: debt.name,
+                            amount: debt.amount,
+                            remaining: remaining,
+                            dueDate: debt.dueDate,
+                            customerName: contract.customer?.name,
+                            contractCode: contract.contractCode
+                        });
+                    }
+                });
+
+                // Add associated project if not already processed
+                if (contract.project && !processedProjectIds.has(contract.project.id)) {
+                    processedProjectIds.add(contract.project.id);
+                    saleProjects.push({
+                        id: contract.project.id,
+                        name: contract.project.name,
+                        status: contract.project.status,
+                        customerName: contract.customer?.name
+                    });
+                }
+            });
+
+            // Sort and take top 5
+            const sortedDebts = upcomingDebts
+                .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+                .slice(0, 5);
+
             data.sale = {
                 totalOpportunities: myOpportunities.length,
                 totalExpectedRevenue: myOpportunities.reduce((sum, opp) => sum + parseFloat(opp.expectedRevenue as any), 0),
-                statusCounts
+                statusCounts,
+                totalCustomers: myCustomers,
+                totalDebt,
+                upcomingDebts: sortedDebts,
+                projects: saleProjects
             };
         }
 
@@ -113,7 +168,7 @@ export class DashboardService {
         const currentYear = new Date().getFullYear();
         const completionStats = Array(12).fill(0);
         myTasks.forEach(t => {
-            if (t.status === TaskStatus.COMPLETED && t.actualEndDate) {
+            if (t.status === TaskStatus.ACCEPTED && t.actualEndDate) {
                 const date = new Date(t.actualEndDate);
                 if (date.getFullYear() === currentYear) {
                     completionStats[date.getMonth()]++;
