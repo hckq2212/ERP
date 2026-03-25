@@ -140,12 +140,18 @@ export class Tasks extends BaseEntity {
     @Column({ type: "varchar", length: 26, nullable: true })
     helperId: string;
 
+    @Column({ default: false })
+    isSupportReturnRequested: boolean;
+
     @ManyToOne(() => Users, { nullable: true })
     @JoinColumn({ name: "helperId" })
     helper: Users;
 
     @Column({ type: "text", nullable: true })
     supportRequestNote: string;
+
+    @Column({ type: "text", nullable: true })
+    supportReturnNote: string;
 
     @Column({ type: "varchar", length: 26, nullable: true })
     lastSubmittedById: string;

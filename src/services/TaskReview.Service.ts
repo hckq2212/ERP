@@ -152,7 +152,7 @@ export class TaskReviewService {
 
                     await this.notificationService.createNotification({
                         title: "Công việc đã được duyệt",
-                        content: `Công việc đầu ra "${task.name}" của dự án ${task.project?.name} đã được duyệt và đang chờ khách hàng duyệt.`,
+                        content: `Công việc "${task.name}" của dự án ${task.project?.name} đã được duyệt và đang chờ khách hàng duyệt.`,
                         type: "TASK_COMPLETED",
                         recipient: task.assignee,
                         relatedEntityId: task.id.toString(),

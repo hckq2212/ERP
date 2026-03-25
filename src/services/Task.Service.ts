@@ -442,42 +442,70 @@ export class TaskService {
         const oldCost = Number(task.cost || 0);
         let newCost = 0;
 
-        if (data.performerType === PerformerType.VENDOR) {
-            const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
-            if (!vendor) throw new Error("Vendor không tồn tại");
+        const isSupportAssign = task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
+            (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
 
-            // Fetch Vendor Price for this Job
-            const vendorJob = await this.vendorJobRepository.findOneBy({
-                vendor: { id: vendor.id },
-                job: { id: task.job.id }
-            });
-
-            if (!vendorJob) {
-                throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
-            }
-
-            newCost = Number(vendorJob.price);
-            task.vendor = vendor;
-            task.assignee = null as any;
-            task.performerType = PerformerType.VENDOR;
-            task.cost = newCost;
-        } else {
+        if (isSupportAssign) {
+            // If it's a support lead assigning, only update helper
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-            if (!user) throw new Error("Người thực hiện không tồn tại");
-            task.assignee = user;
-            task.vendor = null as any;
-            task.performerType = PerformerType.INTERNAL;
-            task.cost = 0; // Internal tasks have 0 cost in this context
+            if (!user) throw new Error("Người hỗ trợ không tồn tại");
+
+            task.helperId = data.assigneeId;
+            task.status = TaskStatus.DOING;
+            task.isSupportReturnRequested = false; // Reset return request if re-assigning
 
             await this.notificationService.createNotification({
-                title: "Công việc mới được giao",
-                content: `Bạn được giao công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
+                title: "Bạn được giao hỗ trợ công việc",
+                content: `Bạn được giao hỗ trợ công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
                 type: "TASK_ASSIGNED",
                 recipient: user,
                 relatedEntityId: task.id.toString(),
                 relatedEntityType: "Task",
                 link: `/tasks/${task.id}`
             });
+        } else {
+            // Original assignment logic
+            if (data.performerType === PerformerType.VENDOR) {
+                const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
+                if (!vendor) throw new Error("Vendor không tồn tại");
+
+                // Fetch Vendor Price for this Job
+                const vendorJob = await this.vendorJobRepository.findOneBy({
+                    vendor: { id: vendor.id },
+                    job: { id: task.job.id }
+                });
+
+                if (!vendorJob) {
+                    throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
+                }
+
+                newCost = Number(vendorJob.price);
+                task.vendor = vendor;
+                task.assignee = null as any;
+                task.performerType = PerformerType.VENDOR;
+                task.cost = newCost;
+            } else {
+                const user = await this.userRepository.findOneBy({ id: data.assigneeId });
+                if (!user) throw new Error("Người thực hiện không tồn tại");
+                task.assignee = user;
+                task.vendor = null as any;
+                task.performerType = PerformerType.INTERNAL;
+                task.cost = 0; // Internal tasks have 0 cost in this context
+
+                await this.notificationService.createNotification({
+                    title: "Công việc mới được giao",
+                    content: `Bạn được giao công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
+                    type: "TASK_ASSIGNED",
+                    recipient: user,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                });
+            }
+
+            if (task.status === TaskStatus.PENDING) {
+                task.status = TaskStatus.DOING;
+            }
         }
 
         task.plannedEndDate = data.plannedEndDate;
@@ -492,23 +520,8 @@ export class TaskService {
             await this.contractRepository.save(contract);
         }
 
-        if (task.status === TaskStatus.PENDING) {
-            task.status = TaskStatus.DOING;
-        }
-
         if (currentUser) {
             task.assignerId = (currentUser as any).userId || currentUser.id;
-        }
-
-        // Logic check for support mode
-        if (task.isSupportRequested && task.supportLeadId && task.isSupportAccepted) {
-            // If task is in support mode and accepted, the helperId should be assigned
-            task.helperId = data.assigneeId;
-            task.status = TaskStatus.DOING;
-            // Note: Keep isSupportRequested=true or false? 
-            // The plan-v2 says clear isSupportRequested when returning, 
-            // but for now let's keep it true to indicate it's a supported task.
-            // Or use isSupportAccepted = true as the continuous flag.
         }
 
         return await this.taskRepository.save(task);
@@ -601,35 +614,48 @@ export class TaskService {
         let newPerformerName = "";
         let newRecipient: Users | null = null;
 
-        if (data.performerType === PerformerType.VENDOR) {
-            const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
-            if (!vendor) throw new Error("Vendor không tồn tại");
+        const isSupportReassign = task.isSupportRequested && task.isSupportAccepted && currentUser &&
+            (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
 
-            const vendorJob = await this.vendorJobRepository.findOneBy({
-                vendor: { id: vendor.id },
-                job: { id: task.job.id }
-            });
-
-            if (!vendorJob) {
-                throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
-            }
-
-            newCost = Number(vendorJob.price);
-            newPerformerName = vendor.name;
-            task.vendor = vendor;
-            task.assignee = null as any;
-            task.performerType = PerformerType.VENDOR;
-            task.cost = newCost;
-        } else {
+        if (isSupportReassign) {
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-            if (!user) throw new Error("Người thực hiện không tồn tại");
+            if (!user) throw new Error("Người hỗ trợ không tồn tại");
 
+            task.helperId = data.assigneeId;
+            task.isSupportReturnRequested = false;
             newPerformerName = user.fullName;
             newRecipient = user;
-            task.assignee = user;
-            task.vendor = null as any;
-            task.performerType = PerformerType.INTERNAL;
-            task.cost = 0;
+        } else {
+            if (data.performerType === PerformerType.VENDOR) {
+                const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
+                if (!vendor) throw new Error("Vendor không tồn tại");
+
+                const vendorJob = await this.vendorJobRepository.findOneBy({
+                    vendor: { id: vendor.id },
+                    job: { id: task.job.id }
+                });
+
+                if (!vendorJob) {
+                    throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
+                }
+
+                newCost = Number(vendorJob.price);
+                newPerformerName = vendor.name;
+                task.vendor = vendor;
+                task.assignee = null as any;
+                task.performerType = PerformerType.VENDOR;
+                task.cost = newCost;
+            } else {
+                const user = await this.userRepository.findOneBy({ id: data.assigneeId });
+                if (!user) throw new Error("Người thực hiện không tồn tại");
+
+                newPerformerName = user.fullName;
+                newRecipient = user;
+                task.assignee = user;
+                task.vendor = null as any;
+                task.performerType = PerformerType.INTERNAL;
+                task.cost = 0;
+            }
         }
 
         task.reassignNote = data.reason;
@@ -791,13 +817,50 @@ export class TaskService {
     async returnSupport(id: string) {
         const task = await this.getOne(id);
 
+        if (!task.isSupportReturnRequested) {
+            throw new Error("Người hỗ trợ chưa yêu cầu hoàn thành (bấm nút Hỗ trợ). Chỉ có thể trả lại sau khi có yêu cầu.");
+        }
+
         task.supportTeamId = null as any;
         task.supportLeadId = null as any;
         task.helperId = null as any;
         task.isSupportRequested = true; // Still needs support
         task.isSupportAccepted = false;
+        task.isSupportReturnRequested = false; // Reset flag
         task.status = TaskStatus.AWAITING_SUPPORT;
 
         return await this.taskRepository.save(task);
+    }
+
+    async requestReturnSupport(id: string, note: string) {
+        const task = await this.getOne(id);
+
+        if (!task.helperId) {
+            throw new Error("Chỉ người được giao hỗ trợ mới có quyền yêu cầu hoàn thành.");
+        }
+
+        task.isSupportReturnRequested = true;
+        task.status = TaskStatus.SUPPORT_AWAITING_RETURN;
+        if (note) task.supportReturnNote = note; // I need to add this field too if it doesn't exist
+
+        const savedTask = await this.taskRepository.save(task);
+
+        // Notify Support Lead
+        if (task.supportLeadId) {
+            const supportLead = await this.userRepository.findOneBy({ id: task.supportLeadId });
+            if (supportLead) {
+                await this.notificationService.createNotification({
+                    title: "Yêu cầu hoàn thành hỗ trợ",
+                    content: `Nhân viên hỗ trợ yêu cầu hoàn thành cho công việc: ${task.name}. Vui lòng kiểm tra và xác nhận trả lại.`,
+                    type: "TASK_REVIEW",
+                    recipient: supportLead,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                });
+            }
+        }
+
+        return savedTask;
     }
 }
