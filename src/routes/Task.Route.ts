@@ -23,6 +23,7 @@ router.get("/", authMiddleware, taskController.getAll);
 router.get("/:id", authMiddleware, taskController.getOne);
 router.post("/", authMiddleware, validationMiddleware(CreateTaskDTO), taskController.create);
 router.post("/internal", authMiddleware, taskController.createInternal);
+router.put("/bulk-assign", authMiddleware, taskController.bulkAssign);
 router.put("/:id", authMiddleware, taskController.update);
 router.put("/:id/assign", authMiddleware, validationMiddleware(TaskAssignmentDTO), taskController.assign);
 router.patch("/:id/submit-result", authMiddleware, taskController.submitResult);

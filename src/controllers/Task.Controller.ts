@@ -216,4 +216,37 @@ export class TaskController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    bulkAssign = async (req: Request, res: Response) => {
+        try {
+            const { taskIds, attachments: bodyAttachments = [], links = [] } = req.body;
+            if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
+                return res.status(400).json({ message: "Vui lòng chọn ít nhất một công việc" });
+            }
+
+            const attachments: any[] = [...links];
+            bodyAttachments.forEach((item: any) => {
+                if (typeof item === 'string') {
+                    attachments.push({ type: "LINK", name: item, url: item });
+                } else if (item.url) {
+                    attachments.push({
+                        type: item.type || "FILE",
+                        name: item.name || item.url,
+                        url: item.url,
+                        size: item.size,
+                        publicId: item.publicId
+                    });
+                }
+            });
+
+            const user = (req as any).user;
+            const result = await this.taskService.bulkAssign(taskIds, {
+                ...req.body,
+                attachments
+            }, user);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 }

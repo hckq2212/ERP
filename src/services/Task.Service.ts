@@ -315,7 +315,7 @@ export class TaskService {
             // Status Guard: Only allow rework from review or completed states
             const allowedStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DONE, TaskStatus.COMPLETED];
             if (!allowedStatuses.includes(task.status)) {
-                throw new Error(`Không thể yêu cầu làm lại cho công việc đang ở trạng thái ${task.status}`);
+                throw new Error(`Không thể yêu cầu làm lại cho công việc đang ở trạng thái hiện tại`);
             }
 
             // 1. Create Iteration Record (Snapshot current state)
@@ -425,6 +425,124 @@ export class TaskService {
         return await this.taskRepository.save(task);
     }
 
+    async bulkAssign(taskIds: string[], data: {
+        assigneeId: string;
+        performerType?: PerformerType;
+        plannedEndDate: Date;
+        plannedStartDate: Date;
+        description?: string;
+        attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
+    }, currentUser?: { id: string }) {
+        return await AppDataSource.transaction(async (transactionalEntityManager) => {
+            const results = [];
+            const contractCostUpdates = new Map<string, number>();
+
+            for (const id of taskIds) {
+                const task = await transactionalEntityManager.findOne(Tasks, {
+                    where: { id },
+                    relations: ["project", "project.contract", "job"]
+                });
+                if (!task) continue;
+
+                const oldCost = Number(task.cost || 0);
+                let newCost = 0;
+
+                const isSupportAssign = task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
+                    (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
+
+                if (isSupportAssign) {
+                    const user = await transactionalEntityManager.findOneBy(Users, { id: data.assigneeId });
+                    if (!user) throw new Error("Người hỗ trợ không tồn tại");
+
+                    task.helperId = data.assigneeId;
+                    task.status = TaskStatus.DOING;
+                    task.isSupportReturnRequested = false;
+
+                    await this.notificationService.createNotification({
+                        title: "Bạn được giao hỗ trợ công việc",
+                        content: `Bạn được giao hỗ trợ công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
+                        type: "TASK_ASSIGNED",
+                        recipient: user,
+                        relatedEntityId: task.id.toString(),
+                        relatedEntityType: "Task",
+                        link: `/tasks/${task.id}`
+                    }, transactionalEntityManager);
+                } else {
+                    if (data.performerType === PerformerType.VENDOR) {
+                        const vendor = await transactionalEntityManager.findOneBy(Vendors, { id: data.assigneeId });
+                        if (!vendor) throw new Error("Vendor không tồn tại");
+
+                        const vendorJob = await transactionalEntityManager.findOneBy(VendorJobs, {
+                            vendor: { id: vendor.id },
+                            job: { id: task.job.id }
+                        });
+
+                        if (!vendorJob) {
+                            throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
+                        }
+
+                        newCost = Number(vendorJob.price);
+                        task.vendor = vendor;
+                        task.assignee = null as any;
+                        task.performerType = PerformerType.VENDOR;
+                        task.cost = newCost;
+                    } else {
+                        const user = await transactionalEntityManager.findOneBy(Users, { id: data.assigneeId });
+                        if (!user) throw new Error("Người thực hiện không tồn tại");
+                        task.assignee = user;
+                        task.vendor = null as any;
+                        task.performerType = PerformerType.INTERNAL;
+                        task.cost = 0;
+
+                        await this.notificationService.createNotification({
+                            title: "Công việc mới được giao",
+                            content: `Bạn được giao công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
+                            type: "TASK_ASSIGNED",
+                            recipient: user,
+                            relatedEntityId: task.id.toString(),
+                            relatedEntityType: "Task",
+                            link: `/tasks/${task.id}`
+                        }, transactionalEntityManager);
+                    }
+
+                    if (task.status === TaskStatus.PENDING || task.status === TaskStatus.AWAITING_SUPPORT) {
+                        task.status = TaskStatus.DOING;
+                    }
+                }
+
+                task.plannedEndDate = data.plannedEndDate;
+                task.plannedStartDate = data.plannedStartDate;
+                if (data.description) task.description = data.description;
+                if (data.attachments) task.attachments = data.attachments;
+
+                if (task.project?.contract) {
+                    const contractId = task.project.contract.id;
+                    const diff = newCost - oldCost;
+                    contractCostUpdates.set(contractId, (contractCostUpdates.get(contractId) || 0) + diff);
+                }
+
+                if (currentUser) {
+                    task.assignerId = (currentUser as any).userId || currentUser.id;
+                }
+
+                results.push(await transactionalEntityManager.save(task));
+            }
+
+            // Batch update contract costs
+            for (const [contractId, diff] of contractCostUpdates.entries()) {
+                if (diff !== 0) {
+                    const contract = await transactionalEntityManager.findOneBy(Contracts, { id: contractId });
+                    if (contract) {
+                        contract.cost = Number(contract.cost || 0) + diff;
+                        await transactionalEntityManager.save(contract);
+                    }
+                }
+            }
+
+            return results;
+        });
+    }
+
     async assign(id: string, data: {
         assigneeId: string;
         performerType?: PerformerType;
@@ -433,98 +551,8 @@ export class TaskService {
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
     }, currentUser?: { id: string }) {
-        const task = await this.taskRepository.findOne({
-            where: { id },
-            relations: ["project", "project.contract", "job"]
-        });
-        if (!task) throw new Error("Không tìm thấy công việc");
-
-        const oldCost = Number(task.cost || 0);
-        let newCost = 0;
-
-        const isSupportAssign = task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
-            (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
-
-        if (isSupportAssign) {
-            // If it's a support lead assigning, only update helper
-            const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-            if (!user) throw new Error("Người hỗ trợ không tồn tại");
-
-            task.helperId = data.assigneeId;
-            task.status = TaskStatus.DOING;
-            task.isSupportReturnRequested = false; // Reset return request if re-assigning
-
-            await this.notificationService.createNotification({
-                title: "Bạn được giao hỗ trợ công việc",
-                content: `Bạn được giao hỗ trợ công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
-                type: "TASK_ASSIGNED",
-                recipient: user,
-                relatedEntityId: task.id.toString(),
-                relatedEntityType: "Task",
-                link: `/tasks/${task.id}`
-            });
-        } else {
-            // Original assignment logic
-            if (data.performerType === PerformerType.VENDOR) {
-                const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
-                if (!vendor) throw new Error("Vendor không tồn tại");
-
-                // Fetch Vendor Price for this Job
-                const vendorJob = await this.vendorJobRepository.findOneBy({
-                    vendor: { id: vendor.id },
-                    job: { id: task.job.id }
-                });
-
-                if (!vendorJob) {
-                    throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
-                }
-
-                newCost = Number(vendorJob.price);
-                task.vendor = vendor;
-                task.assignee = null as any;
-                task.performerType = PerformerType.VENDOR;
-                task.cost = newCost;
-            } else {
-                const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-                if (!user) throw new Error("Người thực hiện không tồn tại");
-                task.assignee = user;
-                task.vendor = null as any;
-                task.performerType = PerformerType.INTERNAL;
-                task.cost = 0; // Internal tasks have 0 cost in this context
-
-                await this.notificationService.createNotification({
-                    title: "Công việc mới được giao",
-                    content: `Bạn được giao công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
-                    type: "TASK_ASSIGNED",
-                    recipient: user,
-                    relatedEntityId: task.id.toString(),
-                    relatedEntityType: "Task",
-                    link: `/tasks/${task.id}`
-                });
-            }
-
-            if (task.status === TaskStatus.PENDING) {
-                task.status = TaskStatus.DOING;
-            }
-        }
-
-        task.plannedEndDate = data.plannedEndDate;
-        task.plannedStartDate = data.plannedStartDate;
-        if (data.description) task.description = data.description;
-        if (data.attachments) task.attachments = data.attachments;
-
-        // Update Contract Cost if changed
-        if (oldCost !== newCost && task.project?.contract) {
-            const contract = task.project.contract;
-            contract.cost = Number(contract.cost || 0) - oldCost + newCost;
-            await this.contractRepository.save(contract);
-        }
-
-        if (currentUser) {
-            task.assignerId = (currentUser as any).userId || currentUser.id;
-        }
-
-        return await this.taskRepository.save(task);
+        const results = await this.bulkAssign([id], data, currentUser);
+        return results[0];
     }
 
     async requestSupport(id: string, note: string) {
@@ -579,7 +607,8 @@ export class TaskService {
             type: "TASK_ASSIGNED",
             recipient: team.teamLead,
             relatedEntityId: task.id.toString(),
-            relatedEntityType: "Task"
+            relatedEntityType: "Task",
+            link: `/projects/${task.project?.id}`
         });
 
         return savedTask;
