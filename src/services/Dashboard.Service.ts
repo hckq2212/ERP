@@ -71,6 +71,18 @@ export class DashboardService {
                 { helper: { id: userId } }
             ],
             relations: ["project", "assignee", "helper"],
+            select: {
+                id: true,
+                name: true,
+                status: true,
+                plannedStartDate: true,
+                plannedEndDate: true,
+                project: {
+                    id: true,
+                    name: true,
+                    status: true
+                }
+            },
             order: { plannedEndDate: "ASC" }
         });
 
@@ -93,7 +105,9 @@ export class DashboardService {
                 });
             }
         });
-        const participatingProjects = Array.from(projectMap.values());
+        const participatingProjects = Array.from(projectMap.values()).filter(p =>
+            [ProjectStatus.PENDING_CONFIRMATION, ProjectStatus.CONFIRMED, ProjectStatus.IN_PROGRESS].includes(p.status)
+        );
 
         // Monthly Stats (Completed tasks this year)
         const currentYear = new Date().getFullYear();
@@ -112,17 +126,18 @@ export class DashboardService {
             totalTasks: myTasks.length,
             pendingCount: myTasks.filter(t => t.status === TaskStatus.PENDING).length,
             doingCount: myTasks.filter(t => t.status === TaskStatus.DOING).length,
-            completedCount: myTasks.filter(t => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.DONE).length,
+            completedCount: myTasks.filter(t => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.DONE || t.status === TaskStatus.ACCEPTED).length,
             participatingProjects,
             upcomingDeadlines: myTasks
-                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.DONE && t.plannedEndDate)
+                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.DONE && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
                 .slice(0, 10)
                 .map(t => ({
                     id: t.id,
                     name: t.name,
                     deadline: t.plannedEndDate,
                     status: t.status,
-                    projectName: t.project?.name
+                    projectName: t.project?.name,
+                    code: t.code
                 })),
             calendarTasks: myTasks
                 .filter(t => t.plannedStartDate || t.plannedEndDate)
