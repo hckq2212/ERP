@@ -37,5 +37,6 @@ router.post('/:id/request-return-support', authMiddleware, taskController.reques
 router.post('/:id/assign-support-team', authMiddleware, taskController.assignSupportTeam);
 router.patch("/:id/rework", authMiddleware, taskController.rework);
 router.patch("/:id/customer-approve", authMiddleware, taskController.approveByCustomer);
+router.post("/:id/remind", authMiddleware, taskController.sendReminder);
 
 export default router;

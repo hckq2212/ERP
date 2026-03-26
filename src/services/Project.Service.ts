@@ -1,5 +1,5 @@
 import { AppDataSource } from "../data-source";
-import { Like } from "typeorm";
+import { Like, ILike } from "typeorm";
 import { Projects, ProjectStatus } from "../entity/Project.entity";
 import { Contracts, ContractStatus } from "../entity/Contract.entity";
 import { ProjectTeams } from "../entity/ProjectTeam.entity";
@@ -55,13 +55,21 @@ export class ProjectService {
             if (filters.search) {
                 const searchTerm = `%${filters.search}%`;
                 return [
-                    { ...baseWhere, ...rbacCond, name: Like(searchTerm) },
+                    { ...baseWhere, ...rbacCond, name: ILike(searchTerm) },
                     {
                         ...baseWhere,
                         ...rbacCond,
                         contract: {
                             ...rbacCond.contract,
-                            contractCode: Like(searchTerm)
+                            contractCode: ILike(searchTerm)
+                        }
+                    },
+                    {
+                        ...baseWhere,
+                        ...rbacCond,
+                        contract: {
+                            ...rbacCond.contract,
+                            name: ILike(searchTerm)
                         }
                     }
                 ];
@@ -309,7 +317,7 @@ export class ProjectService {
 
         if (!project) {
             project = this.projectRepository.create({
-                name: `Dự án ${contract.name}`,
+                name: `${contract.name}`,
                 contract: contract,
                 status: ProjectStatus.PENDING_CONFIRMATION,
                 createdBy: userInfo?.userId ? { id: userInfo.userId } as Users : undefined

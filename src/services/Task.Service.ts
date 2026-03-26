@@ -892,4 +892,29 @@ export class TaskService {
 
         return savedTask;
     }
+    async sendReminder(id: string) {
+        const task = await this.taskRepository.findOne({
+            where: { id },
+            relations: ["project", "assignee", "helper"]
+        });
+
+        if (!task) throw new Error("Không tìm thấy công việc");
+
+        const performer = task.helper || task.assignee;
+        if (!performer) {
+            throw new Error("Công việc chưa có người thực hiện để nhắc nhở");
+        }
+
+        await this.notificationService.createNotification({
+            title: "Nhắc nhở công việc",
+            content: `Bạn có lời nhắc cho công việc: ${task.name} (Mã: ${task.code}) ${task.project ? "thuộc dự án " + task.project.name : ""}. Vui lòng kiểm tra tiến độ.`,
+            type: "TASK_ASSIGNED",
+            recipient: performer,
+            relatedEntityId: task.id.toString(),
+            relatedEntityType: "Task",
+            link: `/tasks/${task.id}`
+        });
+
+        return { message: "Đã gửi thông báo nhắc nhở thành công" };
+    }
 }

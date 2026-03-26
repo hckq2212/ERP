@@ -209,8 +209,8 @@ export class QuotationService {
             // 2. Nếu không có, tìm Service có Job đầu ra khớp với Job của Task
             if (!service) {
                 service = await serviceRepo.findOne({
-                    where: { 
-                        serviceJobs: { 
+                    where: {
+                        serviceJobs: {
                             jobId: task.job.id,
                             isOutput: true
                         }
@@ -316,7 +316,7 @@ export class QuotationService {
         // Notify management
         await this.notifyManagement({
             title: "Báo giá được cập nhật",
-            content: `Báo giá Ver ${saved.version} cho cơ hội ${saved.opportunity?.opportunityCode}-${saved.opportunity?.name} đã được cập nhật bởi ${userInfo?.userId || 'Hệ thống'}.`,
+            content: `Báo giá lần ${saved.version} cho cơ hội ${saved.opportunity?.opportunityCode}-${saved.opportunity?.name} đã được cập nhật.`,
             quotationId: saved.id
         });
 
