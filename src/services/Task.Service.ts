@@ -313,7 +313,7 @@ export class TaskService {
             if (!task) throw new Error("Không tìm thấy công việc");
 
             // Status Guard: Only allow rework from review or completed states
-            const allowedStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DONE, TaskStatus.COMPLETED];
+            const allowedStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.COMPLETED];
             if (!allowedStatuses.includes(task.status)) {
                 throw new Error(`Không thể yêu cầu làm lại cho công việc đang ở trạng thái hiện tại`);
             }

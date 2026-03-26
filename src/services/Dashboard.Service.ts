@@ -181,10 +181,10 @@ export class DashboardService {
             totalTasks: myTasks.length,
             pendingCount: myTasks.filter(t => t.status === TaskStatus.PENDING).length,
             doingCount: myTasks.filter(t => t.status === TaskStatus.DOING).length,
-            completedCount: myTasks.filter(t => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.DONE || t.status === TaskStatus.ACCEPTED).length,
+            completedCount: myTasks.filter(t => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.ACCEPTED).length,
             participatingProjects,
             upcomingDeadlines: myTasks
-                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.DONE && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
+                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
                 .slice(0, 10)
                 .map(t => ({
                     id: t.id,
