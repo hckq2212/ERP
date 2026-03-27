@@ -18,7 +18,7 @@ export class DashboardService {
     private taskRepo = AppDataSource.getRepository(Tasks);
     private opportunityRepo = AppDataSource.getRepository(Opportunities);
 
-    async getDashboardData(userId: string, role: UserRole) {
+    async getDashboardData(userId: string, role: UserRole, month?: number, year?: number) {
         const data: any = {};
 
         // 1. BOD/ADMIN Data
@@ -141,8 +141,20 @@ export class DashboardService {
             order: { plannedEndDate: "ASC" }
         });
 
+        // Helper for monthly filtering
+        const isInSelectedMonth = (dateStr: Date | string) => {
+            if (!dateStr || !month || !year) return false;
+            const d = new Date(dateStr);
+            return d.getMonth() + 1 === Number(month) && d.getFullYear() === Number(year);
+        };
+
+        const filteredTasks = (month && year) 
+            ? myTasks.filter(t => isInSelectedMonth(t.plannedEndDate) || isInSelectedMonth(t.actualEndDate))
+            : myTasks;
+
         // Get Account for Vinicoin
-        const userWithAccount = await AppDataSource.getRepository("Users").findOne({
+        const userRepo = AppDataSource.getRepository("Users");
+        const userWithAccount = await userRepo.findOne({
             where: { id: userId },
             relations: ["account"]
         }) as any;
@@ -176,14 +188,20 @@ export class DashboardService {
             }
         });
 
+        const statusCounts = filteredTasks.reduce((acc: any, t) => {
+            acc[t.status] = (acc[t.status] || 0) + 1;
+            return acc;
+        }, {});
+        
         data.member = {
             vinicoin,
-            totalTasks: myTasks.length,
-            pendingCount: myTasks.filter(t => t.status === TaskStatus.PENDING).length,
-            doingCount: myTasks.filter(t => t.status === TaskStatus.DOING).length,
-            completedCount: myTasks.filter(t => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.ACCEPTED).length,
+            totalTasks: filteredTasks.length,
+            statusCounts,
+            pendingCount: statusCounts[TaskStatus.PENDING] || 0,
+            doingCount: statusCounts[TaskStatus.DOING] || 0,
+            completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0),
             participatingProjects,
-            upcomingDeadlines: myTasks
+            upcomingDeadlines: filteredTasks
                 .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
                 .slice(0, 10)
                 .map(t => ({
@@ -194,7 +212,7 @@ export class DashboardService {
                     projectName: t.project?.name,
                     code: t.code
                 })),
-            calendarTasks: myTasks
+            calendarTasks: filteredTasks
                 .filter(t => t.plannedStartDate || t.plannedEndDate)
                 .map(t => ({
                     id: t.id,
