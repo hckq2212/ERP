@@ -138,23 +138,11 @@ export class DashboardService {
                     status: true
                 }
             },
-            order: { plannedEndDate: "ASC" }
+            order: { plannedEndDate: "DESC" }
         });
 
-        // Helper for monthly filtering
-        const isInSelectedMonth = (dateStr: Date | string) => {
-            if (!dateStr || !month || !year) return false;
-            const d = new Date(dateStr);
-            return d.getMonth() + 1 === Number(month) && d.getFullYear() === Number(year);
-        };
-
-        const filteredTasks = (month && year) 
-            ? myTasks.filter(t => isInSelectedMonth(t.plannedEndDate) || isInSelectedMonth(t.actualEndDate))
-            : myTasks;
-
         // Get Account for Vinicoin
-        const userRepo = AppDataSource.getRepository("Users");
-        const userWithAccount = await userRepo.findOne({
+        const userWithAccount = await AppDataSource.getRepository("Users").findOne({
             where: { id: userId },
             relations: ["account"]
         }) as any;
@@ -188,20 +176,19 @@ export class DashboardService {
             }
         });
 
-        const statusCounts = filteredTasks.reduce((acc: any, t) => {
+        const statusCounts = myTasks.reduce((acc: any, t) => {
             acc[t.status] = (acc[t.status] || 0) + 1;
             return acc;
         }, {});
-        
+
         data.member = {
             vinicoin,
-            totalTasks: filteredTasks.length,
+            totalTasks: myTasks.length,
             statusCounts,
-            pendingCount: statusCounts[TaskStatus.PENDING] || 0,
             doingCount: statusCounts[TaskStatus.DOING] || 0,
             completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0),
             participatingProjects,
-            upcomingDeadlines: filteredTasks
+            upcomingDeadlines: myTasks
                 .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
                 .slice(0, 10)
                 .map(t => ({
@@ -212,7 +199,7 @@ export class DashboardService {
                     projectName: t.project?.name,
                     code: t.code
                 })),
-            calendarTasks: filteredTasks
+            calendarTasks: myTasks
                 .filter(t => t.plannedStartDate || t.plannedEndDate)
                 .map(t => ({
                     id: t.id,

@@ -258,41 +258,50 @@ export class TaskService {
         return await this.taskRepository.save(task);
     }
 
-    async submitResult(id: string, data: { result: any }, currentUser: { id: string, userId?: string }) {
+    async submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string }) {
         const task = await this.getOne(id);
+        const currentId = (currentUser as any)?.userId || currentUser?.id;
+        const isTeamLead = task.project?.team?.teamLead?.id === currentId;
 
         task.result = data.result;
-        task.status = TaskStatus.AWAITING_REVIEW;
         task.actualEndDate = new Date();
-        task.lastSubmittedById = (currentUser as any).userId || currentUser.id;
+        task.lastSubmittedById = currentId;
+
+        if (isTeamLead) {
+            task.status = TaskStatus.INTERNAL_COMPLETED;
+        } else {
+            task.status = TaskStatus.AWAITING_REVIEW;
+        }
 
         const savedTask = await this.taskRepository.save(task);
 
-        const taskWithInfo = await this.taskRepository.findOne({
-            where: { id: task.id },
-            relations: ["project", "project.team", "project.team.teamLead", "supervisor", "assigner"]
-        });
+        if (isTeamLead) {
+            // Auto-pass reviews and finalize (syncs to contract service, etc.)
+            await this.reviewService.initializeReviews(task.id, true);
+            await this.reviewService.checkAndFinalize(task.id);
+        } else {
+            // Standard review flow
+            await this.reviewService.initializeReviews(task.id);
 
-        // Notify Lead/Supervisor/Assigner
-        const recipients = new Set<string>();
-        if (taskWithInfo.project?.team?.teamLead?.id) recipients.add(taskWithInfo.project.team.teamLead.id);
-        if (taskWithInfo.supervisor?.id) recipients.add(taskWithInfo.supervisor.id);
-        if (taskWithInfo.assigner?.id) recipients.add(taskWithInfo.assigner.id);
+            // Notify Lead/Supervisor/Assigner
+            const recipients = new Set<string>();
+            if (task.project?.team?.teamLead?.id) recipients.add(task.project.team.teamLead.id);
+            if (task.supervisor?.id) recipients.add(task.supervisor.id);
+            if (task.assigner?.id) recipients.add(task.assigner.id);
 
-        await this.reviewService.initializeReviews(task.id);
-
-        for (const recipientId of recipients) {
-            const recipient = await this.userRepository.findOneBy({ id: recipientId });
-            if (recipient) {
-                await this.notificationService.createNotification({
-                    title: "Kết quả công việc đã nộp",
-                    content: `Nhân viên đã nộp kết quả cho: ${task.code} của dự án ${task.project?.name}. Vui lòng đánh giá.`,
-                    type: "TASK_REVIEW",
-                    recipient: recipient,
-                    relatedEntityId: task.id.toString(),
-                    relatedEntityType: "Task",
-                    link: `/tasks/${task.id}`
-                });
+            for (const recipientId of recipients) {
+                const recipient = await this.userRepository.findOneBy({ id: recipientId });
+                if (recipient) {
+                    await this.notificationService.createNotification({
+                        title: "Kết quả công việc đã nộp",
+                        content: `Nhân viên đã nộp kết quả cho: ${task.code} của dự án ${task.project?.name}. Vui lòng đánh giá.`,
+                        type: "TASK_REVIEW",
+                        recipient: recipient,
+                        relatedEntityId: task.id.toString(),
+                        relatedEntityType: "Task",
+                        link: `/tasks/${task.id}`
+                    });
+                }
             }
         }
 
@@ -374,7 +383,7 @@ export class TaskService {
         });
     }
 
-    async update(id: string, data: Partial<Tasks> & { assigneeId?: string }) {
+    async update(id: string, data: Partial<Tasks> & { assigneeId?: string }, currentUser?: { id: string, userId?: string }) {
         const task = await this.getOne(id);
 
         if (data.assigneeId && (!task.assignee || task.assignee.id !== data.assigneeId)) {
@@ -400,25 +409,40 @@ export class TaskService {
         if (data.actualEndDate) task.actualEndDate = data.actualEndDate;
         if (data.result) {
             task.result = data.result;
-            task.status = TaskStatus.AWAITING_REVIEW;
-
+            
+            // Re-fetch to ensure we have lead info
             const taskWithInfo = await this.taskRepository.findOne({
                 where: { id: task.id },
                 relations: ["project", "project.team", "project.team.teamLead"]
             });
 
-            if (taskWithInfo && taskWithInfo.project?.team?.teamLead) {
-                await this.reviewService.initializeReviews(task.id);
+            const currentId = (currentUser as any)?.userId || currentUser?.id;
+            const isTeamLead = taskWithInfo?.project?.team?.teamLead?.id === currentId;
 
-                await this.notificationService.createNotification({
-                    title: "Công việc chờ duyệt",
-                    content: `Nhân viên đã upload kết quả cho công việc: ${task.name} của dự án ${task.project?.name}. Vui lòng đánh giá.`,
-                    type: "TASK_REVIEW",
-                    recipient: taskWithInfo.project.team.teamLead,
-                    relatedEntityId: task.id.toString(),
-                    relatedEntityType: "Task",
-                    link: `/tasks/${task.id}`
-                });
+            if (isTeamLead) {
+                task.status = TaskStatus.INTERNAL_COMPLETED;
+                task.actualEndDate = new Date();
+                await this.taskRepository.save(task);
+                
+                await this.reviewService.initializeReviews(task.id, true);
+                await this.reviewService.checkAndFinalize(task.id);
+            } else {
+                task.status = TaskStatus.AWAITING_REVIEW;
+                await this.taskRepository.save(task);
+
+                if (taskWithInfo && taskWithInfo.project?.team?.teamLead) {
+                    await this.reviewService.initializeReviews(task.id);
+
+                    await this.notificationService.createNotification({
+                        title: "Công việc chờ duyệt",
+                        content: `Nhân viên đã upload kết quả cho công việc: ${task.name} của dự án ${task.project?.name}. Vui lòng đánh giá.`,
+                        type: "TASK_REVIEW",
+                        recipient: taskWithInfo.project.team.teamLead,
+                        relatedEntityId: task.id.toString(),
+                        relatedEntityType: "Task",
+                        link: `/tasks/${task.id}`
+                    });
+                }
             }
         }
 

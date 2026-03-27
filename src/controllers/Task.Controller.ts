@@ -48,7 +48,8 @@ export class TaskController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const task = await this.taskService.update(req.params.id as string, req.body);
+            const user = (req as any).user;
+            const task = await this.taskService.update(req.params.id as string, req.body, user);
             res.status(200).json(task);
         } catch (error) {
             res.status(500).json({ message: error.message });

@@ -12,7 +12,7 @@ export class DashboardController {
             }
 
             const { userId, month, year } = req.query;
-            
+
             const data = await this.dashboardService.getDashboardData(
                 (userId as string) || (userInfo.userId as string),
                 userInfo.role,

@@ -20,7 +20,7 @@ export class TaskReviewService {
         });
     }
 
-    async initializeReviews(taskId: string) {
+    async initializeReviews(taskId: string, forcePass: boolean = false) {
         const task = await this.taskRepository.findOne({
             where: { id: taskId },
             relations: ["job", "job.criteria", "project", "project.team", "project.team.teamLead", "assigner"]
@@ -55,7 +55,7 @@ export class TaskReviewService {
                 reviews.push(this.reviewRepository.create({
                     task,
                     criteria: c,
-                    isPassed: false,
+                    isPassed: forcePass, // Set isPassed based on forcePass parameter
                     reviewer: def.user,
                     reviewerType: def.type
                 }));
