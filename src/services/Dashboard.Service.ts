@@ -21,15 +21,19 @@ export class DashboardService {
 
     async getDashboardData(userId: string, role: UserRole, month?: number, year?: number) {
         const data: any = {};
+        const dateFilter = this.getDateFilter(month, year);
 
         // 1. BOD/ADMIN Data
         if (role === UserRole.BOD || role === UserRole.ADMIN) {
-            data.admin = await this.getAdminMetrics();
+            data.admin = await this.getAdminMetrics(dateFilter);
         }
 
-        // 2. Team Lead Data (Projects where user is TL)
+        // 2. Team Lead Data
         const ledProjects = await this.projectRepo.find({
-            where: { team: { teamLead: { id: userId } } },
+            where: { 
+                team: { teamLead: { id: userId } },
+                ...(dateFilter && { createdAt: dateFilter })
+            },
             relations: ["contract", "contract.services"]
         });
 
@@ -49,15 +53,25 @@ export class DashboardService {
             });
         }
 
-        // 3. Sale Data (Opportunities, Customers, Projects, Debts)
-        if (role === UserRole.BD) {
+        // 3. Sale Data
+        if (role === UserRole.BD || role === UserRole.SALE) {
             const [myOpportunities, myCustomers, myContracts] = await Promise.all([
-                this.opportunityRepo.find({ where: { createdBy: { id: userId } } }),
-                this.customerRepo.count({ where: { createdBy: { id: userId } } }),
+                this.opportunityRepo.find({ 
+                    where: { 
+                        createdBy: { id: userId },
+                        ...(dateFilter && { createdAt: dateFilter })
+                    } 
+                }),
+                this.customerRepo.count({ 
+                    where: { 
+                        createdBy: { id: userId },
+                        ...(dateFilter && { createdAt: dateFilter })
+                    } 
+                }),
                 this.contractRepo.find({
                     where: [
-                        { customer: { createdBy: { id: userId } } },
-                        { opportunity: { createdBy: { id: userId } } }
+                        { customer: { createdBy: { id: userId } }, ...(dateFilter && { createdAt: dateFilter }) },
+                        { opportunity: { createdBy: { id: userId } }, ...(dateFilter && { createdAt: dateFilter }) }
                     ],
                     relations: ["debts", "debts.payments", "project", "customer"]
                 })
@@ -74,7 +88,6 @@ export class DashboardService {
             const processedProjectIds = new Set();
 
             myContracts.forEach(contract => {
-                // Calculate debt for this contract
                 contract.debts?.forEach(debt => {
                     const paidAmount = debt.payments?.reduce((sum, p) => sum + parseFloat(p.amount as any), 0) || 0;
                     const remaining = parseFloat(debt.amount as any) - paidAmount;
@@ -92,7 +105,6 @@ export class DashboardService {
                     }
                 });
 
-                // Add associated project if not already processed
                 if (contract.project && !processedProjectIds.has(contract.project.id)) {
                     processedProjectIds.add(contract.project.id);
                     saleProjects.push({
@@ -104,7 +116,6 @@ export class DashboardService {
                 }
             });
 
-            // Sort and take top 5
             const sortedDebts = upcomingDebts
                 .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
                 .slice(0, 5);
@@ -120,11 +131,11 @@ export class DashboardService {
             };
         }
 
-        // 4. Member Data (Tasks assigned to user or where user is a helper)
+        // 4. Member Data
         const myTasks = await this.taskRepo.find({
             where: [
-                { assignee: { id: userId } },
-                { helper: { id: userId } }
+                { assignee: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }) },
+                { helper: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }) }
             ],
             relations: ["project", "assignee", "helper"],
             select: {
@@ -142,7 +153,6 @@ export class DashboardService {
             order: { plannedEndDate: "DESC" }
         });
 
-        // Get Account for Vinicoin
         const userWithAccount = await AppDataSource.getRepository("Users").findOne({
             where: { id: userId },
             relations: ["account"]
@@ -152,9 +162,11 @@ export class DashboardService {
         const vinicoinTotal = userWithAccount?.account?.vinicoinTotal || 0;
         const vinicoinWithdrawn = userWithAccount?.account?.vinicoinWithdrawn || 0;
 
-        // Get Violations
         const violations = await AppDataSource.getRepository(Violations).find({
-            where: { userId },
+            where: { 
+                userId,
+                ...(dateFilter && { createdAt: dateFilter })
+            },
             select: { id: true, type: true, createdAt: true }
         });
 
@@ -178,13 +190,23 @@ export class DashboardService {
             [ProjectStatus.PENDING_CONFIRMATION, ProjectStatus.CONFIRMED, ProjectStatus.IN_PROGRESS].includes(p.status)
         );
 
-        // Monthly Stats (Completed tasks this year)
-        const currentYear = new Date().getFullYear();
+        // Chart Stats (Still using yearly context if year provided, otherwise current year)
+        const chartYear = year || new Date().getFullYear();
         const completionStats = Array(12).fill(0);
-        myTasks.forEach(t => {
+        
+        // We query all tasks for the chart year to show the trend
+        const allTasksForChart = await this.taskRepo.find({
+            where: [
+                { assignee: { id: userId }, plannedEndDate: Between(new Date(`${chartYear}-01-01`), new Date(`${chartYear}-12-31`)) },
+                { helper: { id: userId }, plannedEndDate: Between(new Date(`${chartYear}-01-01`), new Date(`${chartYear}-12-31`)) }
+            ],
+            select: { status: true, actualEndDate: true }
+        });
+
+        allTasksForChart.forEach(t => {
             if (t.status === TaskStatus.ACCEPTED && t.actualEndDate) {
                 const date = new Date(t.actualEndDate);
-                if (date.getFullYear() === currentYear) {
+                if (date.getFullYear() === chartYear) {
                     completionStats[date.getMonth()]++;
                 }
             }
@@ -235,23 +257,51 @@ export class DashboardService {
         return data;
     }
 
-    private async getAdminMetrics() {
+    private getDateFilter(month?: number, year?: number) {
+        if (!year && !month) return null;
+
+        let start: Date;
+        let end: Date;
+
+        if (year && month) {
+            start = new Date(year, month - 1, 1);
+            end = new Date(year, month, 0, 23, 59, 59, 999);
+        } else if (year) {
+            start = new Date(year, 0, 1);
+            end = new Date(year, 11, 31, 23, 59, 59, 999);
+        } else {
+            // Only month provided (unlikely from UI but for safety)
+            const currentYear = new Date().getFullYear();
+            start = new Date(currentYear, month! - 1, 1);
+            end = new Date(currentYear, month!, 0, 23, 59, 59, 999);
+        }
+
+        return Between(start, end);
+    }
+
+    private async getAdminMetrics(dateFilter: any | null) {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
         const [totalCustomers, newCustomers] = await Promise.all([
-            this.customerRepo.count(),
+            this.customerRepo.count(dateFilter ? { where: { createdAt: dateFilter } as any } : {}),
             this.customerRepo.count({ where: { createdAt: Between(thirtyDaysAgo, new Date()) } as any })
         ]);
 
         const signedContracts = await this.contractRepo.find({
-            where: { status: In([ContractStatus.SIGNED, ContractStatus.COMPLETED]) }
+            where: { 
+                status: In([ContractStatus.SIGNED, ContractStatus.COMPLETED]),
+                ...(dateFilter && { createdAt: dateFilter })
+            }
         });
 
         const totalRevenue = signedContracts.reduce((sum, c) => sum + parseFloat(c.sellingPrice as any), 0);
 
         const unpaidDebts = await this.debtRepo.find({
-            where: { status: In([DebtStatus.UNPAID, DebtStatus.PARTIAL]) }
+            where: { 
+                status: In([DebtStatus.UNPAID, DebtStatus.PARTIAL]),
+                ...(dateFilter && { createdAt: dateFilter })
+            }
         });
 
         const totalDebt = unpaidDebts.reduce((sum, d) => sum + parseFloat(d.amount as any), 0);

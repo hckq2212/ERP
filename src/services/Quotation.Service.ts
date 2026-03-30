@@ -11,6 +11,8 @@ import { ContractAddendums, AddendumStatus } from "../entity/ContractAddendum.en
 import { Users } from "../entity/User.entity";
 import { UserRole } from "../entity/Account.entity";
 import { NotificationService } from "./Notification.Service";
+import { quotationEmitter, QUOTATION_EVENTS } from "../events/QuotationEmitter";
+import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
 
 export class QuotationService {
     private quotationRepository = AppDataSource.getRepository(Quotations);
@@ -148,6 +150,7 @@ export class QuotationService {
         if (opportunity.status === OpportunityStatus.PENDING_OPP_APPROVAL) {
             opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
             await this.opportunityRepository.save(opportunity);
+            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, opportunity);
         }
 
         const saved = await this.quotationRepository.save(savedQuotation);
@@ -158,6 +161,8 @@ export class QuotationService {
             content: `Báo giá Ver ${saved.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được tạo bởi ${userInfo?.userId || 'Hệ thống'}`,
             quotationId: saved.id
         });
+
+        quotationEmitter.emit(QUOTATION_EVENTS.CREATED, saved);
 
         return saved;
     }
@@ -256,6 +261,8 @@ export class QuotationService {
             quotationId: saved.id
         });
 
+        quotationEmitter.emit(QUOTATION_EVENTS.CREATED, saved);
+
         return saved;
     }
 
@@ -319,6 +326,8 @@ export class QuotationService {
             content: `Báo giá lần ${saved.version} cho cơ hội ${saved.opportunity?.opportunityCode}-${saved.opportunity?.name} đã được cập nhật.`,
             quotationId: saved.id
         });
+
+        quotationEmitter.emit(QUOTATION_EVENTS.UPDATED, saved);
 
         return saved;
     }
@@ -417,6 +426,7 @@ export class QuotationService {
         opportunity.status = OpportunityStatus.QUOTE_APPROVED;
 
         await this.opportunityRepository.save(opportunity);
+        opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, opportunity);
 
         // Notify management
         await this.notifyManagement({
@@ -424,6 +434,8 @@ export class QuotationService {
             content: `Báo giá Ver ${quotation.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được duyệt.`,
             quotationId: quotation.id
         });
+
+        quotationEmitter.emit(QUOTATION_EVENTS.APPROVED, quotation);
 
         return { message: "Đã duyệt báo giá và cập nhật cơ hội kinh doanh", quotation };
     }
@@ -447,6 +459,8 @@ export class QuotationService {
             quotationId: saved.id
         });
 
+        quotationEmitter.emit(QUOTATION_EVENTS.REJECTED, saved);
+
         return { message: "Đã từ chối báo giá", quotation: saved };
     }
 
@@ -456,6 +470,7 @@ export class QuotationService {
             throw new Error("Không thể xóa báo giá đã duyệt");
         }
         await this.quotationRepository.remove(quotation);
+        quotationEmitter.emit(QUOTATION_EVENTS.DELETED, { id });
         return { message: "Xóa báo giá thành công" };
     }
 }

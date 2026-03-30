@@ -14,6 +14,8 @@ import { NotificationService } from "./Notification.Service";
 
 import { SecurityService } from "./Security.Service";
 import { UserRole } from "../entity/Account.entity";
+import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
+import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
 
 export class ProjectService {
     private projectRepository = AppDataSource.getRepository(Projects);
@@ -303,7 +305,10 @@ export class ProjectService {
             const oppRepo = AppDataSource.getRepository(contract.opportunity.constructor);
             contract.opportunity.status = OpportunityStatus.PROJECT_ASSIGNED;
             await oppRepo.save(contract.opportunity);
+            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, contract.opportunity);
         }
+
+        projectEmitter.emit(PROJECT_EVENTS.CREATED, savedProject);
 
         return savedProject;
     }
@@ -383,7 +388,7 @@ export class ProjectService {
             }
         }
 
-
+        projectEmitter.emit(PROJECT_EVENTS.CREATED, project);
         return project;
     }
 
@@ -412,6 +417,7 @@ export class ProjectService {
                     const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
                     fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
                     await oppRepo.save(fullContract.opportunity);
+                    opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, fullContract.opportunity);
                 }
             }
         } else {
@@ -419,8 +425,10 @@ export class ProjectService {
         }
 
         const savedProject = await this.projectRepository.save(project);
+        projectEmitter.emit(PROJECT_EVENTS.UPDATED, savedProject);
 
         // Notify BOD members
+        // ... (rest of notification logic)
         const bodUsers = await this.userRepository.find({
             relations: ["account"],
             where: { account: { role: "BOD" as any } }

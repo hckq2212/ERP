@@ -100,9 +100,12 @@ app.use("/api/accounts", accountRoute)
 app.use("/api/me", profileRoute)
 
 import { CronHelper } from "./helpers/Cron.Helper";
+import { initSubscribers } from "./subscribers";
 
 
 AppDataSource.initialize().then(async () => {
+    // Initialize Event Subscribers
+    initSubscribers();
 
     app.listen(port, () => {
         console.log(`Server is running on ${port}`)

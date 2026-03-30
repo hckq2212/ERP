@@ -14,6 +14,7 @@ import { UserRole } from "../entity/Account.entity";
 import { Not } from "typeorm";
 import { validateLeadData } from "../validations/Customer.Validation";
 import { RedisService } from "./Redis.Service";
+import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
 
 export class OpportunityService {
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
@@ -342,7 +343,10 @@ export class OpportunityService {
         // Invalidate list caches
         await RedisService.deleteCache('opportunities:all*');
 
-        return await this.getOne(savedOpportunity.id);
+        const freshData = await this.getOne(savedOpportunity.id);
+        opportunityEmitter.emit(OPPORTUNITY_EVENTS.CREATED, freshData);
+
+        return freshData;
     }
 
     async update(id: string, data: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
@@ -433,7 +437,7 @@ export class OpportunityService {
         await RedisService.deleteCache(`opportunities:detail:${id}*`);
 
         // 7. Return FRESH data from DB (bypassing the getOne cache)
-        return await this.opportunityRepository.findOne({
+        const freshData = await this.opportunityRepository.findOne({
             where: { id },
             relations: [
                 "customer",
@@ -448,6 +452,12 @@ export class OpportunityService {
                 "createdBy"
             ]
         });
+
+        if (freshData) {
+            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, freshData);
+        }
+
+        return freshData;
     }
 
     async delete(id: string) {
@@ -457,6 +467,8 @@ export class OpportunityService {
         // Invalidate list and detail caches
         await RedisService.deleteCache('opportunities:all*');
         await RedisService.deleteCache(`opportunities:detail:${id}*`);
+
+        opportunityEmitter.emit(OPPORTUNITY_EVENTS.DELETED, { id });
 
         return { message: "Xóa cơ hội kinh doanh thành công" };
     }
@@ -492,6 +504,8 @@ export class OpportunityService {
         // Invalidate list and detail caches
         await RedisService.deleteCache('opportunities:all*');
         await RedisService.deleteCache(`opportunities:detail:${id}*`);
+
+        opportunityEmitter.emit(OPPORTUNITY_EVENTS.APPROVED, doc);
 
         return { message: "Duyệt cơ hội thành công", opportunity: result };
     }

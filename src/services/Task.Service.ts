@@ -15,6 +15,7 @@ import { TaskReviews } from "../entity/TaskReview.entity";
 import { SecurityService } from "./Security.Service";
 import { ContractServices, ContractServiceStatus } from "../entity/ContractService.entity";
 import { Violations } from "../entity/Violation.entity";
+import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -122,6 +123,8 @@ export class TaskService {
             relatedEntityType: "Task",
             link: `/tasks/${savedTask.id}`
         });
+
+        taskEmitter.emit(TASK_EVENTS.CREATED, savedTask);
 
         return savedTask;
     }
@@ -276,7 +279,9 @@ export class TaskService {
             }
         }
 
-        return await this.taskRepository.save(task);
+        const saved = await this.taskRepository.save(task);
+        taskEmitter.emit(TASK_EVENTS.CREATED, saved);
+        return saved;
     }
 
     async submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string }) {
@@ -336,6 +341,7 @@ export class TaskService {
             }
         }
 
+        taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, savedTask);
         return savedTask;
     }
 
@@ -380,18 +386,6 @@ export class TaskService {
             
             // Case 2: Excessive Rework (3rd submission onwards by same person)
             if (currentIterationVersion >= 2) { // currentIterationVersion is count of PREVIOUS iterative submissions
-                // Wait, if currentIterationVersion is 2, it means there are already 2 versions.
-                // The iteration we just created is the 2nd history version.
-                // Submission 1 -> Iteration 1 (snapshot of sub 1)
-                // Submission 2 -> Iteration 2 (snapshot of sub 2)
-                // Submission 3 -> ...
-                // User said: "submitted by 1 người tới ít nhất 3 lần trở lên, từng 1 lần nữa sẽ tính 1 lần vi phạm"
-                // If we have 2 iterations, the user has submitted twice. 
-                // The "rework" request happens AFTER a submission.
-                // So if iterationCount is 0, this is the 1st rework request (after 1st submission).
-                // If iterationCount is 1, this is the 2nd rework request (after 2nd submission).
-                // If iterationCount is 2, this is the 3rd rework request (after 3rd submission).
-                
                 if (iterationCount >= 2 && task.lastSubmittedById) {
                    await this.recordViolation({
                         taskId: task.id,
@@ -449,6 +443,8 @@ export class TaskService {
                     link: `/tasks/${task.id}`
                 }, transactionalEntityManager);
             }
+
+            taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, savedTask);
 
             return savedTask;
         });
@@ -517,7 +513,9 @@ export class TaskService {
             }
         }
 
-        return await this.taskRepository.save(task);
+        const saved = await this.taskRepository.save(task);
+        taskEmitter.emit(TASK_EVENTS.UPDATED, saved);
+        return saved;
     }
 
     async bulkAssign(taskIds: string[], data: {
@@ -729,8 +727,6 @@ export class TaskService {
             oldRecipient = task.assignee;
         } else if (task.performerType === PerformerType.VENDOR && task.vendor) {
             oldPerformerName = task.vendor.name;
-            // For vendors, we might not have a direct User recipient object unless they have accounts.
-            // Based on existing logic, notifications go to Users.
         }
 
         const oldCost = Number(task.cost || 0);
@@ -792,16 +788,6 @@ export class TaskService {
             });
         }
 
-        // Check for late reassignment (Violation for OLD assignee)
-        if (task.plannedEndDate && new Date() > task.plannedEndDate && task.assigneeId) {
-            await this.recordViolation({
-                taskId: task.id,
-                userId: task.assigneeId,
-                type: ViolationType.LATE_UNFINISHED,
-                description: `Task quá hạn được chuyển giao cho người khác.`
-            });
-        }
-
         task.reassignNote = data.reason;
         task.assignerId = (currentUser as any).userId || currentUser.id;
 
@@ -845,6 +831,7 @@ export class TaskService {
     async delete(id: string) {
         const task = await this.getOne(id);
         await this.taskRepository.remove(task);
+        taskEmitter.emit(TASK_EVENTS.DELETED, { id });
         return { message: "Xóa công việc thành công" };
     }
 
@@ -985,7 +972,7 @@ export class TaskService {
 
         task.isSupportReturnRequested = true;
         task.status = TaskStatus.SUPPORT_AWAITING_RETURN;
-        if (note) task.supportReturnNote = note; // I need to add this field too if it doesn't exist
+        if (note) task.supportReturnNote = note; 
 
         const savedTask = await this.taskRepository.save(task);
 

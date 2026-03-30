@@ -15,9 +15,8 @@ import { NotificationService } from "./Notification.Service";
 import { Users } from "../entity/User.entity";
 import { UserRole } from "../entity/Account.entity";
 import { RedisService } from "./Redis.Service";
-
-
-
+import { contractEmitter, CONTRACT_EVENTS } from "../events/ContractEmitter";
+import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
 import { SecurityService } from "./Security.Service";
 
 export class ContractService {
@@ -354,6 +353,7 @@ export class ContractService {
         if (opportunity) {
             opportunity.status = OpportunityStatus.CONTRACT_CREATED;
             await this.opportunityRepository.save(opportunity);
+            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, opportunity);
         }
 
         // Create default milestone (100%)
@@ -377,6 +377,8 @@ export class ContractService {
             contractId: savedContract.id
         });
 
+        contractEmitter.emit(CONTRACT_EVENTS.CREATED, savedContract);
+
         return savedContract;
     }
 
@@ -385,7 +387,6 @@ export class ContractService {
         contract.proposal_contract = fileData.url;
         contract.status = ContractStatus.PROPOSAL_UPLOADED;
         contract.rejectionReason = null; // Clear rejection reason on re-upload
-
 
         const savedResult = await this.contractRepository.save(contract);
 
@@ -397,8 +398,9 @@ export class ContractService {
         });
 
         // Invalidate caches
-        await RedisService.deleteCache('contracts:all*');
         await RedisService.deleteCache(`contracts:detail:${id}*`);
+
+        contractEmitter.emit(CONTRACT_EVENTS.UPDATED, savedResult);
 
         return savedResult;
     }
@@ -424,8 +426,9 @@ export class ContractService {
         });
 
         // Invalidate caches
-        await RedisService.deleteCache('contracts:all*');
         await RedisService.deleteCache(`contracts:detail:${id}*`);
+
+        contractEmitter.emit(CONTRACT_EVENTS.UPDATED, savedContract);
 
         return savedContract;
     }
@@ -455,26 +458,10 @@ export class ContractService {
             contractId: savedContract.id
         });
 
-        // Auto activate all milestones as debts
-        // if (contract.milestones && contract.milestones.length > 0) {
-        //     for (const milestone of contract.milestones) {
-        //         try {
-        //             await this.debtService.createFromMilestone(milestone.id);
-        //         } catch (error) {
-        //             console.error(`Lỗi kích hoạt nợ cho milestone ${milestone.id}:`, error.message);
-        //             // Continue to others if one fails (e.g. already activated)
-        //         }
-        //     }
-        // }
-
-        // Auto start project if it exists
-        // if (contract.project) {
-        //     await this.projectService.start(contract.project.id);
-        // }
-
         // Invalidate caches
-        await RedisService.deleteCache('contracts:all*');
         await RedisService.deleteCache(`contracts:detail:${id}*`);
+
+        contractEmitter.emit(CONTRACT_EVENTS.SIGNED, savedContract);
 
         return savedContract;
     }
@@ -555,8 +542,9 @@ export class ContractService {
         await this.contractRepository.remove(contract);
 
         // Invalidate caches
-        await RedisService.deleteCache('contracts:all*');
         await RedisService.deleteCache(`contracts:detail:${id}*`);
+
+        contractEmitter.emit(CONTRACT_EVENTS.DELETED, { id });
 
         return { message: "Xóa hợp đồng thành công" };
     }
