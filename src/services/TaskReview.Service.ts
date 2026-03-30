@@ -112,7 +112,7 @@ export class TaskReviewService {
         if (allPassed) {
             const task = await this.taskRepository.findOne({
                 where: { id: taskId },
-                relations: ["assignee", "contractService", "job"]
+                relations: ["assignee", "contractService", "job", "project"]
             });
             if (task) {
                 const isOutputJob = task.isOutput;
