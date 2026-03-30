@@ -149,6 +149,8 @@ export class DashboardService {
         }) as any;
 
         const vinicoin = userWithAccount?.account?.vinicoin || 0;
+        const vinicoinTotal = userWithAccount?.account?.vinicoinTotal || 0;
+        const vinicoinWithdrawn = userWithAccount?.account?.vinicoinWithdrawn || 0;
 
         // Get Violations
         const violations = await AppDataSource.getRepository(Violations).find({
@@ -195,6 +197,8 @@ export class DashboardService {
 
         data.member = {
             vinicoin,
+            vinicoinTotal,
+            vinicoinWithdrawn,
             totalTasks: myTasks.length,
             statusCounts,
             doingCount: statusCounts[TaskStatus.DOING] || 0,

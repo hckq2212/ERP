@@ -27,8 +27,11 @@ export class VinicoinService {
         if (!account) return;
 
         // 1. Update account balance
-        account.vinicoin = (account.vinicoin || 0) + Number(amount);
-        await repo.save(account);
+        const rewardAmount = Number(amount);
+        account.vinicoin = (account.vinicoin || 0) + rewardAmount;
+        account.vinicoinTotal = (account.vinicoinTotal || 0) + rewardAmount;
+        
+        await (manager ? manager.save(account) : this.accountRepository.save(account));
 
         // 2. Create transaction record
         const transaction = txRepo.create({

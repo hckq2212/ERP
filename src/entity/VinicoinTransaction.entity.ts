@@ -5,7 +5,8 @@ import { Accounts } from "./Account.entity";
 export enum VinicoinTransactionType {
     REWARD = "REWARD",
     SPEND = "SPEND",
-    ADJUSTMENT = "ADJUSTMENT"
+    ADJUSTMENT = "ADJUSTMENT",
+    MONTHLY_WITHDRAWAL = "MONTHLY_WITHDRAWAL"
 }
 
 @Entity()

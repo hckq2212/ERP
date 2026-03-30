@@ -23,7 +23,9 @@ export class ProfileService {
             username: account.username,
             email: account.email,
             role: account.role,
-            vinicoin: (account as any).vinicoin // Using any because of potential TypeORM mapping timing
+            vinicoin: account.vinicoin,
+            vinicoinTotal: account.vinicoinTotal,
+            vinicoinWithdrawn: account.vinicoinWithdrawn
         };
     }
 

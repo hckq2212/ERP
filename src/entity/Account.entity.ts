@@ -38,6 +38,12 @@ export class Accounts extends BaseEntity {
     @Column({ default: 0 })
     vinicoin: number;
 
+    @Column({ default: 0 })
+    vinicoinTotal: number;
+
+    @Column({ default: 0 })
+    vinicoinWithdrawn: number;
+
     @OneToOne(() => Users, (user) => user.account)
     user: Users;
 }
