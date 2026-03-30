@@ -3,6 +3,7 @@ import { quotationEmitter, QUOTATION_EVENTS } from "../events/QuotationEmitter";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { contractEmitter, CONTRACT_EVENTS } from "../events/ContractEmitter";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
+import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../events/TaskReviewEmitter";
 import { notificationEmitter, NOTIFICATION_EVENTS } from "../events/NotificationEmitter";
 
 /**
@@ -81,6 +82,10 @@ export const initModuleSubscribers = () => {
         console.log(`[EVENT] Contract Signed: ${data.contractCode}`);
         notificationEmitter.emit(NOTIFICATION_EVENTS.MODULE_EVENT, { event: CONTRACT_EVENTS.SIGNED, payload: data });
     });
+    contractEmitter.on(CONTRACT_EVENTS.REJECTED, (data) => {
+        console.log(`[EVENT] Contract Rejected: ${data.contractCode}`);
+        notificationEmitter.emit(NOTIFICATION_EVENTS.MODULE_EVENT, { event: CONTRACT_EVENTS.REJECTED, payload: data });
+    });
     contractEmitter.on(CONTRACT_EVENTS.DELETED, (data) => {
         console.log(`[EVENT] Contract Deleted: ${data.id}`);
         notificationEmitter.emit(NOTIFICATION_EVENTS.MODULE_EVENT, { event: CONTRACT_EVENTS.DELETED, payload: data });
@@ -98,6 +103,12 @@ export const initModuleSubscribers = () => {
     projectEmitter.on(PROJECT_EVENTS.DELETED, (data) => {
         console.log(`[EVENT] Project Deleted: ${data.id}`);
         notificationEmitter.emit(NOTIFICATION_EVENTS.MODULE_EVENT, { event: PROJECT_EVENTS.DELETED, payload: data });
+    });
+
+    // --- TASK REVIEW EVENTS ---
+    taskReviewEmitter.on(TASK_REVIEW_EVENTS.UPDATED, (data) => {
+        console.log(`[EVENT] Task Review Updated for Task: ${data.taskId}`);
+        notificationEmitter.emit(NOTIFICATION_EVENTS.MODULE_EVENT, { event: TASK_REVIEW_EVENTS.UPDATED, payload: data });
     });
 
     console.log("All Module Subscribers Initialized (Global SSE Broadcast Active)");

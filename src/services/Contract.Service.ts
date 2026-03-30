@@ -591,6 +591,8 @@ export class ContractService {
             });
         }
 
+        contractEmitter.emit(CONTRACT_EVENTS.REJECTED, savedContract);
+
         return savedContract;
     }
 }

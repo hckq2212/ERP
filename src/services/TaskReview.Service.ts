@@ -6,6 +6,8 @@ import { JobCriterias } from "../entity/JobCriteria.entity";
 import { NotificationService } from "./Notification.Service";
 import { ContractServices } from "../entity/ContractService.entity";
 import { Users } from "../entity/User.entity";
+import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../events/TaskReviewEmitter";
+import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 
 export class TaskReviewService {
     private reviewRepository = AppDataSource.getRepository(TaskReviews);
@@ -77,6 +79,7 @@ export class TaskReviewService {
         if (note !== undefined) review.note = note;
 
         await this.reviewRepository.save(review);
+        taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId: review.task?.id });
         return review;
     }
 
@@ -159,6 +162,9 @@ export class TaskReviewService {
                         relatedEntityType: "Task",
                     });
                 }
+
+                taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, task);
+                taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
             }
         }
     }
@@ -197,6 +203,9 @@ export class TaskReviewService {
                 link: `/tasks/${task.id}`
             });
         }
+
+        taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, task);
+        taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
 
         return task;
     }
