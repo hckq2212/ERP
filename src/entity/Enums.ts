@@ -27,3 +27,9 @@ export enum PricingStatus {
     BILLABLE = "BILLABLE",
     NON_BILLABLE = "NON_BILLABLE"
 }
+
+export enum ViolationType {
+    LATE_SUBMISSION = "LATE_SUBMISSION",
+    LATE_UNFINISHED = "LATE_UNFINISHED",
+    EXCESSIVE_REWORK = "EXCESSIVE_REWORK"
+}

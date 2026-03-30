@@ -1,6 +1,6 @@
 import { AppDataSource } from "../data-source";
 import { Tasks } from "../entity/Task.entity";
-import { TaskStatus, PerformerType, PricingStatus } from "../entity/Enums";
+import { TaskStatus, PerformerType, PricingStatus, ViolationType } from "../entity/Enums";
 import { ILike, Like, Between, IsNull } from "typeorm";
 import { Projects } from "../entity/Project.entity";
 import { Jobs } from "../entity/Job.entity";
@@ -14,6 +14,7 @@ import { Contracts } from "../entity/Contract.entity";
 import { TaskReviews } from "../entity/TaskReview.entity";
 import { SecurityService } from "./Security.Service";
 import { ContractServices, ContractServiceStatus } from "../entity/ContractService.entity";
+import { Violations } from "../entity/Violation.entity";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -27,6 +28,26 @@ export class TaskService {
     private taskIterationRepository = AppDataSource.getRepository("TaskIterations");
     private notificationService = new NotificationService();
     private reviewService = new TaskReviewService();
+    private violationRepository = AppDataSource.getRepository(Violations);
+
+    private async recordViolation(data: {
+        taskId: string,
+        userId: string,
+        type: ViolationType,
+        description?: string,
+        iterationVersion?: number,
+        manager?: any
+    }) {
+        const repo = data.manager ? data.manager.getRepository(Violations) : this.violationRepository;
+        const violation = repo.create({
+            taskId: data.taskId,
+            userId: data.userId,
+            type: data.type,
+            description: data.description,
+            iterationVersion: data.iterationVersion
+        });
+        await repo.save(violation);
+    }
 
     async createInternalTask(data: {
         name: string,
@@ -275,6 +296,16 @@ export class TaskService {
 
         const savedTask = await this.taskRepository.save(task);
 
+        // Check for late submission
+        if (task.plannedEndDate && new Date() > task.plannedEndDate) {
+            await this.recordViolation({
+                taskId: task.id,
+                userId: currentId,
+                type: ViolationType.LATE_SUBMISSION,
+                description: `Nộp task trễ deadline. Deadline: ${task.plannedEndDate.toLocaleString()}`
+            });
+        }
+
         if (isTeamLead) {
             // Auto-pass reviews and finalize (syncs to contract service, etc.)
             await this.reviewService.initializeReviews(task.id, true);
@@ -343,6 +374,46 @@ export class TaskService {
                 submittedById: task.lastSubmittedById
             });
             await iterationRepository.save(iteration);
+
+            // Record violations for rework
+            const currentIterationVersion = iterationCount + 1;
+            
+            // Case 2: Excessive Rework (3rd submission onwards by same person)
+            if (currentIterationVersion >= 2) { // currentIterationVersion is count of PREVIOUS iterative submissions
+                // Wait, if currentIterationVersion is 2, it means there are already 2 versions.
+                // The iteration we just created is the 2nd history version.
+                // Submission 1 -> Iteration 1 (snapshot of sub 1)
+                // Submission 2 -> Iteration 2 (snapshot of sub 2)
+                // Submission 3 -> ...
+                // User said: "submitted by 1 người tới ít nhất 3 lần trở lên, từng 1 lần nữa sẽ tính 1 lần vi phạm"
+                // If we have 2 iterations, the user has submitted twice. 
+                // The "rework" request happens AFTER a submission.
+                // So if iterationCount is 0, this is the 1st rework request (after 1st submission).
+                // If iterationCount is 1, this is the 2nd rework request (after 2nd submission).
+                // If iterationCount is 2, this is the 3rd rework request (after 3rd submission).
+                
+                if (iterationCount >= 2 && task.lastSubmittedById) {
+                   await this.recordViolation({
+                        taskId: task.id,
+                        userId: task.lastSubmittedById,
+                        type: ViolationType.EXCESSIVE_REWORK,
+                        description: `Nộp lại task lần thứ ${iterationCount + 1}.`,
+                        iterationVersion: iterationCount + 1,
+                        manager: transactionalEntityManager
+                    });
+                }
+            }
+
+            // Case 1: Late Unfinished (Overdue at point of rework request)
+            if (task.plannedEndDate && new Date() > task.plannedEndDate && task.assigneeId) {
+                await this.recordViolation({
+                    taskId: task.id,
+                    userId: task.assigneeId,
+                    type: ViolationType.LATE_UNFINISHED,
+                    description: `Yêu cầu làm lại khi task đã quá hạn.`,
+                    manager: transactionalEntityManager
+                });
+            }
 
             // 1.5. Clean up old reviews (as requested by user)
             await transactionalEntityManager.delete(TaskReviews, { task: { id } });
@@ -709,6 +780,26 @@ export class TaskService {
                 task.performerType = PerformerType.INTERNAL;
                 task.cost = 0;
             }
+        }
+
+        // Check for late reassignment (Violation for OLD assignee)
+        if (task.plannedEndDate && new Date() > task.plannedEndDate && task.assigneeId) {
+            await this.recordViolation({
+                taskId: task.id,
+                userId: task.assigneeId,
+                type: ViolationType.LATE_UNFINISHED,
+                description: `Task quá hạn được chuyển giao cho người khác.`
+            });
+        }
+
+        // Check for late reassignment (Violation for OLD assignee)
+        if (task.plannedEndDate && new Date() > task.plannedEndDate && task.assigneeId) {
+            await this.recordViolation({
+                taskId: task.id,
+                userId: task.assigneeId,
+                type: ViolationType.LATE_UNFINISHED,
+                description: `Task quá hạn được chuyển giao cho người khác.`
+            });
         }
 
         task.reassignNote = data.reason;

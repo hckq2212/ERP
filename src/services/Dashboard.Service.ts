@@ -9,6 +9,7 @@ import { TaskStatus } from "../entity/Enums";
 import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
 import { UserRole } from "../entity/Account.entity";
 import { Between, In, LessThanOrEqual } from "typeorm";
+import { Violations } from "../entity/Violation.entity";
 
 export class DashboardService {
     private contractRepo = AppDataSource.getRepository(Contracts);
@@ -149,6 +150,17 @@ export class DashboardService {
 
         const vinicoin = userWithAccount?.account?.vinicoin || 0;
 
+        // Get Violations
+        const violations = await AppDataSource.getRepository(Violations).find({
+            where: { userId },
+            select: { id: true, type: true, createdAt: true }
+        });
+
+        const violationStats = violations.reduce((acc: any, v) => {
+            acc[v.type] = (acc[v.type] || 0) + 1;
+            return acc;
+        }, {});
+
         // Participating Projects
         const projectMap = new Map();
         myTasks.forEach(t => {
@@ -211,7 +223,9 @@ export class DashboardService {
             completionStats: completionStats.map((count, index) => ({
                 month: index + 1,
                 count
-            }))
+            })),
+            violationCount: violations.length,
+            violationStats
         };
 
         return data;

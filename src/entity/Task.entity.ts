@@ -9,6 +9,7 @@ import { TaskReviews } from "./TaskReview.entity";
 import { Services } from "./Service.entity";
 import { TaskIterations } from "./TaskIteration.entity";
 import { TaskStatus, PerformerType, PricingStatus } from "./Enums";
+import { Violations } from "./Violation.entity";
 
 
 @Entity()
@@ -93,6 +94,9 @@ export class Tasks extends BaseEntity {
 
     @OneToMany(() => TaskIterations, (iteration) => iteration.task)
     iterations: TaskIterations[];
+
+    @OneToMany(() => Violations, (violation) => violation.task)
+    violations: Violations[];
 
     @Column({ default: false })
     isExtra: boolean;
