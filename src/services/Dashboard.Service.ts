@@ -8,7 +8,7 @@ import { Tasks } from "../entity/Task.entity";
 import { TaskStatus } from "../entity/Enums";
 import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
 import { UserRole } from "../entity/Account.entity";
-import { Between, In, LessThanOrEqual } from "typeorm";
+import { Between, In, LessThanOrEqual, Not } from "typeorm";
 import { Violations } from "../entity/Violation.entity";
 
 export class DashboardService {
@@ -32,6 +32,7 @@ export class DashboardService {
         const ledProjects = await this.projectRepo.find({
             where: {
                 team: { teamLead: { id: userId } },
+                status: Not(In([ProjectStatus.CANCELLED, ProjectStatus.COMPLETED])),
                 ...(dateFilter && { createdAt: dateFilter })
             },
             relations: ["contract", "contract.services"]
