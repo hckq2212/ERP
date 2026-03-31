@@ -1,17 +1,19 @@
 import { AppDataSource } from "../data-source";
 import { AcceptanceRequests, AcceptanceStatus } from "../entity/AcceptanceRequest.entity";
+import { Contracts, ContractStatus } from "../entity/Contract.entity";
 import { ContractServices, ContractServiceStatus } from "../entity/ContractService.entity";
 import { Users } from "../entity/User.entity";
 import { Tasks } from "../entity/Task.entity";
 import { TaskStatus, PerformerType } from "../entity/Enums";
-import { Projects } from "../entity/Project.entity";
+import { Projects, ProjectStatus } from "../entity/Project.entity";
 import { NotificationService } from "./Notification.Service";
 import { VinicoinService } from "./Vinicoin.Service";
-import { In } from "typeorm";
+import { In, Not } from "typeorm";
 
 export class AcceptanceService {
     private acceptanceRepo = AppDataSource.getRepository(AcceptanceRequests);
     private serviceRepo = AppDataSource.getRepository(ContractServices);
+    private contractRepo = AppDataSource.getRepository(Contracts);
     private userRepo = AppDataSource.getRepository(Users);
     private taskRepo = AppDataSource.getRepository(Tasks);
     private projectRepo = AppDataSource.getRepository(Projects);
@@ -151,6 +153,11 @@ export class AcceptanceService {
 
             // Reward Vinicoin
             await this.triggerRewards(s);
+        }
+
+        // Auto trigger completion check
+        if (request.projectId) {
+            await this.syncProjectCompletionStatus(request.projectId);
         }
 
         // Notify requester
@@ -345,6 +352,11 @@ export class AcceptanceService {
             await this.serviceRepo.save(service);
         }
 
+        // Auto trigger completion check
+        if (request.projectId) {
+            await this.syncProjectCompletionStatus(request.projectId);
+        }
+
         // Update request status to PROCESSED as the batch has been handled
         request.status = AcceptanceStatus.PROCESSED;
         request.approver = approver;
@@ -404,6 +416,42 @@ export class AcceptanceService {
                     service.id
                 );
             }
+        }
+    }
+
+    private async syncProjectCompletionStatus(projectId: string) {
+        // 1. Fetch all services of the project
+        // Note: Project and Contract are 1-1, so project.contract.services is our set
+        const project = await this.projectRepo.findOne({
+            where: { id: projectId },
+            relations: ["contract", "contract.services"]
+        });
+
+        if (!project || !project.contract) return;
+
+        const services = project.contract.services || [];
+        if (services.length === 0) return;
+
+        // 2. Check if all services are COMPLETED or CANCELLED
+        const allCompleted = services.every(s =>
+            s.status === ContractServiceStatus.COMPLETED ||
+            s.status === ContractServiceStatus.CANCELLED
+        );
+
+        // We only move to COMPLETED if at least one service is actually COMPLETED (not just all cancelled)
+        const hasCompletedService = services.some(s => s.status === ContractServiceStatus.COMPLETED);
+
+        if (allCompleted && hasCompletedService) {
+            // Update Project
+            project.status = ProjectStatus.COMPLETED;
+            project.actualEndDate = new Date();
+            await this.projectRepo.save(project);
+
+            // Update Contract
+            await this.contractRepo.update(
+                { id: project.contract.id },
+                { status: ContractStatus.COMPLETED }
+            );
         }
     }
 }

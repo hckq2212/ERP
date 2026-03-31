@@ -6,7 +6,7 @@ import { Response } from "express";
  * This bridges the gap between the Service layer (which creates notifications)
  * and the Controller layer (which maintains SSE connections).
  */
-class NotificationEmitter extends EventEmitter {}
+class NotificationEmitter extends EventEmitter { }
 
 export const notificationEmitter = new NotificationEmitter();
 
@@ -44,7 +44,7 @@ class NotificationManager {
             } else {
                 const connectionCount = this.connections.size;
                 console.log(`[SSE] Global broadcast for event ${data.event} to ${connectionCount} active users`);
-                
+
                 for (const userId of this.connections.keys()) {
                     this.broadcast(userId, wrappedPayload);
                 }
@@ -56,16 +56,16 @@ class NotificationManager {
         const userConnections = this.connections.get(userId) || [];
         userConnections.push(res);
         this.connections.set(userId, userConnections);
-        console.log(`[SSE] User ${userId} connected. Total active users: ${this.connections.size}`);
+        // console.log(`[SSE] User ${userId} connected. Total active users: ${this.connections.size}`);
     }
 
     removeConnection(userId: string, res: Response) {
         let userConnections = this.connections.get(userId) || [];
         userConnections = userConnections.filter(c => c !== res);
-        
+
         if (userConnections.length === 0) {
             this.connections.delete(userId);
-            console.log(`[SSE] User ${userId} disconnected. Total active users: ${this.connections.size}`);
+            // console.log(`[SSE] User ${userId} disconnected. Total active users: ${this.connections.size}`);
         } else {
             this.connections.set(userId, userConnections);
         }
