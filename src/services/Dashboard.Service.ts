@@ -30,7 +30,7 @@ export class DashboardService {
 
         // 2. Team Lead Data
         const ledProjects = await this.projectRepo.find({
-            where: { 
+            where: {
                 team: { teamLead: { id: userId } },
                 ...(dateFilter && { createdAt: dateFilter })
             },
@@ -56,17 +56,17 @@ export class DashboardService {
         // 3. Sale Data
         if (role === UserRole.BD || role === UserRole.SALE) {
             const [myOpportunities, myCustomers, myContracts] = await Promise.all([
-                this.opportunityRepo.find({ 
-                    where: { 
+                this.opportunityRepo.find({
+                    where: {
                         createdBy: { id: userId },
                         ...(dateFilter && { createdAt: dateFilter })
-                    } 
+                    }
                 }),
-                this.customerRepo.count({ 
-                    where: { 
+                this.customerRepo.count({
+                    where: {
                         createdBy: { id: userId },
                         ...(dateFilter && { createdAt: dateFilter })
-                    } 
+                    }
                 }),
                 this.contractRepo.find({
                     where: [
@@ -142,6 +142,7 @@ export class DashboardService {
                 id: true,
                 name: true,
                 status: true,
+                code: true,
                 plannedStartDate: true,
                 plannedEndDate: true,
                 project: {
@@ -163,7 +164,7 @@ export class DashboardService {
         const vinicoinWithdrawn = userWithAccount?.account?.vinicoinWithdrawn || 0;
 
         const violations = await AppDataSource.getRepository(Violations).find({
-            where: { 
+            where: {
                 userId,
                 ...(dateFilter && { createdAt: dateFilter })
             },
@@ -193,7 +194,7 @@ export class DashboardService {
         // Chart Stats (Still using yearly context if year provided, otherwise current year)
         const chartYear = year || new Date().getFullYear();
         const completionStats = Array(12).fill(0);
-        
+
         // We query all tasks for the chart year to show the trend
         const allTasksForChart = await this.taskRepo.find({
             where: [
@@ -223,11 +224,21 @@ export class DashboardService {
             vinicoinWithdrawn,
             totalTasks: myTasks.length,
             statusCounts,
-            doingCount: statusCounts[TaskStatus.DOING] || 0,
+            doingCount: (statusCounts[TaskStatus.DOING] || 0) + (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),
+            reworkCount: (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),
+            reworkTasks: myTasks
+                .filter(t => t.status === TaskStatus.REWORKING || t.status === TaskStatus.REJECTED)
+                .map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    projectName: t.project?.name,
+                    code: t.code,
+                    deadline: t.plannedEndDate
+                })),
             completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0),
             participatingProjects,
             upcomingDeadlines: myTasks
-                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
+                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.INTERNAL_COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
                 .slice(0, 10)
                 .map(t => ({
                     id: t.id,
@@ -244,7 +255,9 @@ export class DashboardService {
                     name: t.name,
                     start: t.plannedStartDate,
                     end: t.plannedEndDate,
-                    status: t.status
+                    status: t.status,
+                    code: t.code,
+                    project: t.project
                 })),
             completionStats: completionStats.map((count, index) => ({
                 month: index + 1,
@@ -289,7 +302,7 @@ export class DashboardService {
         ]);
 
         const signedContracts = await this.contractRepo.find({
-            where: { 
+            where: {
                 status: In([ContractStatus.SIGNED, ContractStatus.COMPLETED]),
                 ...(dateFilter && { createdAt: dateFilter })
             }
@@ -298,7 +311,7 @@ export class DashboardService {
         const totalRevenue = signedContracts.reduce((sum, c) => sum + parseFloat(c.sellingPrice as any), 0);
 
         const unpaidDebts = await this.debtRepo.find({
-            where: { 
+            where: {
                 status: In([DebtStatus.UNPAID, DebtStatus.PARTIAL]),
                 ...(dateFilter && { createdAt: dateFilter })
             }
