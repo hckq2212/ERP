@@ -32,8 +32,8 @@ export class DashboardService {
         const ledProjects = await this.projectRepo.find({
             where: {
                 team: { teamLead: { id: userId } },
-                status: Not(In([ProjectStatus.CANCELLED, ProjectStatus.COMPLETED])),
-                ...(dateFilter && { createdAt: dateFilter })
+                status: Not(In([ProjectStatus.CANCELLED, ProjectStatus.COMPLETED]))
+                // ...(dateFilter && { createdAt: dateFilter })
             },
             relations: ["contract", "contract.services"]
         });
