@@ -128,12 +128,12 @@ export class TaskNotionService extends BaseNotionService {
         }
 
         // Financials
-        properties["Selling Price"] = {
-            number: Number(task.sellingPrice) || 0
-        };
-        properties["Cost"] = {
-            number: Number(task.cost) || 0
-        };
+        // properties["Selling Price"] = {
+        //     number: Number(task.sellingPrice) || 0
+        // };
+        // properties["Cost"] = {
+        //     number: Number(task.cost) || 0
+        // };
 
         // Project Relationship (Text mapping for now)
         if (task.project) {
