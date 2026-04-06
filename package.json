@@ -4,6 +4,7 @@
    "description": "Awesome project developed with TypeORM.",
    "type": "commonjs",
    "dependencies": {
+      "@notionhq/client": "^5.16.0",
       "@types/bcrypt": "^6.0.0",
       "@types/express": "^5.0.6",
       "@types/jsonwebtoken": "^9.0.10",
@@ -31,13 +32,15 @@
       "ts-node": "^10.9.2",
       "typeorm": "^0.3.28",
       "typescript": "^5.9.3",
-      "ulid": "^3.0.2"
+      "ulid": "^3.0.2",
+      "xlsx": "^0.18.5"
    },
    "scripts": {
       "postinstall": "tsc",
       "build": "tsc",
       "start": "node build/index.js",
       "dev": "nodemon --exec ts-node src/index.ts",
+      "sync-notion": "ts-node src/scripts/SyncToNotion.ts",
       "test": "echo No test runner configured"
    },
    "devDependencies": {
