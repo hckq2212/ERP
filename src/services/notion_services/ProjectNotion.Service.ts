@@ -77,6 +77,18 @@ export class ProjectNotionService extends BaseNotionService {
                     }
                 ]
             };
+
+            // Relation to contracts.Id == ERP contract.id
+            if (project.contract.id) {
+                const contractPageId = await this.resolveRelationPageId(
+                    process.env.NOTION_DATABASE_ID_CONTRACTS || "",
+                    project.contract.id
+                );
+                if (contractPageId) {
+                    properties["Contract"] = { relation: [{ id: contractPageId }] };
+                }
+            }
+
             if (project.contract.customer) {
                 properties["Client"] = {
                     rich_text: [

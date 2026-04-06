@@ -137,7 +137,18 @@ export class TaskNotionService extends BaseNotionService {
 
         // Project Relationship (Text mapping for now)
         if (task.project) {
-            properties["Project Name"] = {
+            // Relation to projects.Id == ERP project.id
+            if (task.project.id) {
+                const projectPageId = await this.resolveRelationPageId(
+                    process.env.NOTION_DATABASE_ID_PROJECTS || "",
+                    task.project.id
+                );
+                if (projectPageId) {
+                    properties["Project"] = { relation: [{ id: projectPageId }] };
+                }
+            }
+
+            properties["Project Name (Text)"] = {
                 rich_text: [
                     {
                         text: {

@@ -35,7 +35,7 @@ export class UserNotionService extends BaseNotionService {
 
         if (user.account) {
             properties["Email"] = {
-                email: user.account.email || ""
+                email: user.account.email || null
             };
             properties["Username"] = {
                 rich_text: [

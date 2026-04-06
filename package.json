@@ -41,7 +41,7 @@
       "start": "node build/index.js",
       "dev": "nodemon --exec ts-node src/index.ts",
       "sync-notion": "ts-node src/scripts/SyncToNotion.ts",
-      "test": "echo No test runner configured"
+      "test": "npm run -s build && node --test --test-isolation=none build/tests/**/*.test.js"
    },
    "devDependencies": {
       "@types/cookie-parser": "^1.4.10",

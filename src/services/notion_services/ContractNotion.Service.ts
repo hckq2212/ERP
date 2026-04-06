@@ -40,15 +40,6 @@ export class ContractNotionService extends BaseNotionService {
                     name: contract.status || "DRAFT"
                 }
             },
-            "Customer": {
-                rich_text: [
-                    {
-                        text: {
-                            content: contract.customer?.name || "N/A"
-                        }
-                    }
-                ]
-            },
             "Cost": {
                 number: Number(contract.cost) || 0
             },
@@ -65,6 +56,27 @@ export class ContractNotionService extends BaseNotionService {
                 ]
             }
         };
+
+        // Relations
+        if (contract.customer?.id) {
+            const customerPageId = await this.resolveRelationPageId(
+                process.env.NOTION_DATABASE_ID_CUSTOMERS || "",
+                contract.customer.id
+            );
+            if (customerPageId) {
+                properties["Customer"] = { relation: [{ id: customerPageId }] };
+            }
+        }
+
+        if (contract.opportunity?.id) {
+            const opportunityPageId = await this.resolveRelationPageId(
+                process.env.NOTION_DATABASE_ID_OPPORTUNITIES || "",
+                contract.opportunity.id
+            );
+            if (opportunityPageId) {
+                properties["Opportunity"] = { relation: [{ id: opportunityPageId }] };
+            }
+        }
 
         return this.upsertPage(contract.id, properties, "Contract");
     }

@@ -19,15 +19,6 @@ export class QuotationNotionService extends BaseNotionService {
                     }
                 ]
             },
-            "Opportunity": {
-                rich_text: [
-                    {
-                        text: {
-                            content: quotation.opportunity?.name || "N/A"
-                        }
-                    }
-                ]
-            },
             "Total Amount": {
                 number: Number(quotation.totalAmount) || 0
             },
@@ -54,6 +45,16 @@ export class QuotationNotionService extends BaseNotionService {
                 ]
             }
         };
+
+        if (quotation.opportunity?.id) {
+            const opportunityPageId = await this.resolveRelationPageId(
+                process.env.NOTION_DATABASE_ID_OPPORTUNITIES || "",
+                quotation.opportunity.id
+            );
+            if (opportunityPageId) {
+                properties["Opportunity"] = { relation: [{ id: opportunityPageId }] };
+            }
+        }
 
         await this.upsertPage(quotation.id, properties, "Quotation");
     }

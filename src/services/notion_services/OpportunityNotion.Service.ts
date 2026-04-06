@@ -63,27 +63,17 @@ export class OpportunityNotionService extends BaseNotionService {
             };
         }
 
-        // Customer Info
-        if (opportunity.customer) {
-            properties["Customer"] = {
-                rich_text: [
-                    {
-                        text: {
-                            content: opportunity.customer.name || ""
-                        }
-                    }
-                ]
-            };
-        } else if (opportunity.leadName) {
-            properties["Customer"] = {
-                rich_text: [
-                    {
-                        text: {
-                            content: `(Lead) ${opportunity.leadName}`
-                        }
-                    }
-                ]
-            };
+        // Customer relation (customers.Id == ERP customer.id)
+        if (opportunity.customer?.id) {
+            const customerPageId = await this.resolveRelationPageId(
+                process.env.NOTION_DATABASE_ID_CUSTOMERS || "",
+                opportunity.customer.id
+            );
+            if (customerPageId) {
+                properties["Customer"] = {
+                    relation: [{ id: customerPageId }]
+                };
+            }
         }
 
         await this.upsertPage(opportunity.id, properties, "Opportunity");
