@@ -52,7 +52,13 @@ export class AcceptanceController {
 
     getAllRequests = async (req: Request, res: Response) => {
         try {
-            const result = await this.acceptanceService.getAllRequests();
+            const { search, status, page, limit } = req.query;
+            const result = await this.acceptanceService.getAllRequests({
+                search: search as string,
+                status: status as string,
+                page: page ? parseInt(page as string) : undefined,
+                limit: limit ? parseInt(limit as string) : undefined
+            });
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

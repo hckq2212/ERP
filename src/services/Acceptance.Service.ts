@@ -8,7 +8,7 @@ import { TaskStatus, PerformerType } from "../entity/Enums";
 import { Projects, ProjectStatus } from "../entity/Project.entity";
 import { NotificationService } from "./Notification.Service";
 import { VinicoinService } from "./Vinicoin.Service";
-import { In, Not } from "typeorm";
+import { In, Not, ILike } from "typeorm";
 
 export class AcceptanceService {
     private acceptanceRepo = AppDataSource.getRepository(AcceptanceRequests);
@@ -384,10 +384,43 @@ export class AcceptanceService {
         });
     }
 
-    async getAllRequests() {
-        return await this.acceptanceRepo.find({
-            relations: ["requester", "approver", "project", "services", "services.tasks"]
-        });
+    async getAllRequests(filters: { search?: string, status?: string, page?: number, limit?: number } = {}) {
+        const page = Number(filters.page) || 1;
+        const limit = Number(filters.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const where: any = {};
+        if (filters.status && filters.status !== 'ALL') {
+            where.status = filters.status;
+        }
+
+        let findOptions: any = {
+            where: where,
+            order: { createdAt: "DESC" },
+            relations: ["requester", "approver", "project", "services", "services.tasks"],
+            take: limit,
+            skip: skip
+        };
+
+        if (filters.search) {
+            const searchTerm = `%${filters.search}%`;
+            findOptions.where = [
+                { ...where, name: ILike(searchTerm) },
+                { ...where, project: { name: ILike(searchTerm) } }
+            ];
+        }
+
+        const [items, total] = await this.acceptanceRepo.findAndCount(findOptions);
+
+        return {
+            data: items,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
     }
 
     private async triggerRewards(service: ContractServices) {
