@@ -158,7 +158,7 @@ export class QuotationService {
         // Notify management
         await this.notifyManagement({
             title: "Báo giá mới",
-            content: `Báo giá Ver ${saved.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được tạo bởi ${userInfo?.userId || 'Hệ thống'}`,
+            content: `Báo giá lần ${saved.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được tạo bởi ${userInfo?.userId || 'Hệ thống'}`,
             quotationId: saved.id
         });
 
@@ -431,7 +431,7 @@ export class QuotationService {
         // Notify management
         await this.notifyManagement({
             title: "Báo giá đã duyệt",
-            content: `Báo giá Ver ${quotation.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được duyệt.`,
+            content: `Báo giá lần ${quotation.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được duyệt.`,
             quotationId: quotation.id
         });
 
@@ -455,7 +455,7 @@ export class QuotationService {
         // Notify management
         await this.notifyManagement({
             title: "Báo giá bị từ chối",
-            content: `Báo giá Ver ${saved.version} cho cơ hội ${saved.opportunity?.opportunityCode}-${saved.opportunity?.name} bị từ chối. Lý do: ${description || 'N/A'}`,
+            content: `Báo giá lần ${saved.version} cho cơ hội ${saved.opportunity?.opportunityCode}-${saved.opportunity?.name} bị từ chối. Lý do: ${description || 'N/A'}`,
             quotationId: saved.id
         });
 

@@ -392,8 +392,8 @@ export class ContractService {
 
         // Notify management
         await this.notifyManagement({
-            title: "Hợp đồng đã upload bản thảo",
-            content: `Bản thảo hợp đồng ${savedResult.contractCode}-${savedResult.name} đã được upload bởi ${userInfo?.userId || 'Hệ thống'}.`,
+            title: "Hợp đồng được upload",
+            content: `Hợp đồng ${savedResult.contractCode}-${savedResult.name} đã được upload bởi ${userInfo?.userId || 'Hệ thống'}.`,
             contractId: savedResult.id
         });
 
@@ -420,8 +420,8 @@ export class ContractService {
 
         // Notify management
         await this.notifyManagement({
-            title: "Hợp đồng đã duyệt bản thảo",
-            content: `Bản thảo hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được duyệt. Dự án tương ứng đã được khởi tạo nháp.`,
+            title: "Hợp đồng đã duyệt",
+            content: `Hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được duyệt. Dự án tương ứng đã được khởi tạo nháp.`,
             contractId: savedContract.id
         });
 
@@ -571,8 +571,8 @@ export class ContractService {
 
         // Notify management
         await this.notifyManagement({
-            title: "Hợp đồng bị từ chối bản thảo",
-            content: `Bản thảo hợp đồng ${savedContract.contractCode}-${savedContract.name} bị từ chối. Lý do: ${reason}`,
+            title: "Hợp đồng bị từ chối",
+            content: `Hợp đồng ${savedContract.contractCode}-${savedContract.name} bị từ chối. Lý do: ${reason}`,
             contractId: savedContract.id
         });
 
