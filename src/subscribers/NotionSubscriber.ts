@@ -25,7 +25,7 @@ export const initNotionSubscriber = () => {
     const quotationService = new QuotationNotionService();
     const userService = new UserNotionService();
 
-    const safe = <T>(label: string, fn: (data: T) => Promise<void>) => {
+    const safe = <T>(label: string, fn: (data: T) => Promise<unknown>) => {
         return async (data: T) => {
             try {
                 await fn(data);

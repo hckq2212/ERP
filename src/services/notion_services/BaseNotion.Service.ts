@@ -60,7 +60,7 @@ export abstract class BaseNotionService {
     /**
      * Upsert a page in Notion
      */
-    protected async upsertPage(erpId: string, properties: any, entityName: string) {
+    protected async upsertPage(erpId: string, properties: any, entityName: string): Promise<string | null> {
         try {
             const existingPage = await this.findPageByErpId(erpId);
 
@@ -74,6 +74,7 @@ export abstract class BaseNotionService {
                     })
                 );
                 console.log(`[${entityName}NotionService] Updated ${entityName} in Notion: ${erpId}`);
+                return pageId;
             } else {
                 const created = await NotionProvider.run(() =>
                     NotionProvider.notion.pages.create({
@@ -86,6 +87,7 @@ export abstract class BaseNotionService {
                     notionResolver.seed(this.databaseId, erpId, createdId);
                 }
                 console.log(`[${entityName}NotionService] Created ${entityName} in Notion: ${erpId}`);
+                return createdId ?? null;
             }
         } catch (error) {
             console.error(`[${entityName}NotionService] Error upserting ${entityName} ${erpId}:`, error);
