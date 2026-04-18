@@ -75,6 +75,14 @@ export class TaskReviewService {
 
         if (!review) throw new Error("Không tìm thấy mục đánh giá");
 
+        // Status validation
+        if (review.task) {
+            const reviewableStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE];
+            if (!reviewableStatuses.includes(review.task.status)) {
+                throw new Error(`Công việc đang ở trạng thái ${review.task.status}, không thể cập nhật đánh giá.`);
+            }
+        }
+
         review.isPassed = isPassed;
         if (note !== undefined) review.note = note;
 
@@ -112,60 +120,76 @@ export class TaskReviewService {
             groupItems.every(item => item.isPassed)
         );
 
+        const task = await this.taskRepository.findOne({
+            where: { id: taskId },
+            relations: ["assignee", "contractService", "job", "project"]
+        });
+
+        if (!task) throw new Error("Không tìm thấy công việc");
+
+        // Allowed statuses for review
+        const reviewableStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE];
+        if (!reviewableStatuses.includes(task.status)) {
+            throw new Error(`Công việc đang ở trạng thái ${task.status}, không thể thực hiện phê duyệt.`);
+        }
+
         if (allPassed) {
-            const task = await this.taskRepository.findOne({
-                where: { id: taskId },
-                relations: ["assignee", "contractService", "job", "project"]
-            });
-            if (task) {
-                const isOutputJob = task.isOutput;
+            const isOutputJob = task.isOutput;
 
-                task.status = TaskStatus.INTERNAL_COMPLETED;
-                task.actualEndDate = new Date();
-                if (reviewNote) task.reviewNote = reviewNote;
-                await this.taskRepository.save(task);
+            task.status = TaskStatus.INTERNAL_COMPLETED;
+            task.actualEndDate = new Date();
+            if (reviewNote) task.reviewNote = reviewNote;
+            await this.taskRepository.save(task);
 
-                // Sync result to ContractService if this is an output job
-                if (isOutputJob) {
-                    const contractServiceRepository = AppDataSource.getRepository(ContractServices);
-                    const contractService = task.contractService;
-                    if (!contractService.results) contractService.results = [];
+            // Sync result to ContractService if this is an output job
+            if (isOutputJob && task.contractService) {
+                const contractServiceRepository = AppDataSource.getRepository(ContractServices);
+                const contractService = task.contractService;
+                if (!contractService.results) contractService.results = [];
 
-                    // Add or update result in array
-                    const existingResultIndex = contractService.results.findIndex(r => r.taskId === task.id);
-                    const newResult = {
-                        taskId: task.id,
-                        type: task.result?.type || 'file',
-                        name: task.code || task.name,
-                        url: task.result?.url || '',
-                        status: 'PENDING' as const
-                    };
+                // Add or update result in array
+                const existingResultIndex = contractService.results.findIndex(r => r.taskId === task.id);
+                const newResult = {
+                    taskId: task.id,
+                    type: task.result?.type || 'file',
+                    name: task.code || task.name,
+                    url: task.result?.url || '',
+                    status: 'PENDING' as const
+                };
 
-                    if (existingResultIndex >= 0) {
-                        contractService.results[existingResultIndex] = newResult;
-                    } else {
-                        contractService.results.push(newResult);
-                    }
-
-                    await contractServiceRepository.save(contractService);
+                if (existingResultIndex >= 0) {
+                    contractService.results[existingResultIndex] = newResult;
+                } else {
+                    contractService.results.push(newResult);
                 }
 
-                // Notify assignee
-                if (task.assignee) {
-
-                    await this.notificationService.createNotification({
-                        title: "Công việc đã được duyệt",
-                        content: `Công việc "${task.name}" của dự án ${task.project?.name} đã được duyệt và đang chờ khách hàng duyệt.`,
-                        type: "TASK_COMPLETED",
-                        recipient: task.assignee,
-                        relatedEntityId: task.id.toString(),
-                        relatedEntityType: "Task",
-                    });
-                }
-
-                taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, task);
-                taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
+                await contractServiceRepository.save(contractService);
             }
+
+            // Notify assignee
+            if (task.assignee) {
+                await this.notificationService.createNotification({
+                    title: "Công việc đã được duyệt",
+                    content: `Công việc "${task.name}" của dự án ${task.project?.name} đã được duyệt nội bộ.`,
+                    type: "TASK_COMPLETED",
+                    recipient: task.assignee,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                });
+            }
+
+            taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, task);
+            taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
+            
+            return { finalized: true, message: "Đã hoàn tất duyệt nội bộ công việc" };
+        } else {
+            // Updated criteria but not finalized
+            if (reviewNote) {
+                task.reviewNote = reviewNote;
+                await this.taskRepository.save(task);
+            }
+            taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
+            return { finalized: false, message: "Đã cập nhật tiêu chí đánh giá nhưng chưa đủ điều kiện hoàn tất" };
         }
     }
 
@@ -186,6 +210,16 @@ export class TaskReviewService {
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
+
+        // Allowed statuses for rejection
+        const rejectableStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE];
+        if (!rejectableStatuses.includes(task.status)) {
+            throw new Error(`Công việc đang ở trạng thái ${task.status}, không thể thực hiện từ chối.`);
+        }
+
+        if (!reviewNote || reviewNote.trim() === "") {
+            throw new Error("Vui lòng nhập lý do từ chối/yêu cầu sửa lại");
+        }
 
         task.status = TaskStatus.REJECTED;
         task.reviewNote = reviewNote;
