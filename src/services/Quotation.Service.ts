@@ -71,8 +71,8 @@ export class QuotationService {
     }
 
     // 1. Create Quotation: Copy from Opportunity Service -> Quotation Details
-    async create(data: { opportunityId: string, note?: string }, userInfo?: { id: string, userId?: string }) {
-        const { opportunityId, note } = data;
+    async create(data: { opportunityId: string, note?: string, details?: any[] }, userInfo?: { id: string, userId?: string }) {
+        const { opportunityId, note, details } = data;
 
         const opportunity = await this.opportunityRepository.findOne({
             where: { id: opportunityId },
@@ -101,44 +101,67 @@ export class QuotationService {
 
         let total = 0;
 
-        // 1. Copy standalone services
-        const standaloneServices = opportunity.services?.filter(s => !s.opportunityPackageId) || [];
-        for (const oppService of standaloneServices) {
-            const detail = this.quotationDetailRepository.create({
-                quotation: savedQuotation,
-                service: oppService.service,
-                serviceId: oppService.service?.id,
-                quantity: oppService.quantity,
-                sellingPrice: oppService.sellingPrice,
-                costAtSale: oppService.costAtSale,
-                name: oppService.service?.name || 'Standalone Service',
-                packageQuantity: 1, // Standalone is always 1 for norm calc
-                isPackageService: false
-            });
-            await this.quotationDetailRepository.save(detail);
-            total += Number(detail.sellingPrice) * detail.quantity;
-        }
+        // If details are provided from frontend, use them. Otherwise, copy from Opportunity.
+        if (details && Array.isArray(details)) {
+            const serviceRepository = AppDataSource.getRepository(Services);
+            for (const item of details) {
+                const service = item.serviceId ? await serviceRepository.findOneBy({ id: item.serviceId }) : null;
+                const detail = this.quotationDetailRepository.create({
+                    quotation: savedQuotation,
+                    service,
+                    serviceId: item.serviceId,
+                    quantity: item.quantity || 1,
+                    sellingPrice: item.sellingPrice || 0,
+                    costAtSale: item.costAtSale || 0,
+                    name: item.name || service?.name || 'Service Item',
+                    packageQuantity: item.packageQuantity || 1,
+                    packageName: item.packageName,
+                    servicePackageId: item.servicePackageId,
+                    isPackageService: item.isPackageService || false
+                });
+                await this.quotationDetailRepository.save(detail);
+                total += Number(detail.sellingPrice) * detail.quantity;
+            }
+        } else {
+            // FALLBACK: Copy standalone services from Opportunity
+            const standaloneServices = opportunity.services?.filter(s => !s.opportunityPackageId) || [];
+            for (const oppService of standaloneServices) {
+                const detail = this.quotationDetailRepository.create({
+                    quotation: savedQuotation,
+                    service: oppService.service,
+                    serviceId: oppService.service?.id,
+                    quantity: oppService.quantity,
+                    sellingPrice: oppService.sellingPrice,
+                    costAtSale: oppService.costAtSale,
+                    name: oppService.service?.name || 'Standalone Service',
+                    packageQuantity: 1,
+                    isPackageService: false
+                });
+                await this.quotationDetailRepository.save(detail);
+                total += Number(detail.sellingPrice) * detail.quantity;
+            }
 
-        // 2. Copy packages
-        if (opportunity.packages) {
-            for (const oppPkg of opportunity.packages) {
-                if (oppPkg.services) {
-                    for (const s of oppPkg.services) {
-                        const detail = this.quotationDetailRepository.create({
-                            quotation: savedQuotation,
-                            service: s.service,
-                            serviceId: s.service?.id,
-                            quantity: Number(s.quantity) * Number(oppPkg.quantity || 1),
-                            sellingPrice: s.sellingPrice,
-                            costAtSale: s.costAtSale,
-                            name: s.service?.name || 'Package Item',
-                            packageQuantity: oppPkg.quantity || 1,
-                            packageName: oppPkg.name,
-                            servicePackageId: oppPkg.servicePackageId,
-                            isPackageService: true
-                        });
-                        await this.quotationDetailRepository.save(detail);
-                        total += Number(detail.sellingPrice) * detail.quantity;
+            // FALLBACK: Copy packages from Opportunity
+            if (opportunity.packages) {
+                for (const oppPkg of opportunity.packages) {
+                    if (oppPkg.services) {
+                        for (const s of oppPkg.services) {
+                            const detail = this.quotationDetailRepository.create({
+                                quotation: savedQuotation,
+                                service: s.service,
+                                serviceId: s.service?.id,
+                                quantity: Number(s.quantity) * Number(oppPkg.quantity || 1),
+                                sellingPrice: s.sellingPrice,
+                                costAtSale: s.costAtSale,
+                                name: s.service?.name || 'Package Item',
+                                packageQuantity: oppPkg.quantity || 1,
+                                packageName: oppPkg.name,
+                                servicePackageId: oppPkg.servicePackageId,
+                                isPackageService: true
+                            });
+                            await this.quotationDetailRepository.save(detail);
+                            total += Number(detail.sellingPrice) * detail.quantity;
+                        }
                     }
                 }
             }

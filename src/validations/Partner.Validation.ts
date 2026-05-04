@@ -7,7 +7,7 @@ export const taxIdRegex = /^\d{10}(\s?-\s?\d{3})?$/; // Ma so thue doanh nghiep
 export const idCardRegex = /^(\d{9}|\d{12})$/; // CMND 9 so hoac CCCD 12 so
 
 export const validatePartnerData = (data: any) => {
-    if (data.name && !nameRegex.test(data.name)) throw new Error("Tên không được chứa ký tự đặc biệt");
+    // if (data.name && !nameRegex.test(data.name)) throw new Error("Tên không được chứa ký tự đặc biệt");
     if (data.phone && !phoneRegex.test(data.phone)) throw new Error("Số điện thoại không hợp lệ");
     if (data.email && !emailRegex.test(data.email)) throw new Error("Email không hợp lệ");
 

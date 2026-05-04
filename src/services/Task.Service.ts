@@ -383,11 +383,11 @@ export class TaskService {
 
             // Record violations for rework
             const currentIterationVersion = iterationCount + 1;
-            
+
             // Case 2: Excessive Rework (3rd submission onwards by same person)
             if (currentIterationVersion >= 2) { // currentIterationVersion is count of PREVIOUS iterative submissions
                 if (iterationCount >= 2 && task.lastSubmittedById) {
-                   await this.recordViolation({
+                    await this.recordViolation({
                         taskId: task.id,
                         userId: task.lastSubmittedById,
                         type: ViolationType.EXCESSIVE_REWORK,
@@ -476,7 +476,7 @@ export class TaskService {
         if (data.actualEndDate) task.actualEndDate = data.actualEndDate;
         if (data.result) {
             task.result = data.result;
-            
+
             // Re-fetch to ensure we have lead info
             const taskWithInfo = await this.taskRepository.findOne({
                 where: { id: task.id },
@@ -490,7 +490,7 @@ export class TaskService {
                 task.status = TaskStatus.INTERNAL_COMPLETED;
                 task.actualEndDate = new Date();
                 await this.taskRepository.save(task);
-                
+
                 await this.reviewService.initializeReviews(task.id, true);
                 await this.reviewService.checkAndFinalize(task.id);
             } else {
@@ -972,7 +972,7 @@ export class TaskService {
 
         task.isSupportReturnRequested = true;
         task.status = TaskStatus.SUPPORT_AWAITING_RETURN;
-        if (note) task.supportReturnNote = note; 
+        if (note) task.supportReturnNote = note;
 
         const savedTask = await this.taskRepository.save(task);
 

@@ -63,7 +63,12 @@ export const uploadToCloudinary = (file: Express.Multer.File, folder: string): P
                 folder: folder,
                 public_id: publicIdWithExtension,
                 use_filename: true,
-                unique_filename: true
+                unique_filename: true,
+                transformation: [
+                    { width: 2000, height: 2000, crop: "limit" },
+                    { quality: "auto" },
+                    { fetch_format: "auto" }
+                ]
             },
             (error, result) => {
                 if (error) reject(error);
