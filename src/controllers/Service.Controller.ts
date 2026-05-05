@@ -57,6 +57,16 @@ export class ServiceController {
         }
     }
 
+    bulkDelete = async (req: Request, res: Response) => {
+        try {
+            const { ids } = req.body;
+            const result = await this.serviceService.bulkDelete(ids);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
     addJob = async (req: Request, res: Response) => {
         try {
             const id = req.params.id as string;

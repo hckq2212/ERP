@@ -134,6 +134,20 @@ export class ServiceService {
         return { message: "Xóa dịch vụ thành công" };
     }
 
+    async bulkDelete(ids: string[]) {
+        if (!ids || ids.length === 0) throw new Error("Danh sách ID không được để trống");
+        
+        await this.serviceRepository.delete({ id: In(ids) });
+
+        // Invalidate caches
+        await RedisService.deleteCache('services:all*');
+        for (const id of ids) {
+            await RedisService.deleteCache(`services:detail:${id}*`);
+        }
+
+        return { message: `Xóa thành công ${ids.length} dịch vụ` };
+    }
+
     async addJob(serviceId: string, jobId: string) {
         const sjRepo = AppDataSource.getRepository(ServiceJob);
         const existing = await sjRepo.findOneBy({ serviceId, jobId });
