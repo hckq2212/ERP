@@ -5,7 +5,9 @@ import { VendorJobs } from "./VendorJob.entity";
 
 export enum PartnerType {
     INDIVIDUAL = "INDIVIDUAL",
-    BUSINESS = "BUSINESS"
+    BUSINESS = "BUSINESS",
+    KOL = "KOL",
+    KOC = "KOC"
 }
 
 @Entity()

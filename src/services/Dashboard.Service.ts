@@ -138,7 +138,7 @@ export class DashboardService {
                 { assignee: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }) },
                 { helper: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }) }
             ],
-            relations: ["project", "assignee", "helper"],
+            relations: ["project", "project.contract", "project.contract.customer", "project.contract.services", "assignee", "helper"],
             select: {
                 id: true,
                 name: true,
@@ -149,7 +149,18 @@ export class DashboardService {
                 project: {
                     id: true,
                     name: true,
-                    status: true
+                    status: true,
+                    contract: {
+                        id: true,
+                        customer: {
+                            id: true,
+                            name: true
+                        },
+                        services: {
+                            id: true,
+                            status: true
+                        }
+                    }
                 }
             },
             order: { plannedEndDate: "DESC" }
@@ -178,16 +189,37 @@ export class DashboardService {
         }, {});
 
         // Participating Projects
+        const teamProjects = await this.projectRepo.find({
+            where: [
+                { team: { teamLead: { id: userId } } },
+                { team: { members: { user: { id: userId } } } }
+            ],
+            relations: ["contract", "contract.customer", "contract.services"]
+        });
+
         const projectMap = new Map();
-        myTasks.forEach(t => {
-            if (t.project && !projectMap.has(t.project.id)) {
-                projectMap.set(t.project.id, {
-                    id: t.project.id,
-                    name: t.project.name,
-                    status: t.project.status
+
+        const addProjectToMap = (project: any) => {
+            if (project && !projectMap.has(project.id)) {
+                const services = project.contract?.services || [];
+                const totalServices = services.length;
+                const completedServices = services.filter(s => s.status === ContractServiceStatus.COMPLETED).length;
+                
+                projectMap.set(project.id, {
+                    id: project.id,
+                    name: project.name,
+                    status: project.status,
+                    clientName: project.contract?.customer?.name,
+                    serviceCount: totalServices,
+                    completedServiceCount: completedServices,
+                    progress: totalServices > 0 ? Math.round((completedServices / totalServices) * 100) : 0
                 });
             }
-        });
+        };
+
+        teamProjects.forEach(p => addProjectToMap(p));
+        myTasks.forEach(t => addProjectToMap(t.project));
+
         const participatingProjects = Array.from(projectMap.values()).filter(p =>
             [ProjectStatus.PENDING_CONFIRMATION, ProjectStatus.CONFIRMED, ProjectStatus.IN_PROGRESS].includes(p.status)
         );
@@ -233,6 +265,7 @@ export class DashboardService {
                     id: t.id,
                     name: t.name,
                     projectName: t.project?.name,
+                    clientName: t.project?.contract?.customer?.name,
                     code: t.code,
                     deadline: t.plannedEndDate
                 })),
