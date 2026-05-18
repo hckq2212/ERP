@@ -12,7 +12,7 @@ export const validatePartnerData = (data: any) => {
     if (data.email && !emailRegex.test(data.email)) throw new Error("Email không hợp lệ");
 
     if (data.taxId) {
-        if (data.type === 'INDIVIDUAL') {
+        if (['INDIVIDUAL', 'KOL', 'KOC'].includes(data.type)) {
             if (!idCardRegex.test(data.taxId)) throw new Error("Chứng minh nhân dân/Căn cước công dân không hợp lệ (Phải là 9 hoặc 12 số)");
         } else {
             // Default to BUSINESS or if type is missing but implied business

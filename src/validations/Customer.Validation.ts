@@ -14,7 +14,7 @@ export const validateCustomerData = (data: any) => {
 
 export const validateLeadData = (data: any) => {
     // if (data.leadName && !nameRegex.test(data.leadName)) throw new Error("Tên Lead không được chứa ký tự đặc biệt");
-    if (data.leadEmail && !emailRegex.test(data.leadEmail)) throw new Error("Email Lead không hợp lệ");
-    if (data.leadTaxId && !taxIdRegex.test(data.leadTaxId)) throw new Error("Mã số thuế Lead không hợp lệ (Phải là 10 số hoặc 13 số định dạng XXXXXXXXXX-XXX)");
-    if (data.leadPhone && !phoneRegex.test(data.leadPhone)) throw new Error("Số điện thoại Lead không hợp lệ");
+    if (data.leadEmail && !emailRegex.test(data.leadEmail)) throw new Error("Email không hợp lệ");
+    if (data.leadTaxId && !taxIdRegex.test(data.leadTaxId)) throw new Error("Mã số thuế  không hợp lệ (Phải là 10 số hoặc 13 số định dạng XXXXXXXXXX-XXX)");
+    if (data.leadPhone && !phoneRegex.test(data.leadPhone)) throw new Error("Số điện thoại không hợp lệ");
 };
