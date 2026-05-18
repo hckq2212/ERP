@@ -421,7 +421,7 @@ export class ContractService {
         // Notify management
         await this.notifyManagement({
             title: "Hợp đồng đã duyệt",
-            content: `Hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được duyệt. Dự án tương ứng đã được khởi tạo nháp.`,
+            content: `Hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được duyệt. Dự án đã được khởi tạo.`,
             contractId: savedContract.id
         });
 
