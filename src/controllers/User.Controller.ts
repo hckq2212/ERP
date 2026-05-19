@@ -55,6 +55,16 @@ export class UserController {
         }
     }
 
+    updateLaborContracts = async (req: Request, res: Response) => {
+        try {
+            const { laborContract } = req.body;
+            const result = await this.userService.updateLaborContracts(req.params.id as string, laborContract);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
     delete = async (req: Request, res: Response) => {
         try {
             const result = await this.userService.delete(req.params.id as string);

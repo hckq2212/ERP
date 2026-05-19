@@ -129,6 +129,18 @@ export class UserService {
         return savedUser;
     }
 
+    async updateLaborContracts(id: string, laborContract: any[]) {
+        const user = await this.getOne(id);
+        user.laborContract = laborContract || [];
+        const savedUser = await this.userRepository.save(user);
+
+        // Xóa cache danh sách và cache chi tiết của user vừa update
+        await RedisService.deleteCache('users:all');
+        await RedisService.deleteCache(`users:detail:${id}`);
+
+        return savedUser;
+    }
+
     async delete(id: string) {
         const user = await this.getOne(id);
 
