@@ -41,10 +41,18 @@ export class ChatRoomService {
                 relations: ["sender"]
             });
 
+            const myParticipant = participants.find(p => p.userId === userId);
+            const lastReadAt = myParticipant?.lastReadAt;
+
+            const isUnread = latestMessage
+                ? latestMessage.senderId !== userId && (!lastReadAt || new Date(latestMessage.createdAt).getTime() > new Date(lastReadAt).getTime())
+                : false;
+
             return {
                 ...room,
                 participants,
-                latestMessage
+                latestMessage,
+                unread: isUnread
             };
         }));
 
@@ -108,12 +116,14 @@ export class ChatRoomService {
             const p1 = new ChatParticipants();
             p1.roomId = newRoom.id;
             p1.userId = userId1;
+            p1.lastReadAt = new Date();
             await transactionalEntityManager.save(p1);
 
             // Add Participant 2
             const p2 = new ChatParticipants();
             p2.roomId = newRoom.id;
             p2.userId = userId2;
+            p2.lastReadAt = null;
             await transactionalEntityManager.save(p2);
 
             const participants = await participantRepo.find({
@@ -139,6 +149,7 @@ export class ChatRoomService {
             const pCreator = new ChatParticipants();
             pCreator.roomId = newRoom.id;
             pCreator.userId = creatorId;
+            pCreator.lastReadAt = new Date();
             await transactionalEntityManager.save(pCreator);
 
             // Add other participants
@@ -147,6 +158,7 @@ export class ChatRoomService {
                     const p = new ChatParticipants();
                     p.roomId = newRoom.id;
                     p.userId = uId;
+                    p.lastReadAt = null;
                     await transactionalEntityManager.save(p);
                 }
             }
@@ -197,5 +209,17 @@ export class ChatRoomService {
             take: limit,
             skip: offset
         });
+    }
+
+    static async markRoomAsRead(roomId: string, userId: string) {
+        const participantRepo = AppDataSource.getRepository(ChatParticipants);
+        const participant = await participantRepo.findOne({
+            where: { roomId, userId }
+        });
+
+        if (participant) {
+            participant.lastReadAt = new Date();
+            await participantRepo.save(participant);
+        }
     }
 }

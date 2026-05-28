@@ -18,4 +18,7 @@ export class ChatParticipants extends BaseEntity {
     @ManyToOne(() => Users, { onDelete: "CASCADE" })
     @JoinColumn({ name: "userId" })
     user: Users;
+
+    @Column({ type: "timestamp", nullable: true })
+    lastReadAt: Date | null;
 }

@@ -148,6 +148,11 @@ export function initSocket(httpServer: HttpServer) {
                     return;
                 }
 
+                // Get all participants of this room to send messages directly to their sockets
+                const allParticipants = await participantRepo.find({
+                    where: { roomId }
+                });
+
                 // 2. Save message to database
                 const messageRepo = AppDataSource.getRepository(ChatMessages);
                 const newMessage = messageRepo.create({
@@ -166,8 +171,13 @@ export function initSocket(httpServer: HttpServer) {
                 });
 
                 if (populatedMessage) {
-                    // 4. Broadcast message to room
-                    io.to(roomId).emit("receive_message", populatedMessage);
+                    // 4. Send message directly to all online participants of the room
+                    allParticipants.forEach(participant => {
+                        const socketId = onlineUsers.get(participant.userId);
+                        if (socketId) {
+                            io.to(socketId).emit("receive_message", populatedMessage);
+                        }
+                    });
                 }
             } catch (error) {
                 console.error("Error in send_message socket event:", error);

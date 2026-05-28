@@ -90,4 +90,22 @@ export class ChatRoomController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    markRoomAsRead = async (req: AuthRequest, res: Response) => {
+        try {
+            const userId = req.user?.userId;
+            const roomId = req.params.roomId as string;
+            if (!userId) {
+                return res.status(401).json({ message: "Unauthorized" });
+            }
+            if (!roomId) {
+                return res.status(400).json({ message: "Mã phòng không hợp lệ" });
+            }
+
+            await ChatRoomService.markRoomAsRead(roomId, userId);
+            res.status(200).json({ success: true });
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 }
