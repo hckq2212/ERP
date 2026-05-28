@@ -35,6 +35,9 @@ import { Violations } from "./entity/Violation.entity"
 
 import { VendorJobs } from "./entity/VendorJob.entity"
 import { ServiceJob } from "./entity/ServiceJob.entity"
+import { ChatRooms } from "./entity/ChatRoom.entity"
+import { ChatParticipants } from "./entity/ChatParticipant.entity"
+import { ChatMessages } from "./entity/ChatMessage.entity"
 
 import * as dotenv from "dotenv"
 dotenv.config()
@@ -90,7 +93,10 @@ export const AppDataSource = new DataSource({
         TaskIterations,
         VinicoinTransactions,
         ServiceJob,
-        Violations
+        Violations,
+        ChatRooms,
+        ChatParticipants,
+        ChatMessages
     ],
 
     migrations: [],

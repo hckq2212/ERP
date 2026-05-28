@@ -4,6 +4,8 @@ import "./entity/Enums";
 import { AppDataSource } from "./data-source"
 import express from "express"
 import cors from "cors"
+import { createServer } from "http"
+import { initSocket } from "./socket"
 import cookieParser from "cookie-parser"
 import passport from "./config/passport"
 
@@ -32,6 +34,7 @@ import acceptanceRoute from "./routes/Acceptance.Route"
 import cloudinaryRoute from "./routes/Cloudinary.Route"
 import servicePackageRoute from "./routes/ServicePackage.Route"
 import chatRoute from "./routes/Chat.Route"
+import chatRoomRoute from "./routes/ChatRoom.Route"
 import accountRoute from "./routes/Account.Route"
 import profileRoute from "./routes/Profile.Route"
 import { loggingMiddleware } from "./middlewares/Logging.Middleware";
@@ -96,6 +99,7 @@ app.use("/api/acceptance", acceptanceRoute)
 app.use("/api/cloudinary", cloudinaryRoute)
 app.use("/api/service-packages", servicePackageRoute)
 app.use("/api/chat", chatRoute)
+app.use("/api/chat-rooms", chatRoomRoute)
 app.use("/api/accounts", accountRoute)
 app.use("/api/me", profileRoute)
 
@@ -107,7 +111,10 @@ AppDataSource.initialize().then(async () => {
     // Initialize Event Subscribers
     initSubscribers();
 
-    app.listen(port, () => {
+    const httpServer = createServer(app);
+    initSocket(httpServer);
+
+    httpServer.listen(port, () => {
         console.log(`Server is running on ${port}`)
         CronHelper.init();
     })

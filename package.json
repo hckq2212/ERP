@@ -28,6 +28,7 @@
       "passport-jwt": "^4.0.1",
       "pg": "^8.17.2",
       "redis": "^5.11.0",
+      "socket.io": "^4.8.3",
       "ts-node": "^10.9.2",
       "typeorm": "^0.3.28",
       "typescript": "^5.9.3",
