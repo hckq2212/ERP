@@ -18,6 +18,9 @@ import { RedisService } from "./Redis.Service";
 import { contractEmitter, CONTRACT_EVENTS } from "../events/ContractEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
 import { SecurityService } from "./Security.Service";
+import { Services } from "../entity/Service.entity";
+import { ServicePackages } from "../entity/ServicePackage.entity";
+import { CustomerService } from "./Customer.Service";
 
 export class ContractService {
     private contractRepository = AppDataSource.getRepository(Contracts);
@@ -27,6 +30,9 @@ export class ContractService {
     private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
     private contractServiceRepository = AppDataSource.getRepository(ContractServices);
     private userRepository = AppDataSource.getRepository(Users);
+    private serviceRepository = AppDataSource.getRepository(Services);
+    private packageRepository = AppDataSource.getRepository(ServicePackages);
+    private customerService = new CustomerService();
     private projectService = new ProjectService();
     private debtService = new DebtService();
     private notificationService = new NotificationService();
@@ -166,7 +172,7 @@ export class ContractService {
         const contract = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             return await this.contractRepository.findOne({
                 where: rbacWhere,
-                relations: ["customer", "opportunity", "milestones", "services", "debts", "addendums"]
+                relations: ["customer", "opportunity", "milestones", "services", "services.service", "debts", "addendums"]
             });
         });
         if (!contract) {
@@ -191,7 +197,7 @@ export class ContractService {
         return `${prefix}-${sequence}`;
     }
 
-    async create(data: any, userInfo?: { id: string, userId: string }) {
+    async create(data: any, userInfo?: { id: string, role: string, userId?: string }) {
         const { opportunityId, ...contractData } = data;
 
         // Auto-generate code
@@ -273,8 +279,11 @@ export class ContractService {
             } else {
                 throw new Error("Cơ hội chưa có thông tin khách hàng hoặc Lead");
             }
+        } else if (data.customerData) {
+            // Create customer on the fly
+            customer = await this.customerService.create(data.customerData, userInfo);
         } else if (data.customerId) {
-            // Direct contract without opportunity (if allowed)
+            // Direct contract without opportunity
             customer = await this.customerRepository.findOneBy({ id: data.customerId });
             if (!customer) throw new Error("Không tìm thấy khách hàng");
         } else {
@@ -302,6 +311,49 @@ export class ContractService {
             const costSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.costAtSale) * (os.quantity || 1)), 0);
             if (costSum > 0) {
                 finalCost = costSum;
+            }
+        } else {
+            // Direct contract: calculate based on services and packages arrays
+            let computedSellingPrice = 0;
+            let computedCost = 0;
+
+            if (data.services && Array.isArray(data.services)) {
+                for (const item of data.services) {
+                    const serviceId = item.serviceId || item.id;
+                    const service = await this.serviceRepository.findOneBy({ id: serviceId });
+                    if (service) {
+                        const qty = item.quantity || 1;
+                        const sellPrice = item.sellingPrice !== undefined ? Number(item.sellingPrice) : Number(service.costPrice || 0);
+                        computedSellingPrice += sellPrice * qty;
+                        computedCost += Number(service.costPrice || 0) * qty;
+                    }
+                }
+            }
+
+            if (data.packages && Array.isArray(data.packages)) {
+                for (const pkgItem of data.packages) {
+                    const pkg = await this.packageRepository.findOne({
+                        where: { id: pkgItem.servicePackageId },
+                        relations: ["items", "items.service"]
+                    });
+                    if (pkg) {
+                        const pkgQty = pkgItem.quantity || 1;
+                        for (const item of pkg.items) {
+                            if (item.service) {
+                                const qty = (item.defaultQuantity || 1) * pkgQty;
+                                computedSellingPrice += Number(item.service.costPrice || 0) * qty;
+                                computedCost += Number(item.service.costPrice || 0) * qty;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (finalSellingPrice === undefined || finalSellingPrice === null || finalSellingPrice === 0) {
+                finalSellingPrice = computedSellingPrice;
+            }
+            if (finalCost === undefined || finalCost === null || finalCost === 0) {
+                finalCost = computedCost;
             }
         }
 
@@ -345,6 +397,62 @@ export class ContractService {
                         isPackageService: os.isPackageService
                     });
                     await this.contractServiceRepository.save(cs);
+                }
+            }
+        } else {
+            // Direct contract services mapping
+            if (data.services && Array.isArray(data.services)) {
+                for (const item of data.services) {
+                    const serviceId = item.serviceId || item.id;
+                    const service = await this.serviceRepository.findOneBy({ id: serviceId });
+                    if (service) {
+                        const qty = item.quantity || 1;
+                        const sellPrice = item.sellingPrice !== undefined ? Number(item.sellingPrice) : Number(service.costPrice || 0);
+                        for (let i = 0; i < qty; i++) {
+                            const cs = this.contractServiceRepository.create({
+                                contract: savedContract,
+                                service: service,
+                                serviceId: service.id,
+                                sellingPrice: sellPrice,
+                                name: service.name,
+                                isPackageService: false
+                            });
+                            await this.contractServiceRepository.save(cs);
+                        }
+                    }
+                }
+            }
+
+            if (data.packages && Array.isArray(data.packages)) {
+                for (const pkgItem of data.packages) {
+                    const pkg = await this.packageRepository.findOne({
+                        where: { id: pkgItem.servicePackageId },
+                        relations: ["items", "items.service"]
+                    });
+                    if (pkg) {
+                        const pkgQty = pkgItem.quantity || 1;
+                        for (const item of pkg.items) {
+                            if (item.service) {
+                                const qty = (item.defaultQuantity || 1) * pkgQty;
+                                    const customPrices = pkgItem.customPrices || {};
+                                    const customPrice = customPrices[item.service.id];
+                                    const sellPrice = customPrice !== undefined ? Number(customPrice) : Number(item.service.costPrice || 0);
+
+                                    for (let i = 0; i < qty; i++) {
+                                        const cs = this.contractServiceRepository.create({
+                                            contract: savedContract,
+                                            service: item.service,
+                                            serviceId: item.service.id,
+                                            sellingPrice: sellPrice,
+                                            name: item.service.name,
+                                            packageName: pkg.name,
+                                            isPackageService: true
+                                        });
+                                        await this.contractServiceRepository.save(cs);
+                                    }
+                            }
+                        }
+                    }
                 }
             }
         }

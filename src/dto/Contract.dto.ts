@@ -38,6 +38,17 @@ export class CreateContractDTO {
     @IsString()
     @IsOptional()
     referralPartnerId?: string;
+
+    @IsOptional()
+    customerData?: any;
+
+    @IsOptional()
+    @IsArray()
+    services?: any[];
+
+    @IsOptional()
+    @IsArray()
+    packages?: any[];
 }
 
 export class UpdateContractDTO {
