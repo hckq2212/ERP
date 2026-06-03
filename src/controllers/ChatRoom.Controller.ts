@@ -72,7 +72,7 @@ export class ChatRoomController {
         try {
             const roomId = req.params.roomId as string;
             const limit = req.query.limit ? parseInt(String(req.query.limit)) : 50;
-            const offset = req.query.offset ? parseInt(String(req.query.offset)) : 0;
+            const cursor = req.query.cursor as string | undefined;
 
             if (!roomId) {
                 return res.status(400).json({ message: "Mã phòng không hợp lệ" });
@@ -84,7 +84,7 @@ export class ChatRoomController {
                 return res.status(401).json({ message: "Unauthorized" });
             }
 
-            const messages = await ChatRoomService.getRoomMessages(roomId, limit, offset);
+            const messages = await ChatRoomService.getRoomMessages(roomId, limit, cursor);
             res.status(200).json(messages);
         } catch (error: any) {
             res.status(500).json({ message: error.message });

@@ -3,7 +3,7 @@ import { ChatRooms } from "../entity/ChatRoom.entity";
 import { ChatParticipants } from "../entity/ChatParticipant.entity";
 import { ChatMessages } from "../entity/ChatMessage.entity";
 import { Users } from "../entity/User.entity";
-import { In } from "typeorm";
+import { In, LessThan } from "typeorm";
 
 export class ChatRoomService {
     static async getUserRooms(userId: string) {
@@ -200,15 +200,19 @@ export class ChatRoomService {
         });
     }
 
-    static async getRoomMessages(roomId: string, limit = 50, offset = 0) {
+    static async getRoomMessages(roomId: string, limit = 50, cursor?: string) {
         const messageRepo = AppDataSource.getRepository(ChatMessages);
-        return await messageRepo.find({
-            where: { roomId },
+        const where: any = { roomId };
+        if (cursor) {
+            where.id = LessThan(cursor);
+        }
+        const messages = await messageRepo.find({
+            where,
             relations: ["sender"],
-            order: { createdAt: "ASC" }, // Oldest to newest
-            take: limit,
-            skip: offset
+            order: { id: "DESC" }, // Newest first
+            take: limit
         });
+        return messages.reverse();
     }
 
     static async markRoomAsRead(roomId: string, userId: string) {
