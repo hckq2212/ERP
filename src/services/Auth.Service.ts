@@ -64,7 +64,7 @@ export class AuthService {
 
         // Generate tokens
         const { rememberMe } = data;
-        const accessTokenExp = rememberMe ? "30d" : "2h";
+        const accessTokenExp = rememberMe ? "30d" : "4h";
         const refreshTokenExp = rememberMe ? "30d" : "1d";
 
         const accessToken = encrypt.generateAccessToken({ id: account.id, role: account.role }, accessTokenExp);

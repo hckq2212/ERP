@@ -13,7 +13,7 @@ export class encrypt {
         return bcrypt.compareSync(password, hashPassword);
     }
 
-    static generateAccessToken(payload: { id: string; role: string }, expiresIn: SignOptions["expiresIn"] = "2h") {
+    static generateAccessToken(payload: { id: string; role: string }, expiresIn: SignOptions["expiresIn"] = "4h") {
         return jwt.sign({ id: payload.id, role: payload.role }, JWT_SECRET, { expiresIn });
     }
     static generateRefreshToken(payload: { id: string; role: string }, expiresIn: SignOptions["expiresIn"] = "1d") {
