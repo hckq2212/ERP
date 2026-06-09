@@ -470,6 +470,7 @@ export class TaskService {
         }
 
         if (data.status) task.status = data.status;
+        if (data.description !== undefined) task.description = data.description;
         if (data.plannedStartDate) task.plannedStartDate = data.plannedStartDate;
         if (data.plannedEndDate) task.plannedEndDate = data.plannedEndDate;
         if (data.actualStartDate) task.actualStartDate = data.actualStartDate;
