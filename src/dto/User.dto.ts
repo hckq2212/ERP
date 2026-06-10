@@ -14,9 +14,9 @@ export class CreateUserDTO {
     @IsNotEmpty({ message: "Họ tên không được để trống" })
     fullName: string;
 
-    @IsEmail({}, { message: "Email không hợp lệ" })
-    @IsOptional()
-    email?: string;
+    // @IsEmail({}, { message: "Email không hợp lệ" })
+    // @IsOptional()
+    // email?: string;
 
     @IsString()
     @IsOptional()
