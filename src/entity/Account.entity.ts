@@ -22,7 +22,7 @@ export class Accounts extends BaseEntity {
     @Column()
     password: string;
 
-    @Column({ unique: true })
+    @Column({ unique: true, nullable: true })
     email: string;
 
     @Column({
