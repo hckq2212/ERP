@@ -137,18 +137,8 @@ export class ProjectService {
                 "team",
                 "team.teamLead",
                 "team.members",
-                "team.members.user",
-                "tasks",
-                "tasks.assignee",
-                "tasks.job",
-                "tasks.quotation",
-                "contract.services",
-                "contract.services.service",
-                "contract.services.service",
-                "contract.services.tasks",
-                "contract.services.tasks.job",
+                "team.members.user"
             ],
-
             select: {
                 id: true,
                 name: true,
@@ -161,29 +151,7 @@ export class ProjectService {
                     contractCode: true,
                     attachments: true,
                     status: true,
-                    description: true,
-                    services: {
-                        id: true,
-                        sellingPrice: true,
-                        status: true,
-                        results: true,
-                        name: true,
-                        packageName: true,
-                        isPackageService: true,
-                        service: {
-                            id: true,
-                            name: true
-                        },
-                        tasks: {
-                            id: true,
-                            name: true,
-                            status: true,
-                            result: true,
-                            code: true,
-                            isOutput: true
-                        }
-
-                    }
+                    description: true
                 },
                 team: {
                     id: true,
@@ -203,6 +171,41 @@ export class ProjectService {
         });
 
         if (!project) throw new Error("Không tìm thấy dự án");
+
+        // Tải các task riêng biệt để tránh tình trạng Cartesian product làm chậm câu truy vấn
+        project.tasks = await this.taskRepository.find({
+            where: { project: { id: project.id } },
+            relations: ["assignee", "job", "quotation"]
+        });
+
+        // Tải danh sách dịch vụ của hợp đồng riêng biệt
+        if (project.contract) {
+            project.contract.services = await this.contractServiceRepository.find({
+                where: { contract: { id: project.contract.id } },
+                relations: ["service", "tasks", "tasks.job"],
+                select: {
+                    id: true,
+                    sellingPrice: true,
+                    status: true,
+                    results: true,
+                    name: true,
+                    packageName: true,
+                    isPackageService: true,
+                    service: {
+                        id: true,
+                        name: true
+                    },
+                    tasks: {
+                        id: true,
+                        name: true,
+                        status: true,
+                        result: true,
+                        code: true,
+                        isOutput: true
+                    }
+                }
+            });
+        }
 
         // Filter out system attachments that handled by separate fields
         if (project.contract && project.contract.attachments) {

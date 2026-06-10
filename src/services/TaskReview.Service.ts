@@ -128,10 +128,10 @@ export class TaskReviewService {
         if (!task) throw new Error("Không tìm thấy công việc");
 
         // Allowed statuses for review
-        const reviewableStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE];
-        if (!reviewableStatuses.includes(task.status)) {
-            throw new Error(`Công việc đang ở trạng thái ${task.status}, không thể thực hiện phê duyệt.`);
-        }
+        // const reviewableStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE];
+        // if (!reviewableStatuses.includes(task.status)) {
+        //     throw new Error(`Công việc đang ở trạng thái ${task.status}, không thể thực hiện phê duyệt.`);
+        // }
 
         if (allPassed) {
             const isOutputJob = task.isOutput;
@@ -180,7 +180,7 @@ export class TaskReviewService {
 
             taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, task);
             taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
-            
+
             return { finalized: true, message: "Đã hoàn tất duyệt nội bộ công việc" };
         } else {
             // Updated criteria but not finalized
