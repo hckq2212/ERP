@@ -330,7 +330,7 @@ export class TaskService {
                 if (recipient) {
                     await this.notificationService.createNotification({
                         title: "Kết quả công việc đã nộp",
-                        content: `Nhân viên đã nộp kết quả cho: ${task.code} của dự án ${task.project?.name}. Vui lòng đánh giá.`,
+                        content: `${task.assignee?.fullName || 'Nhân viên'} đã nộp 1 task ${task.job?.name || ''}`,
                         type: "TASK_REVIEW",
                         recipient: recipient,
                         relatedEntityId: task.id.toString(),
