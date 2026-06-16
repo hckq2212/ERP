@@ -21,6 +21,7 @@
       "date-fns": "^4.1.0",
       "dotenv": "^17.2.3",
       "express": "^5.2.1",
+      "googleapis": "^173.0.0",
       "jsonwebtoken": "^9.0.3",
       "multer": "^2.0.2",
       "node-cron": "^4.2.1",
@@ -43,6 +44,7 @@
    "devDependencies": {
       "@types/cookie-parser": "^1.4.10",
       "@types/passport": "^1.0.17",
-      "@types/passport-jwt": "^4.0.1"
+      "@types/passport-jwt": "^4.0.1",
+      "nodemon": "^3.1.14"
    }
 }

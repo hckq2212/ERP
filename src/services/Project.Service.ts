@@ -1,6 +1,6 @@
 import { AppDataSource } from "../data-source";
-import { Like, ILike } from "typeorm";
-import { Projects, ProjectStatus } from "../entity/Project.entity";
+import { Like, ILike, In } from "typeorm";
+import { GoogleSheetStatus, Projects, ProjectStatus } from "../entity/Project.entity";
 import { Contracts, ContractStatus } from "../entity/Contract.entity";
 import { ProjectTeams } from "../entity/ProjectTeam.entity";
 import { Users } from "../entity/User.entity";
@@ -16,6 +16,7 @@ import { SecurityService } from "./Security.Service";
 import { UserRole } from "../entity/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
+import { GoogleSheetService } from "./GoogleSheet.Service";
 
 export class ProjectService {
     private projectRepository = AppDataSource.getRepository(Projects);
@@ -25,6 +26,7 @@ export class ProjectService {
     private taskRepository = AppDataSource.getRepository(Tasks);
     private userRepository = AppDataSource.getRepository(Users);
     private notificationService = new NotificationService();
+    private googleSheetService = new GoogleSheetService();
 
 
 
@@ -145,6 +147,11 @@ export class ProjectService {
                 status: true,
                 plannedStartDate: true,
                 plannedEndDate: true,
+                googleSheetId: true,
+                googleSheetUrl: true,
+                googleSheetStatus: true,
+                googleSheetError: true,
+                googleSheetCreatedAt: true,
                 contract: {
                     id: true,
                     name: true,
@@ -273,11 +280,13 @@ export class ProjectService {
         // Check if project already exists for this contract
         let project = await this.projectRepository.findOne({ where: { contract: { id: data.contractId } } });
 
+        let isNewProject = false;
         if (project) {
             // If project already exists (e.g. created automatically), just assign the team
             project.team = team;
             project.name = data.name || project.name;
         } else {
+            isNewProject = true;
             project = this.projectRepository.create({
                 name: data.name || `Dự án cho HĐ ${contract.contractCode}`,
                 contract: contract,
@@ -287,7 +296,12 @@ export class ProjectService {
             });
         }
 
-        const savedProject = await this.projectRepository.save(project);
+        let savedProject = await this.projectRepository.save(project);
+
+        if (isNewProject) {
+            await this.tryCreateGoogleSheet(savedProject.id);
+            savedProject = await this.projectRepository.findOneBy({ id: savedProject.id }) || savedProject;
+        }
 
         // Send Notification to Team Lead
         if (team.teamLead) {
@@ -323,7 +337,9 @@ export class ProjectService {
             relations: ["contract"]
         });
 
+        let isNewProject = false;
         if (!project) {
+            isNewProject = true;
             project = this.projectRepository.create({
                 name: `${contract.name}`,
                 contract: contract,
@@ -332,6 +348,14 @@ export class ProjectService {
             });
 
             project = await this.projectRepository.save(project);
+        }
+
+        if (isNewProject) {
+            await this.tryCreateGoogleSheet(project.id);
+            project = await this.projectRepository.findOne({
+                where: { id: project.id },
+                relations: ["contract"]
+            }) || project;
         }
 
         // 2. Fetch Contract Services with their Jobs
@@ -393,6 +417,77 @@ export class ProjectService {
 
         projectEmitter.emit(PROJECT_EVENTS.CREATED, project);
         return project;
+    }
+
+    async createGoogleSheet(projectId: string) {
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["contract", "contract.customer"]
+        });
+
+        if (!project) {
+            throw new Error("Không tìm thấy dự án");
+        }
+
+        if (project.googleSheetId && project.googleSheetStatus === GoogleSheetStatus.CREATED) {
+            return project;
+        }
+
+        const lockResult = await this.projectRepository.update(
+            {
+                id: projectId,
+                googleSheetStatus: In([
+                    GoogleSheetStatus.NOT_CREATED,
+                    GoogleSheetStatus.FAILED
+                ])
+            },
+            {
+                googleSheetStatus: GoogleSheetStatus.CREATING,
+                googleSheetError: null
+            }
+        );
+
+        if (!lockResult.affected) {
+            throw new Error("Google Sheet đang được tạo hoặc đã được tạo");
+        }
+
+        try {
+            const sheetName = project.contract?.contractCode
+                ? `${project.contract.contractCode} - ${project.name}`
+                : project.name;
+            const result = await this.googleSheetService.createFromTemplate({
+                name: sheetName,
+                customerName: project.contract?.customer?.name
+            });
+
+            await this.projectRepository.update(projectId, {
+                googleSheetId: result.spreadsheetId,
+                googleSheetUrl: result.spreadsheetUrl,
+                googleSheetStatus: GoogleSheetStatus.CREATED,
+                googleSheetError: null,
+                googleSheetCreatedAt: new Date()
+            });
+        } catch (error: any) {
+            const message = error?.message || "Không thể tạo Google Sheet";
+            await this.projectRepository.update(projectId, {
+                googleSheetStatus: GoogleSheetStatus.FAILED,
+                googleSheetError: message
+            });
+            throw new Error(message);
+        }
+
+        return await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["contract", "contract.customer"]
+        });
+    }
+
+    private async tryCreateGoogleSheet(projectId: string): Promise<void> {
+        try {
+            await this.createGoogleSheet(projectId);
+        } catch (error: any) {
+            console.error(`[ProjectService] Google Sheet creation failed for project ${projectId}:`, error.message);
+        }
     }
 
 

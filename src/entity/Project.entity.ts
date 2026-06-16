@@ -13,6 +13,13 @@ export enum ProjectStatus {
     CANCELLED = "CANCELLED"
 }
 
+export enum GoogleSheetStatus {
+    NOT_CREATED = "NOT_CREATED",
+    CREATING = "CREATING",
+    CREATED = "CREATED",
+    FAILED = "FAILED"
+}
+
 @Entity()
 export class Projects extends BaseEntity {
 
@@ -50,5 +57,24 @@ export class Projects extends BaseEntity {
 
     @ManyToOne(() => Users)
     createdBy: Users;
+
+    @Column({ nullable: true })
+    googleSheetId: string;
+
+    @Column({ nullable: true })
+    googleSheetUrl: string;
+
+    @Column({
+        type: "enum",
+        enum: GoogleSheetStatus,
+        default: GoogleSheetStatus.NOT_CREATED
+    })
+    googleSheetStatus: GoogleSheetStatus;
+
+    @Column({ type: "text", nullable: true })
+    googleSheetError: string;
+
+    @Column({ type: "timestamp", nullable: true })
+    googleSheetCreatedAt: Date;
 }
 

@@ -562,6 +562,16 @@ export class TaskService {
                         link: `/tasks/${task.id}`
                     }, transactionalEntityManager);
                 } else {
+                    // Clear support fields when reassigning the main performer
+                    task.isSupportRequested = false;
+                    task.isSupportAccepted = false;
+                    task.supportTeamId = null as any;
+                    task.supportLeadId = null as any;
+                    task.helperId = null as any;
+                    task.isSupportReturnRequested = false;
+                    task.supportRequestNote = null as any;
+                    task.supportReturnNote = null as any;
+
                     if (data.performerType === PerformerType.VENDOR) {
                         const vendor = await transactionalEntityManager.findOneBy(Vendors, { id: data.assigneeId });
                         if (!vendor) throw new Error("Vendor không tồn tại");
@@ -747,6 +757,16 @@ export class TaskService {
             newPerformerName = user.fullName;
             newRecipient = user;
         } else {
+            // Clear support fields when reassigning the main performer
+            task.isSupportRequested = false;
+            task.isSupportAccepted = false;
+            task.supportTeamId = null as any;
+            task.supportLeadId = null as any;
+            task.helperId = null as any;
+            task.isSupportReturnRequested = false;
+            task.supportRequestNote = null as any;
+            task.supportReturnNote = null as any;
+
             if (data.performerType === PerformerType.VENDOR) {
                 const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
                 if (!vendor) throw new Error("Vendor không tồn tại");

@@ -65,6 +65,14 @@ export class ProjectController {
         }
     }
 
+    retryGoogleSheet = async (req: AuthRequest, res: Response) => {
+        try {
+            const project = await this.projectService.createGoogleSheet(req.params.id as string);
+            res.status(200).json(project);
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 
     // start = async (req: Request, res: Response) => {
     //     try {
