@@ -256,6 +256,8 @@ export class TaskService {
             project: project,
             job: job,
             status: data.isExtra ? TaskStatus.AWAITING_PRICING : TaskStatus.PENDING,
+            performerType: data.performerType || job.defaultPerformerType,
+            description: data.description,
             plannedStartDate: data.plannedStartDate,
             plannedEndDate: data.plannedEndDate,
             isExtra: data.isExtra || false,

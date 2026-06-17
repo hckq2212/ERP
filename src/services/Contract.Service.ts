@@ -47,6 +47,12 @@ export class ContractService {
         });
     }
 
+    private async getUserFullName(userId?: string): Promise<string> {
+        if (!userId) return "Hệ thống";
+        const user = await this.userRepository.findOne({ where: { id: userId } });
+        return user?.fullName || "Hệ thống";
+    }
+
     private async notifyManagement(data: { title: string, content: string, contractId: string }) {
         const managers = await this.getManagementUsers();
         for (const manager of managers) {
@@ -434,22 +440,22 @@ export class ContractService {
                         for (const item of pkg.items) {
                             if (item.service) {
                                 const qty = (item.defaultQuantity || 1) * pkgQty;
-                                    const customPrices = pkgItem.customPrices || {};
-                                    const customPrice = customPrices[item.service.id];
-                                    const sellPrice = customPrice !== undefined ? Number(customPrice) : Number(item.service.costPrice || 0);
+                                const customPrices = pkgItem.customPrices || {};
+                                const customPrice = customPrices[item.service.id];
+                                const sellPrice = customPrice !== undefined ? Number(customPrice) : Number(item.service.costPrice || 0);
 
-                                    for (let i = 0; i < qty; i++) {
-                                        const cs = this.contractServiceRepository.create({
-                                            contract: savedContract,
-                                            service: item.service,
-                                            serviceId: item.service.id,
-                                            sellingPrice: sellPrice,
-                                            name: item.service.name,
-                                            packageName: pkg.name,
-                                            isPackageService: true
-                                        });
-                                        await this.contractServiceRepository.save(cs);
-                                    }
+                                for (let i = 0; i < qty; i++) {
+                                    const cs = this.contractServiceRepository.create({
+                                        contract: savedContract,
+                                        service: item.service,
+                                        serviceId: item.service.id,
+                                        sellingPrice: sellPrice,
+                                        name: item.service.name,
+                                        packageName: pkg.name,
+                                        isPackageService: true
+                                    });
+                                    await this.contractServiceRepository.save(cs);
+                                }
                             }
                         }
                     }
@@ -478,10 +484,12 @@ export class ContractService {
         // Invalidate list cache
         await RedisService.deleteCache('contracts:all*');
 
+        const creatorName = await this.getUserFullName(userInfo?.userId);
+
         // Notify management
         await this.notifyManagement({
             title: "Hợp đồng mới",
-            content: `Hợp đồng nháp ${savedContract.contractCode}-${savedContract.name} đã được tạo bởi ${userInfo?.userId || 'Hệ thống'}`,
+            content: `Hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được tạo bởi ${creatorName}`,
             contractId: savedContract.id
         });
 
@@ -498,10 +506,12 @@ export class ContractService {
 
         const savedResult = await this.contractRepository.save(contract);
 
+        const uploaderName = await this.getUserFullName(userInfo?.userId);
+
         // Notify management
         await this.notifyManagement({
             title: "Hợp đồng được upload",
-            content: `Hợp đồng ${savedResult.contractCode}-${savedResult.name} đã được upload bởi ${userInfo?.userId || 'Hệ thống'}.`,
+            content: `Hợp đồng ${savedResult.contractCode}-${savedResult.name} đã được upload bởi ${uploaderName}.`,
             contractId: savedResult.id
         });
 
@@ -559,10 +569,12 @@ export class ContractService {
 
         const savedContract = await this.contractRepository.save(contract);
 
+        const uploaderName = await this.getUserFullName(userInfo?.userId);
+
         // Notify management
         await this.notifyManagement({
             title: "Hợp đồng đã upload bản ký",
-            content: `Bản ký hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được upload bởi ${userInfo?.userId || 'Hệ thống'}.`,
+            content: `Bản ký hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được upload bởi ${uploaderName}.`,
             contractId: savedContract.id
         });
 

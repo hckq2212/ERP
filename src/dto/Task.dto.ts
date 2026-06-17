@@ -19,6 +19,10 @@ export class CreateTaskDTO {
     @IsOptional()
     assigneeId?: string;
 
+    @IsString()
+    @IsOptional()
+    description?: string;
+
     @IsEnum(PerformerType)
     @IsOptional()
     performerType?: PerformerType;
@@ -36,6 +40,10 @@ export class CreateTaskDTO {
     @IsBoolean()
     @IsOptional()
     isOutput?: boolean;
+
+    @IsBoolean()
+    @IsOptional()
+    isExtra?: boolean;
 
     @IsOptional()
     attachments?: any[];
