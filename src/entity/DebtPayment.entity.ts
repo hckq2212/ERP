@@ -1,9 +1,9 @@
 import { Entity, Column, ManyToOne } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Debts } from "./Debt.entity";
 
 @Entity()
-export class DebtPayments extends BaseEntity {
+export class DebtPayments extends TenantEntity {
 
     @ManyToOne(() => Debts, (debt) => debt.payments)
     debt: Debts;

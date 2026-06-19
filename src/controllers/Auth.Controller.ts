@@ -1,12 +1,13 @@
 import { Request, Response } from "express";
 import { AuthService } from "../services/Auth.Service";
+import { COMPANY_ACCESS_DENIED_MESSAGE } from "../middlewares/Tenant.Middleware";
 
 export class AuthController {
     private authService = new AuthService();
 
     register = async (req: Request, res: Response) => {
         try {
-            const result = await this.authService.register(req.body);
+            const result = await this.authService.register(req.body, (req as any).company);
             res.status(201).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });
@@ -15,7 +16,7 @@ export class AuthController {
 
     login = async (req: Request, res: Response) => {
         try {
-            const result = await this.authService.login(req.body);
+            const result = await this.authService.login(req.body, (req as any).company);
 
             // Set HttpOnly Cookies
             const isRememberMe = result.rememberMe;
@@ -44,7 +45,8 @@ export class AuthController {
                 user: result.user
             });
         } catch (error: any) {
-            res.status(401).json({ message: error.message });
+            const status = error.message === COMPANY_ACCESS_DENIED_MESSAGE ? 403 : 401;
+            res.status(status).json({ message: error.message });
         }
     }
 

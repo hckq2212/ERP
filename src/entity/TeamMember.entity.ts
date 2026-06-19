@@ -1,5 +1,5 @@
 import { Entity, ManyToOne, Column } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { ProjectTeams } from "./ProjectTeam.entity";
 import { Users } from "./User.entity";
 
@@ -16,7 +16,7 @@ export enum MemberRole {
 }
 
 @Entity()
-export class TeamMembers extends BaseEntity {
+export class TeamMembers extends TenantEntity {
 
     @ManyToOne(() => ProjectTeams, (team) => team.members)
     team: ProjectTeams;

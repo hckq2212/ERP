@@ -1,9 +1,9 @@
 import { Entity, Column, ManyToOne, DeleteDateColumn } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Jobs } from "./Job.entity";
 
 @Entity()
-export class JobCriterias extends BaseEntity {
+export class JobCriterias extends TenantEntity {
 
     @Column()
     name: string; // e.g., "Video đúng chủ đề", "Âm thanh rõ nét"

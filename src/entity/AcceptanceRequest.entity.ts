@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Users } from "./User.entity";
 import { ContractServices } from "./ContractService.entity";
 import { Projects } from "./Project.entity";
@@ -12,7 +12,7 @@ export enum AcceptanceStatus {
 }
 
 @Entity()
-export class AcceptanceRequests extends BaseEntity {
+export class AcceptanceRequests extends TenantEntity {
 
     @Column()
     name: string; // e.g., "Đợt nghiệm thu tháng 02/2026"

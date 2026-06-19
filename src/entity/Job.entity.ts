@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne, ManyToMany, OneToMany } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Vendors } from "./Vendor.entity";
 import { Services } from "./Service.entity";
 import { Tasks } from "./Task.entity";
@@ -10,7 +10,7 @@ import { PerformerType } from "./Enums";
 
 
 @Entity()
-export class Jobs extends BaseEntity {
+export class Jobs extends TenantEntity {
 
     @Column()
     name: string;

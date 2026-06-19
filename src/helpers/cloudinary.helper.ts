@@ -1,4 +1,5 @@
 import cloudinary from '../config/cloudinary';
+import { getTenantCloudinaryFolder } from './CloudinaryFolder.Helper';
 
 /**
  * Generate download URL from Cloudinary public_id
@@ -46,6 +47,7 @@ export const generateDownloadUrlWithFilename = (
  */
 export const uploadToCloudinary = (file: Express.Multer.File, folder: string): Promise<any> => {
     return new Promise((resolve, reject) => {
+        const uploadFolder = getTenantCloudinaryFolder(folder);
         const fileExtension = file.originalname.split('.').pop()?.toLowerCase() || '';
         const fileNameWithoutExt = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
 
@@ -60,7 +62,7 @@ export const uploadToCloudinary = (file: Express.Multer.File, folder: string): P
         const uploadStream = cloudinary.uploader.upload_stream(
             {
                 resource_type: "auto",
-                folder: folder,
+                folder: uploadFolder,
                 public_id: publicIdWithExtension,
                 use_filename: true,
                 unique_filename: true,

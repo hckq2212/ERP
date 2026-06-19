@@ -1,11 +1,11 @@
 import { Entity, Column, OneToMany } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { OpportunityServices } from "./OpportunityService.entity";
 import { ContractServices } from "./ContractService.entity";
 import { ServiceJob } from "./ServiceJob.entity";
 
 @Entity()
-export class Services extends BaseEntity {
+export class Services extends TenantEntity {
 
     @Column()
     name: string;

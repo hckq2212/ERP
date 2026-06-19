@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Services } from "./Service.entity";
 import { Jobs } from "./Job.entity";
 import { Contracts } from "./Contract.entity";
@@ -16,7 +16,7 @@ export enum ContractServiceStatus {
 }
 
 @Entity()
-export class ContractServices extends BaseEntity {
+export class ContractServices extends TenantEntity {
 
     @ManyToOne(() => Services, (service) => service.contractServices, { nullable: true })
     @JoinColumn({ name: "serviceId" })

@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Tasks } from "./Task.entity";
 import { JobCriterias } from "./JobCriteria.entity";
 import { Users } from "./User.entity";
@@ -10,7 +10,7 @@ export enum ReviewerType {
 }
 
 @Entity()
-export class TaskReviews extends BaseEntity {
+export class TaskReviews extends TenantEntity {
 
     @Column({
         type: "enum",

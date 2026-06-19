@@ -1,10 +1,10 @@
 import { Entity, Column, ManyToOne } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Vendors } from "./Vendor.entity";
 import { Jobs } from "./Job.entity";
 
 @Entity()
-export class VendorJobs extends BaseEntity {
+export class VendorJobs extends TenantEntity {
 
     @ManyToOne(() => Vendors, (vendor) => vendor.vendorJobs)
     vendor: Vendors;

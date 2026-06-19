@@ -1,5 +1,5 @@
 import { Entity, Column, OneToMany } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 
 
 import { Customers } from "./Customer.entity";
@@ -12,7 +12,7 @@ export enum PartnerType {
 }
 
 @Entity()
-export class ReferralPartners extends BaseEntity {
+export class ReferralPartners extends TenantEntity {
 
     @Column()
     name: string;

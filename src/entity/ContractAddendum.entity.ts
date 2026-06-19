@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Contracts } from "./Contract.entity";
 import { ContractServices } from "./ContractService.entity";
 import { PaymentMilestones } from "./PaymentMilestone.entity";
@@ -12,7 +12,7 @@ export enum AddendumStatus {
 }
 
 @Entity()
-export class ContractAddendums extends BaseEntity {
+export class ContractAddendums extends TenantEntity {
 
     @Column()
     name: string; // e.g., "Phụ lục 01: Bổ sung hạng mục quay phim"

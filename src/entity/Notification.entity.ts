@@ -1,9 +1,9 @@
 import { Entity, Column, ManyToOne, Relation } from "typeorm"
-import { BaseEntity } from "./BaseEntity"
+import { TenantEntity } from "./TenantEntity"
 import { Users } from "./User.entity"
 
 @Entity()
-export class Notifications extends BaseEntity {
+export class Notifications extends TenantEntity {
 
     @Column()
     title: string

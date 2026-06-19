@@ -5,6 +5,7 @@ import { TeamMembers } from "./TeamMember.entity"
 import { ProjectTeams } from "./ProjectTeam.entity"
 import { Tasks } from "./Task.entity"
 import { Opportunities } from "./Opportunity.entity"
+import { CompanyMembers } from "./CompanyMember.entity"
 
 @Entity()
 export class Users extends BaseEntity {
@@ -30,6 +31,9 @@ export class Users extends BaseEntity {
 
     @OneToMany(() => Opportunities, (opportunity) => opportunity.createdBy)
     opportunities: Opportunities[]
+
+    @OneToMany(() => CompanyMembers, (companyMember) => companyMember.user)
+    companyMemberships: CompanyMembers[]
 
     @Column({ type: "simple-json", nullable: true })
     laborContract: any[]

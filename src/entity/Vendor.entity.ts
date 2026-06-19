@@ -1,5 +1,5 @@
 import { Entity, Column, OneToMany } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Jobs } from "./Job.entity";
 import { VendorJobs } from "./VendorJob.entity";
 
@@ -11,7 +11,7 @@ export enum PartnerType {
 }
 
 @Entity()
-export class Vendors extends BaseEntity {
+export class Vendors extends TenantEntity {
 
     @Column()
     name: string;

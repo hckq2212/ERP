@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from "typeorm";
-import { BaseEntity } from "./BaseEntity";
+import { TenantEntity } from "./TenantEntity";
 import { Projects } from "./Project.entity";
 import { Jobs } from "./Job.entity";
 import { Users } from "./User.entity";
@@ -13,7 +13,7 @@ import { Violations } from "./Violation.entity";
 
 
 @Entity()
-export class Tasks extends BaseEntity {
+export class Tasks extends TenantEntity {
 
     @Column({ nullable: true })
     code: string;

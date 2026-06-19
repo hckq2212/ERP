@@ -35,6 +35,10 @@ import chatRoute from "./routes/Chat.Route"
 import accountRoute from "./routes/Account.Route"
 import profileRoute from "./routes/Profile.Route"
 import { loggingMiddleware } from "./middlewares/Logging.Middleware";
+import { authMiddleware } from "./middlewares/Auth.Middleware";
+import { companyMemberMiddleware, tenantMiddleware } from "./middlewares/Tenant.Middleware";
+import { installTenantRepositoryGuard } from "./helpers/TenantRepositoryGuard";
+import { seedCompaniesAndDefaultMemberships } from "./helpers/CompanySeed.Helper";
 
 
 
@@ -42,6 +46,7 @@ import { loggingMiddleware } from "./middlewares/Logging.Middleware";
 const app = express()
 app.set('trust proxy', 1)
 const port = 3000
+installTenantRepositoryGuard();
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
@@ -70,6 +75,34 @@ app.use(passport.initialize())
 
 // Apply logging middleware globally
 app.use(loggingMiddleware);
+
+app.use("/:companySlug/api/auth", tenantMiddleware, authRoute)
+app.use("/:companySlug/api/opportunities", tenantMiddleware, authMiddleware, companyMemberMiddleware, opportunityRoute)
+app.use("/:companySlug/api/services", tenantMiddleware, authMiddleware, companyMemberMiddleware, serviceRoute)
+app.use("/:companySlug/api/jobs", tenantMiddleware, authMiddleware, companyMemberMiddleware, jobRoute)
+app.use("/:companySlug/api/contracts", tenantMiddleware, authMiddleware, companyMemberMiddleware, contractRoute)
+app.use("/:companySlug/api/quotations", tenantMiddleware, authMiddleware, companyMemberMiddleware, quotationRoute)
+app.use("/:companySlug/api/payment-milestones", tenantMiddleware, authMiddleware, companyMemberMiddleware, paymentMilestoneRoute)
+app.use("/:companySlug/api/projects", tenantMiddleware, authMiddleware, companyMemberMiddleware, projectRoute)
+app.use("/:companySlug/api/tasks", tenantMiddleware, authMiddleware, companyMemberMiddleware, taskRoute)
+app.use("/:companySlug/api/opportunity-services", tenantMiddleware, authMiddleware, companyMemberMiddleware, opportunityServiceRoute)
+app.use("/:companySlug/api/users", tenantMiddleware, authMiddleware, companyMemberMiddleware, userRoute)
+app.use("/:companySlug/api/teams", tenantMiddleware, authMiddleware, companyMemberMiddleware, projectTeamRoute)
+app.use("/:companySlug/api/notifications", tenantMiddleware, authMiddleware, companyMemberMiddleware, notificationRoute)
+app.use("/:companySlug/api/dashboard", tenantMiddleware, authMiddleware, companyMemberMiddleware, dashboardRoute);
+app.use("/:companySlug/api/customers", tenantMiddleware, authMiddleware, companyMemberMiddleware, customerRoute)
+app.use("/:companySlug/api/vendors", tenantMiddleware, authMiddleware, companyMemberMiddleware, vendorRoute)
+app.use("/:companySlug/api/referral-partners", tenantMiddleware, authMiddleware, companyMemberMiddleware, referralPartnerRoute)
+app.use("/:companySlug/api/debts", tenantMiddleware, authMiddleware, companyMemberMiddleware, debtRoute)
+app.use("/:companySlug/api/contract-addendums", tenantMiddleware, authMiddleware, companyMemberMiddleware, contractAddendumRoute)
+app.use("/:companySlug/api/job-criteria", tenantMiddleware, authMiddleware, companyMemberMiddleware, jobCriteriaRoute)
+app.use("/:companySlug/api/task-reviews", tenantMiddleware, authMiddleware, companyMemberMiddleware, taskReviewRoute)
+app.use("/:companySlug/api/acceptance", tenantMiddleware, authMiddleware, companyMemberMiddleware, acceptanceRoute)
+app.use("/:companySlug/api/cloudinary", tenantMiddleware, authMiddleware, companyMemberMiddleware, cloudinaryRoute)
+app.use("/:companySlug/api/service-packages", tenantMiddleware, authMiddleware, companyMemberMiddleware, servicePackageRoute)
+app.use("/:companySlug/api/chat", tenantMiddleware, authMiddleware, companyMemberMiddleware, chatRoute)
+app.use("/:companySlug/api/accounts", tenantMiddleware, authMiddleware, companyMemberMiddleware, accountRoute)
+app.use("/:companySlug/api/me", tenantMiddleware, authMiddleware, companyMemberMiddleware, profileRoute)
 
 app.use("/api/auth", authRoute)
 app.use("/api/opportunities", opportunityRoute)
@@ -104,6 +137,7 @@ import { initSubscribers } from "./subscribers";
 
 
 AppDataSource.initialize().then(async () => {
+    await seedCompaniesAndDefaultMemberships();
     // Initialize Event Subscribers
     initSubscribers();
 

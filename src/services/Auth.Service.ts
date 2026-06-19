@@ -1,16 +1,19 @@
 import { AppDataSource } from "../data-source";
 import { Accounts } from "../entity/Account.entity";
+import { Companies } from "../entity/Company.entity";
+import { CompanyMemberRole, CompanyMembers } from "../entity/CompanyMember.entity";
 import { Users } from "../entity/User.entity";
 import { encrypt } from "../helpers/helpers";
+import { COMPANY_ACCESS_DENIED_MESSAGE } from "../middlewares/Tenant.Middleware";
 
 export class AuthService {
     private accountRepository = AppDataSource.getRepository(Accounts);
     private userRepository = AppDataSource.getRepository(Users);
+    private memberRepository = AppDataSource.getRepository(CompanyMembers);
 
-    async register(data: any) {
+    async register(data: any, company?: Companies) {
         const { username, password, email, fullName, phoneNumber } = data;
 
-        // Check if account already exists
         const existingAccount = await this.accountRepository.findOne({
             where: [{ username }, { email }]
         });
@@ -19,34 +22,38 @@ export class AuthService {
             throw new Error("Tên đăng nhập hoặc email đã tồn tại");
         }
 
-        // Hash password
         const hashedPassword = await encrypt.encryptPassword(password);
 
-        // Create Account
         const account = new Accounts();
         account.username = username;
         account.password = hashedPassword;
         account.email = email;
 
-        // Create User
         const user = new Users();
         user.fullName = fullName;
         user.phoneNumber = phoneNumber;
 
-        // Link and Save
         await AppDataSource.transaction(async (transactionalEntityManager) => {
             const savedAccount = await transactionalEntityManager.save(account);
             user.account = savedAccount;
-            await transactionalEntityManager.save(user);
+            const savedUser = await transactionalEntityManager.save(user);
+
+            if (company) {
+                const member = transactionalEntityManager.create(CompanyMembers, {
+                    company,
+                    user: savedUser,
+                    role: CompanyMemberRole.MEMBER
+                });
+                await transactionalEntityManager.save(member);
+            }
         });
 
         return { message: "Đăng ký thành công" };
     }
 
-    async login(data: any) {
+    async login(data: any, company?: Companies) {
         const { username, password } = data;
 
-        // Find account (by username or email)
         const account = await this.accountRepository.findOne({
             where: [{ username }, { email: username }],
             relations: ["user"]
@@ -56,13 +63,28 @@ export class AuthService {
             throw new Error("Tên đăng nhập hoặc mật khẩu không chính xác");
         }
 
-        // Compare password
         const isPasswordValid = encrypt.comparePassword(password, account.password);
         if (!isPasswordValid) {
             throw new Error("Tên đăng nhập hoặc mật khẩu không chính xác");
         }
 
-        // Generate tokens
+        if (company) {
+            if (!account.user?.id) {
+                throw new Error(COMPANY_ACCESS_DENIED_MESSAGE);
+            }
+
+            const member = await this.memberRepository.findOne({
+                where: {
+                    company: { id: company.id },
+                    user: { id: account.user.id }
+                }
+            });
+
+            if (!member) {
+                throw new Error(COMPANY_ACCESS_DENIED_MESSAGE);
+            }
+        }
+
         const { rememberMe } = data;
         const accessTokenExp = rememberMe ? "30d" : "4h";
         const refreshTokenExp = rememberMe ? "30d" : "1d";
@@ -77,7 +99,12 @@ export class AuthService {
             user: {
                 id: account.user?.id,
                 fullName: account.user?.fullName,
-                role: account.role
+                role: account.role,
+                company: company ? {
+                    id: company.id,
+                    name: company.name,
+                    slug: company.slug
+                } : undefined
             }
         };
     }
