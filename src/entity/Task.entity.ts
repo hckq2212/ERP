@@ -21,6 +21,9 @@ export class Tasks extends TenantEntity {
     @Column()
     name: string;
 
+    @Column({ type: "varchar", length: 120, nullable: true })
+    nickname: string | null;
+
     @ManyToOne(() => Projects, (project) => project.tasks, { nullable: true })
     project: Projects;
 

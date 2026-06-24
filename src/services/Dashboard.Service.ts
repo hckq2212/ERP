@@ -142,6 +142,7 @@ export class DashboardService {
             select: {
                 id: true,
                 name: true,
+                nickname: true,
                 status: true,
                 code: true,
                 plannedStartDate: true,
@@ -266,6 +267,7 @@ export class DashboardService {
                 .map(t => ({
                     id: t.id,
                     name: t.name,
+                    nickname: t.nickname,
                     projectName: t.project?.name,
                     clientName: t.project?.contract?.customer?.name,
                     code: t.code,
@@ -279,6 +281,7 @@ export class DashboardService {
                 .map(t => ({
                     id: t.id,
                     name: t.name,
+                    nickname: t.nickname,
                     deadline: t.plannedEndDate,
                     status: t.status,
                     projectName: t.project?.name,
@@ -289,6 +292,7 @@ export class DashboardService {
                 .map(t => ({
                     id: t.id,
                     name: t.name,
+                    nickname: t.nickname,
                     start: t.plannedStartDate,
                     end: t.plannedEndDate,
                     status: t.status,

@@ -152,7 +152,7 @@ export class TaskReviewService {
                 const newResult = {
                     taskId: task.id,
                     type: task.result?.type || 'file',
-                    name: task.code || task.name,
+                    name: task.code || task.nickname || task.name,
                     url: task.result?.url || '',
                     status: 'PENDING' as const
                 };
@@ -170,7 +170,7 @@ export class TaskReviewService {
             if (task.assignee) {
                 await this.notificationService.createNotification({
                     title: "Công việc đã được duyệt",
-                    content: `Công việc "${task.name}" của dự án ${task.project?.name} đã được duyệt nội bộ.`,
+                    content: `Công việc "${task.nickname || task.name}" của dự án ${task.project?.name} đã được duyệt nội bộ.`,
                     type: "TASK_COMPLETED",
                     recipient: task.assignee,
                     relatedEntityId: task.id.toString(),
@@ -229,7 +229,7 @@ export class TaskReviewService {
         if (task.assignee) {
             await this.notificationService.createNotification({
                 title: "Công việc cần sửa lại",
-                content: `Công việc "${task.name}" của dự án ${task.project?.name} bị từ chối/yêu cầu sửa lại. Lý do: ${reviewNote}`,
+                content: `Công việc "${task.nickname || task.name}" của dự án ${task.project?.name} bị từ chối/yêu cầu sửa lại. Lý do: ${reviewNote}`,
                 type: "TASK_REJECTED",
                 recipient: task.assignee,
                 relatedEntityId: task.id.toString(),

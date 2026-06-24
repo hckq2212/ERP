@@ -56,6 +56,16 @@ export class TaskController {
         }
     }
 
+    updateNickname = async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const task = await this.taskService.updateNickname(req.params.id as string, req.body.nickname, user);
+            res.status(200).json(task);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     assign = async (req: Request, res: Response) => {
         try {
             // attachments should now be pre-uploaded and sent in body

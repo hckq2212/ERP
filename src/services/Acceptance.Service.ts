@@ -277,7 +277,7 @@ export class AcceptanceService {
                                         if (assignee) {
                                             await this.notificationService.createNotification({
                                                 title: "Yêu cầu sửa lại (Rework)",
-                                                content: `Công việc "${task.name}" của dự án ${request.project?.name} bị từ chối nghiệm thu. Lý do: ${task.reviewNote}`,
+                                                content: `Công việc "${task.nickname || task.name}" của dự án ${request.project?.name} bị từ chối nghiệm thu. Lý do: ${task.reviewNote}`,
                                                 type: "TASK_REJECTED",
                                                 recipient: assignee,
                                                 relatedEntityId: task.id.toString(),

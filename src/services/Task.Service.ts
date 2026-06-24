@@ -16,6 +16,7 @@ import { SecurityService } from "./Security.Service";
 import { ContractServices, ContractServiceStatus } from "../entity/ContractService.entity";
 import { Violations } from "../entity/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
+import { UserRole } from "../entity/Account.entity";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -30,6 +31,16 @@ export class TaskService {
     private notificationService = new NotificationService();
     private reviewService = new TaskReviewService();
     private violationRepository = AppDataSource.getRepository(Violations);
+
+    private taskDisplayName(task: Pick<Tasks, "name" | "nickname">) {
+        return task.nickname?.trim() || task.name;
+    }
+
+    private httpError(message: string, statusCode: number) {
+        const error: any = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
 
     private async recordViolation(data: {
         taskId: string,
@@ -105,7 +116,7 @@ export class TaskService {
         // Notify Assignee
         await this.notificationService.createNotification({
             title: "Công việc nội bộ mới",
-            content: `Bạn được giao công việc nội bộ: ${task.name} (Mã: ${task.code})`,
+            content: `Bạn được giao công việc nội bộ: ${this.taskDisplayName(task)} (Mã: ${task.code})`,
             type: "TASK_ASSIGNED",
             recipient: assignee,
             relatedEntityId: savedTask.id?.toString(),
@@ -116,7 +127,7 @@ export class TaskService {
         // Notify Supervisor
         await this.notificationService.createNotification({
             title: "Giám sát công việc mới",
-            content: `Bạn được phân công giám sát ${assignee?.fullName} cho công việc: ${task.name} (Mã: ${task.code})`,
+            content: `Bạn được phân công giám sát ${assignee?.fullName} cho công việc: ${this.taskDisplayName(task)} (Mã: ${task.code})`,
             type: "TASK_REVIEW",
             recipient: supervisor,
             relatedEntityId: savedTask.id?.toString(),
@@ -168,10 +179,12 @@ export class TaskService {
             if (Array.isArray(baseWhere)) {
                 baseWhere.forEach((w: any) => {
                     where.push({ ...w, name: ILike(searchTerm) });
+                    where.push({ ...w, nickname: ILike(searchTerm) });
                     where.push({ ...w, code: ILike(searchTerm) });
                 });
             } else {
                 where.push({ ...baseWhere, name: ILike(searchTerm) });
+                where.push({ ...baseWhere, nickname: ILike(searchTerm) });
                 where.push({ ...baseWhere, code: ILike(searchTerm) });
             }
         } else {
@@ -209,6 +222,39 @@ export class TaskService {
 
         if (!task) throw new Error("Không tìm thấy công việc");
         return task;
+    }
+
+    async updateNickname(
+        id: string,
+        nickname: string | null | undefined,
+        currentUser?: { id: string; userId?: string; role: string }
+    ) {
+        const task = await this.taskRepository.findOne({
+            where: { id },
+            relations: ["project", "project.team", "project.team.teamLead"]
+        });
+
+        if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+
+        const currentUserId = currentUser?.userId || currentUser?.id;
+        const isAdminOrBod = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.BOD;
+        const isProjectLead = Boolean(task.project && task.project.team?.teamLead?.id === currentUserId);
+
+        if (!isAdminOrBod && !isProjectLead) {
+            throw this.httpError("Bạn không có quyền thay đổi nickname của công việc này", 403);
+        }
+        if (nickname === undefined) throw this.httpError("Vui lòng cung cấp nickname", 400);
+        if (nickname != null && typeof nickname !== "string") throw this.httpError("Nickname không hợp lệ", 400);
+
+        const normalizedNickname = nickname?.trim() || null;
+        if (normalizedNickname && normalizedNickname.length > 120) {
+            throw this.httpError("Nickname không được vượt quá 120 ký tự", 400);
+        }
+
+        task.nickname = normalizedNickname;
+        const saved = await this.taskRepository.save(task);
+        taskEmitter.emit(TASK_EVENTS.UPDATED, saved);
+        return saved;
     }
 
     async create(data: {
@@ -271,7 +317,7 @@ export class TaskService {
                 task.assignee = user;
                 await this.notificationService.createNotification({
                     title: "Công việc mới được giao",
-                    content: `Bạn được giao công việc: ${task.name} ${task.project !== null ? "thuộc dự án " + task.project.name : ""} `,
+                    content: `Bạn được giao công việc: ${this.taskDisplayName(task)} ${task.project !== null ? "thuộc dự án " + task.project.name : ""} `,
                     type: "TASK_ASSIGNED",
                     recipient: user,
                     relatedEntityId: task.id?.toString(),
@@ -437,7 +483,7 @@ export class TaskService {
             if (task.assignee) {
                 await this.notificationService.createNotification({
                     title: "Yêu cầu làm lại công việc",
-                    content: `Bạn có yêu cầu làm lại cho: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code}). Feedback: ${data.feedback}`,
+                    content: `Bạn có yêu cầu làm lại cho: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}). Feedback: ${data.feedback}`,
                     type: "TASK_ASSIGNED",
                     recipient: task.assignee,
                     relatedEntityId: task.id.toString(),
@@ -461,7 +507,7 @@ export class TaskService {
                 task.assignee = user;
                 await this.notificationService.createNotification({
                     title: "Thay đổi người thực hiện",
-                    content: `Bạn được giao công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
+                    content: `Bạn được giao công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code})`,
                     type: "TASK_ASSIGNED",
                     recipient: user,
                     relatedEntityId: task.id.toString(),
@@ -505,7 +551,7 @@ export class TaskService {
 
                     await this.notificationService.createNotification({
                         title: "Công việc chờ duyệt",
-                        content: `Nhân viên đã upload kết quả cho công việc: ${task.name} của dự án ${task.project?.name}. Vui lòng đánh giá.`,
+                        content: `Nhân viên đã upload kết quả cho công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name}. Vui lòng đánh giá.`,
                         type: "TASK_REVIEW",
                         recipient: taskWithInfo.project.team.teamLead,
                         relatedEntityId: task.id.toString(),
@@ -556,7 +602,7 @@ export class TaskService {
 
                     await this.notificationService.createNotification({
                         title: "Bạn được giao hỗ trợ công việc",
-                        content: `Bạn được giao hỗ trợ công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
+                        content: `Bạn được giao hỗ trợ công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code})`,
                         type: "TASK_ASSIGNED",
                         recipient: user,
                         relatedEntityId: task.id.toString(),
@@ -602,7 +648,7 @@ export class TaskService {
 
                         await this.notificationService.createNotification({
                             title: "Công việc mới được giao",
-                            content: `Bạn được giao công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code})`,
+                            content: `Bạn được giao công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code})`,
                             type: "TASK_ASSIGNED",
                             recipient: user,
                             relatedEntityId: task.id.toString(),
@@ -677,7 +723,7 @@ export class TaskService {
         if (taskWithInfo?.project?.team?.teamLead) {
             await this.notificationService.createNotification({
                 title: "Yêu cầu hỗ trợ công việc",
-                content: `Nhân viên yêu cầu hỗ trợ cho công việc: ${task.name} của dự án ${task.project?.name}. Lý do: ${note}`,
+                content: `Nhân viên yêu cầu hỗ trợ cho công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name}. Lý do: ${note}`,
                 type: "TASK_REVIEW",
                 recipient: taskWithInfo.project.team.teamLead,
                 relatedEntityId: task.id.toString(),
@@ -709,7 +755,7 @@ export class TaskService {
 
         await this.notificationService.createNotification({
             title: "Yêu cầu hỗ trợ chéo team",
-            content: `Team của bạn được nhờ hỗ trợ công việc: ${task.name} của dự án ${task.project?.name}. Vui lòng phân công người thực hiện.`,
+            content: `Team của bạn được nhờ hỗ trợ công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name}. Vui lòng phân công người thực hiện.`,
             type: "TASK_ASSIGNED",
             recipient: team.teamLead,
             relatedEntityId: task.id.toString(),
@@ -827,7 +873,7 @@ export class TaskService {
         if (oldRecipient) {
             await this.notificationService.createNotification({
                 title: "Công việc đã được chuyển giao",
-                content: `Công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code}) đã được chuyển giao cho ${newPerformerName}`,
+                content: `Công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}) đã được chuyển giao cho ${newPerformerName}`,
                 type: "TASK_REASSIGNED",
                 recipient: oldRecipient,
                 relatedEntityId: task.id.toString(),
@@ -839,7 +885,7 @@ export class TaskService {
         if (newRecipient) {
             await this.notificationService.createNotification({
                 title: "Công việc được chuyển giao mới",
-                content: `Bạn được giao công việc: ${task.name} của dự án ${task.project?.name} (Mã: ${task.code}).`,
+                content: `Bạn được giao công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}).`,
                 type: "TASK_ASSIGNED",
                 recipient: newRecipient,
                 relatedEntityId: task.id.toString(),
@@ -907,7 +953,7 @@ export class TaskService {
         if (task.assignee) {
             await this.notificationService.createNotification({
                 title: "Khách hàng đã duyệt",
-                content: `Khách hàng đã duyệt công việc: ${task.name}. Trạng thái: Hoàn thành.`,
+                content: `Khách hàng đã duyệt công việc: ${this.taskDisplayName(task)}. Trạng thái: Hoàn thành.`,
                 type: "TASK_COMPLETED",
                 recipient: task.assignee,
                 relatedEntityId: task.id.toString(),
@@ -935,7 +981,7 @@ export class TaskService {
             if (originalLead) {
                 await this.notificationService.createNotification({
                     title: "Yêu cầu hỗ trợ được chấp nhận",
-                    content: `Team hỗ trợ đã đồng ý giúp đỡ cho công việc: ${task.name}. Đang chờ phân công nhân sự.`,
+                    content: `Team hỗ trợ đã đồng ý giúp đỡ cho công việc: ${this.taskDisplayName(task)}. Đang chờ phân công nhân sự.`,
                     type: "TASK_ASSIGNED",
                     recipient: originalLead,
                     relatedEntityId: task.id.toString(),
@@ -955,7 +1001,7 @@ export class TaskService {
             if (originalLead) {
                 await this.notificationService.createNotification({
                     title: "Yêu cầu hỗ trợ bị từ chối",
-                    content: `Team hỗ trợ đã từ chối yêu cầu cho công việc: ${task.name}. Vui lòng thực hiện phương án khác.`,
+                    content: `Team hỗ trợ đã từ chối yêu cầu cho công việc: ${this.taskDisplayName(task)}. Vui lòng thực hiện phương án khác.`,
                     type: "TASK_REJECTED",
                     recipient: originalLead,
                     relatedEntityId: task.id.toString(),
@@ -1005,7 +1051,7 @@ export class TaskService {
             if (supportLead) {
                 await this.notificationService.createNotification({
                     title: "Yêu cầu hoàn thành hỗ trợ",
-                    content: `Nhân viên hỗ trợ yêu cầu hoàn thành cho công việc: ${task.name}. Vui lòng kiểm tra và xác nhận trả lại.`,
+                    content: `Nhân viên hỗ trợ yêu cầu hoàn thành cho công việc: ${this.taskDisplayName(task)}. Vui lòng kiểm tra và xác nhận trả lại.`,
                     type: "TASK_REVIEW",
                     recipient: supportLead,
                     relatedEntityId: task.id.toString(),
@@ -1032,7 +1078,7 @@ export class TaskService {
 
         await this.notificationService.createNotification({
             title: "Nhắc nhở công việc",
-            content: `Bạn có lời nhắc cho công việc: ${task.name} (Mã: ${task.code}) ${task.project ? "thuộc dự án " + task.project.name : ""}. Vui lòng kiểm tra tiến độ.`,
+            content: `Bạn có lời nhắc cho công việc: ${this.taskDisplayName(task)} (Mã: ${task.code}) ${task.project ? "thuộc dự án " + task.project.name : ""}. Vui lòng kiểm tra tiến độ.`,
             type: "TASK_ASSIGNED",
             recipient: performer,
             relatedEntityId: task.id.toString(),

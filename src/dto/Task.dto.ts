@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber, MaxLength } from "class-validator";
 import { Type } from "class-transformer";
 import { TaskStatus, PerformerType } from "../entity/Enums";
 
@@ -57,6 +57,13 @@ export class UpdateTaskStatusDTO {
     @IsString()
     @IsOptional()
     result?: string;
+}
+
+export class UpdateTaskNicknameDTO {
+    @IsString()
+    @IsOptional()
+    @MaxLength(120, { message: "Nickname không được vượt quá 120 ký tự" })
+    nickname?: string | null;
 }
 
 export class TaskAssignmentDTO {
