@@ -1,8 +1,8 @@
 import { AppDataSource } from "../data-source";
 import { Tasks } from "../entity/Task.entity";
 import { TaskStatus, PerformerType, PricingStatus, ViolationType } from "../entity/Enums";
-import { ILike, Like, Between, IsNull } from "typeorm";
-import { Projects } from "../entity/Project.entity";
+import { ILike, Like, Between, IsNull, In } from "typeorm";
+import { Projects, ProjectStatus } from "../entity/Project.entity";
 import { Jobs } from "../entity/Job.entity";
 import { Users } from "../entity/User.entity";
 import { Vendors } from "../entity/Vendor.entity";
@@ -705,6 +705,133 @@ export class TaskService {
     }, currentUser?: { id: string }) {
         const results = await this.bulkAssign([id], data, currentUser);
         return results[0];
+    }
+
+    async bulkUnassign(
+        projectId: string,
+        taskIds: string[],
+        currentUser?: { id: string; userId?: string; role: string }
+    ) {
+        const result = await AppDataSource.transaction(async (transactionalEntityManager) => {
+            const project = await transactionalEntityManager.findOne(Projects, {
+                where: { id: projectId },
+                relations: ["team", "team.teamLead", "contract"]
+            });
+
+            if (!project) {
+                throw this.httpError("Không tìm thấy dự án", 404);
+            }
+
+            const currentUserId = currentUser?.userId || currentUser?.id;
+            const isAdminOrBod = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.BOD;
+            const isProjectLead = project.team?.teamLead?.id === currentUserId;
+
+            if (!isAdminOrBod && !isProjectLead) {
+                throw this.httpError("Bạn không có quyền xoá phân công trong dự án này", 403);
+            }
+
+            if (![ProjectStatus.CONFIRMED, ProjectStatus.IN_PROGRESS].includes(project.status)) {
+                throw this.httpError("Dự án không ở trạng thái cho phép xoá phân công", 400);
+            }
+
+            const uniqueTaskIds = [...new Set(taskIds)];
+            const tasks = await transactionalEntityManager.find(Tasks, {
+                where: { id: In(uniqueTaskIds) },
+                relations: ["project", "assignee", "vendor", "reviews", "iterations"]
+            });
+            const taskById = new Map(tasks.map(task => [task.id, task]));
+            const unassigned: Tasks[] = [];
+            const skipped: { id: string; code?: string; reason: string }[] = [];
+            let contractCostReduction = 0;
+
+            for (const id of uniqueTaskIds) {
+                const task = taskById.get(id);
+                if (!task) {
+                    skipped.push({ id, reason: "Không tìm thấy công việc" });
+                    continue;
+                }
+
+                const skip = (reason: string) => {
+                    skipped.push({ id: task.id, code: task.code, reason });
+                };
+
+                if (task.project?.id !== projectId) {
+                    skipped.push({ id: task.id, reason: "Công việc không thuộc dự án hiện tại" });
+                    continue;
+                }
+                if (task.status !== TaskStatus.DOING) {
+                    skip("Công việc không ở trạng thái đang thực hiện");
+                    continue;
+                }
+                if (!task.assigneeId && !task.vendor) {
+                    skip("Công việc chưa có người hoặc vendor được phân công");
+                    continue;
+                }
+                if (task.result || task.actualStartDate || task.actualEndDate || task.lastSubmittedById) {
+                    skip("Công việc đã phát sinh kết quả thực hiện");
+                    continue;
+                }
+                if ((task.reviews?.length || 0) > 0 || (task.iterations?.length || 0) > 0) {
+                    skip("Công việc đã phát sinh review hoặc lần làm lại");
+                    continue;
+                }
+
+                const hasSupportActivity = task.isSupportRequested || task.isSupportAccepted ||
+                    task.isSupportReturnRequested || Boolean(task.supportTeamId) ||
+                    Boolean(task.supportLeadId) || Boolean(task.helperId) ||
+                    Boolean(task.supportRequestNote) || Boolean(task.supportReturnNote);
+                if (hasSupportActivity) {
+                    skip("Công việc đã phát sinh luồng hỗ trợ");
+                    continue;
+                }
+
+                contractCostReduction += Number(task.cost || 0);
+                task.status = TaskStatus.PENDING;
+                task.assignee = null as any;
+                task.assigneeId = null as any;
+                task.vendor = null as any;
+                task.assigner = null as any;
+                task.assignerId = null as any;
+                task.performerType = PerformerType.INTERNAL;
+                task.plannedStartDate = null as any;
+                task.plannedEndDate = null as any;
+                task.actualStartDate = null as any;
+                task.actualEndDate = null as any;
+                task.description = null as any;
+                task.attachments = null as any;
+                task.result = null as any;
+                task.reassignNote = null as any;
+                task.reviewNote = null as any;
+                task.cost = 0;
+                task.lastSubmittedById = null as any;
+                task.lastSubmittedBy = null as any;
+                task.isSupportRequested = false;
+                task.isSupportAccepted = false;
+                task.isSupportReturnRequested = false;
+                task.supportTeamId = null as any;
+                task.supportLeadId = null as any;
+                task.helperId = null as any;
+                task.helper = null as any;
+                task.supportRequestNote = null as any;
+                task.supportReturnNote = null as any;
+
+                unassigned.push(await transactionalEntityManager.save(task));
+            }
+
+            if (project.contract && contractCostReduction !== 0) {
+                await transactionalEntityManager.decrement(
+                    Contracts,
+                    { id: project.contract.id },
+                    "cost",
+                    contractCostReduction
+                );
+            }
+
+            return { unassigned, skipped };
+        });
+
+        result.unassigned.forEach(task => taskEmitter.emit(TASK_EVENTS.UPDATED, task));
+        return result;
     }
 
     async requestSupport(id: string, note: string) {

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber, MaxLength } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber, MaxLength, IsArray, ArrayMinSize } from "class-validator";
 import { Type } from "class-transformer";
 import { TaskStatus, PerformerType } from "../entity/Enums";
 
@@ -64,6 +64,17 @@ export class UpdateTaskNicknameDTO {
     @IsOptional()
     @MaxLength(120, { message: "Nickname không được vượt quá 120 ký tự" })
     nickname?: string | null;
+}
+
+export class BulkUnassignTasksDTO {
+    @IsString()
+    @IsNotEmpty({ message: "ID dự án không được để trống" })
+    projectId: string;
+
+    @IsArray({ message: "Danh sách công việc không hợp lệ" })
+    @ArrayMinSize(1, { message: "Vui lòng chọn ít nhất một công việc" })
+    @IsString({ each: true, message: "ID công việc không hợp lệ" })
+    taskIds: string[];
 }
 
 export class TaskAssignmentDTO {

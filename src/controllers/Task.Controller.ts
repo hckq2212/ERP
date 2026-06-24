@@ -261,6 +261,20 @@ export class TaskController {
         }
     }
 
+    bulkUnassign = async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const result = await this.taskService.bulkUnassign(
+                req.body.projectId,
+                req.body.taskIds,
+                user
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     sendReminder = async (req: Request, res: Response) => {
         try {
             const result = await this.taskService.sendReminder(req.params.id as string);
