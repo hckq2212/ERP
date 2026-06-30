@@ -134,6 +134,9 @@ app.use("/api/me", profileRoute)
 app.get("/health", (req, res) => {
     res.status(200).send("OK");
 });
+app.head("/health", (req, res) => {
+    res.status(200).end();
+});
 
 import { CronHelper } from "./helpers/Cron.Helper";
 import { initSubscribers } from "./subscribers";
