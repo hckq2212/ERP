@@ -131,6 +131,9 @@ app.use("/api/service-packages", servicePackageRoute)
 app.use("/api/chat", chatRoute)
 app.use("/api/accounts", accountRoute)
 app.use("/api/me", profileRoute)
+app.get("/health", (req, res) => {
+    res.status(200).send("OK");
+});
 
 import { CronHelper } from "./helpers/Cron.Helper";
 import { initSubscribers } from "./subscribers";
