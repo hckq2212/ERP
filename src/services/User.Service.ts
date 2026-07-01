@@ -4,14 +4,57 @@ import { encrypt } from "../helpers/helpers";
 import { validateUserData } from "../validations/User.Validation";
 import { AppDataSource } from "../data-source";
 import { RedisService } from "./Redis.Service";
+import { TenantContext } from "../context/TenantContext";
+import { CompanyMemberRole, CompanyMembers } from "../entity/CompanyMember.entity";
 
 
 export class UserService {
     private userRepository = AppDataSource.getRepository(Users);
     private accountRepository = AppDataSource.getRepository(Accounts);
 
+    private getCompanyId() {
+        return TenantContext.getCompany()?.id;
+    }
+
+    private getCacheKey(key: string) {
+        const companyId = this.getCompanyId();
+        return companyId ? `${key}:company_${companyId}` : key;
+    }
+
+    private getTenantUserQuery(companyId: string) {
+        return this.userRepository.createQueryBuilder("user")
+            .innerJoin(
+                "user.companyMemberships",
+                "companyMember",
+                "companyMember.companyId = :companyId",
+                { companyId }
+            )
+            .leftJoin("user.account", "account")
+            .leftJoin("user.tasks", "task", "task.companyId = :companyId", { companyId })
+            .select([
+                "user.id",
+                "user.fullName",
+                "user.phoneNumber",
+                "user.laborContract",
+                "account.id",
+                "account.username",
+                "account.email",
+                "account.role",
+                "account.isActive",
+                "task.id",
+                "task.code",
+                "task.name",
+                "task.status"
+            ]);
+    }
+
     async getAll() {
-        return await RedisService.fetchWithCache('users:all', 3600, async () => {
+        const companyId = this.getCompanyId();
+        return await RedisService.fetchWithCache(this.getCacheKey('users:all'), 3600, async () => {
+            if (companyId) {
+                return await this.getTenantUserQuery(companyId).getMany();
+            }
+
             return await this.userRepository.find({
                 relations: ["tasks", "account"],
                 select: {
@@ -37,7 +80,14 @@ export class UserService {
     }
 
     async getOne(id: string) {
-        const user = await RedisService.fetchWithCache(`users:detail:${id}`, 3600, async () => {
+        const companyId = this.getCompanyId();
+        const user = await RedisService.fetchWithCache(this.getCacheKey(`users:detail:${id}`), 3600, async () => {
+            if (companyId) {
+                return await this.getTenantUserQuery(companyId)
+                    .andWhere("user.id = :id", { id })
+                    .getOne();
+            }
+
             return await this.userRepository.findOne({
                 where: { id },
                 relations: ["tasks", "account"],
@@ -93,11 +143,23 @@ export class UserService {
         await AppDataSource.transaction(async (transactionalEntityManager) => {
             const savedAccount = await transactionalEntityManager.save(account);
             user.account = savedAccount;
-            await transactionalEntityManager.save(user);
+            const savedUser = await transactionalEntityManager.save(user);
+
+            const company = TenantContext.getCompany();
+            if (company) {
+                const companyMember = transactionalEntityManager.create(CompanyMembers, {
+                    company,
+                    companyId: company.id,
+                    user: savedUser,
+                    userId: savedUser.id,
+                    role: CompanyMemberRole.MEMBER
+                });
+                await transactionalEntityManager.save(companyMember);
+            }
         });
 
         // Xóa cache danh sách khi có user mới
-        await RedisService.deleteCache('users:all');
+        await RedisService.deleteCache(this.getCacheKey('users:all'));
 
         return { message: "Tạo người dùng thành công" };
     }
@@ -123,8 +185,8 @@ export class UserService {
         const savedUser = await this.userRepository.save(user);
 
         // Xóa cache danh sách và cache chi tiết của user vừa update
-        await RedisService.deleteCache('users:all');
-        await RedisService.deleteCache(`users:detail:${id}`);
+        await RedisService.deleteCache(this.getCacheKey('users:all'));
+        await RedisService.deleteCache(this.getCacheKey(`users:detail:${id}`));
 
         return savedUser;
     }
@@ -135,16 +197,30 @@ export class UserService {
         const savedUser = await this.userRepository.save(user);
 
         // Xóa cache danh sách và cache chi tiết của user vừa update
-        await RedisService.deleteCache('users:all');
-        await RedisService.deleteCache(`users:detail:${id}`);
+        await RedisService.deleteCache(this.getCacheKey('users:all'));
+        await RedisService.deleteCache(this.getCacheKey(`users:detail:${id}`));
 
         return savedUser;
     }
 
     async delete(id: string) {
         const user = await this.getOne(id);
+        const companyId = this.getCompanyId();
 
         await AppDataSource.transaction(async (transactionalEntityManager) => {
+            if (companyId) {
+                const memberRepository = transactionalEntityManager.getRepository(CompanyMembers);
+                const membershipCount = await memberRepository
+                    .createQueryBuilder("membership")
+                    .where("membership.userId = :userId", { userId: id })
+                    .getCount();
+
+                if (membershipCount > 1) {
+                    await memberRepository.delete({ companyId, userId: id });
+                    return;
+                }
+            }
+
             if (user.account) {
                 await transactionalEntityManager.remove(user.account);
             }
@@ -152,8 +228,8 @@ export class UserService {
         });
 
         // Xóa cache danh sách và cache chi tiết của user vừa xóa
-        await RedisService.deleteCache('users:all');
-        await RedisService.deleteCache(`users:detail:${id}`);
+        await RedisService.deleteCache(this.getCacheKey('users:all'));
+        await RedisService.deleteCache(this.getCacheKey(`users:detail:${id}`));
 
         return { message: "Xóa người dùng thành công" };
     }
