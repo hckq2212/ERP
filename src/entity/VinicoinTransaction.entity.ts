@@ -25,6 +25,9 @@ export class VinicoinTransactions extends TenantEntity {
     @ManyToOne(() => Accounts)
     account: Accounts;
 
+    @Column({ type: "varchar", length: 100, nullable: true, unique: true })
+    idempotencyKey: string | null;
+
     @Column({ nullable: true })
     relatedTaskId: string;
 

@@ -8,7 +8,11 @@ import { TaskStatus, PerformerType } from "../entity/Enums";
 import { Projects, ProjectStatus } from "../entity/Project.entity";
 import { NotificationService } from "./Notification.Service";
 import { VinicoinService } from "./Vinicoin.Service";
-import { In, Not, ILike } from "typeorm";
+import { EntityManager, In, Not, ILike } from "typeorm";
+import { UserRole } from "../entity/Account.entity";
+import { TenantContext } from "../context/TenantContext";
+
+type AcceptanceActor = { userId?: string; role?: string };
 
 export class AcceptanceService {
     private acceptanceRepo = AppDataSource.getRepository(AcceptanceRequests);
@@ -19,6 +23,45 @@ export class AcceptanceService {
     private projectRepo = AppDataSource.getRepository(Projects);
     private notificationService = new NotificationService();
     private vinicoinService = new VinicoinService();
+    private readonly acceptanceRoles = new Set<string>([
+        UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT
+    ]);
+
+    private httpError(message: string, statusCode: number) {
+        const error: any = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
+
+    private assertAcceptanceActor(actor?: AcceptanceActor) {
+        if (!actor?.userId) throw this.httpError("Bạn cần đăng nhập bằng tài khoản nhân sự để nghiệm thu", 401);
+        if (!actor.role || !this.acceptanceRoles.has(actor.role)) {
+            throw this.httpError("Bạn không có quyền thực hiện nghiệm thu", 403);
+        }
+        return actor.userId;
+    }
+
+    private async getLockedRequest(manager: EntityManager, requestId: string, relations: string[]) {
+        const company = TenantContext.getCompany();
+        if (!company) throw this.httpError("Thiếu thông tin công ty", 403);
+
+        const locked = await manager.createQueryBuilder(AcceptanceRequests, "request")
+            .select("request.id")
+            .where("request.id = :requestId", { requestId })
+            .andWhere("request.companyId = :companyId", { companyId: company.id })
+            .setLock("pessimistic_write")
+            .getOne();
+        if (!locked) throw this.httpError("Không tìm thấy yêu cầu nghiệm thu", 404);
+
+        const request = await manager.getRepository(AcceptanceRequests).findOne({
+            where: { id: requestId, company: { id: company.id } }, relations
+        });
+        if (!request) throw this.httpError("Không tìm thấy yêu cầu nghiệm thu", 404);
+        if (request.status !== AcceptanceStatus.PENDING) {
+            throw this.httpError("Yêu cầu này đã được xử lý", 409);
+        }
+        return request;
+    }
 
     async createRequest(data: { serviceIds: string[], userId: string, name: string, projectId: string, note?: string }) {
         const { serviceIds, userId, name, projectId, note } = data;
@@ -101,7 +144,7 @@ export class AcceptanceService {
         // In real app, we might notify all users with BOD role
         const bods = await this.userRepo.createQueryBuilder("user")
             .innerJoin("user.account", "account")
-            .where("account.role IN (:...roles)", { roles: ["BOD", "ADMIN"] })
+            .where("account.role IN (:...roles)", { roles: ["BOD", "ADMIN", "ADMIN_SALE", "ACCOUNTANT"] })
             .getMany();
 
         for (const bod of bods) {
@@ -119,125 +162,87 @@ export class AcceptanceService {
         return savedRequest;
     }
 
-    async approveRequest(requestId: string, approverId: string, feedback?: string) {
-        const request = await this.acceptanceRepo.findOne({
-            where: { id: requestId },
-            relations: ["services", "services.tasks", "services.tasks.job", "services.tasks.assignee", "services.tasks.assignee.account", "services.tasks.helper", "services.tasks.helper.account", "requester"]
-        });
+    async approveRequest(requestId: string, actor: AcceptanceActor, feedback?: string) {
+        const approverId = this.assertAcceptanceActor(actor);
+        return AppDataSource.transaction(async (manager) => {
+            const request = await this.getLockedRequest(manager, requestId, [
+                "services", "services.tasks", "services.tasks.job",
+                "services.tasks.assignee", "services.tasks.assignee.account",
+                "services.tasks.helper", "services.tasks.helper.account", "requester", "project"
+            ]);
+            const approver = await manager.getRepository(Users).findOneBy({ id: approverId });
+            if (!approver) throw this.httpError("Người duyệt không tồn tại", 404);
 
-        if (!request) throw new Error("Không tìm thấy yêu cầu nghiệm thu");
-        if (request.status !== AcceptanceStatus.PENDING) throw new Error("Yêu cầu này đã được xử lý");
+            request.status = AcceptanceStatus.APPROVED;
+            request.approver = approver;
+            request.feedback = feedback || "";
+            await manager.save(request);
 
-        const approver = await this.userRepo.findOneBy({ id: approverId });
-        if (!approver) throw new Error("Người duyệt không tồn tại");
-
-        request.status = AcceptanceStatus.APPROVED;
-        request.approver = approver;
-        request.feedback = feedback || "";
-
-        await this.acceptanceRepo.save(request);
-
-        // Update services results status
-        for (const s of request.services) {
-            if (s.results) {
-                s.results = s.results.map(r => ({ ...r, status: 'APPROVED' }));
+            for (const service of request.services) {
+                if (service.results) service.results = service.results.map(result => ({ ...result, status: 'APPROVED' }));
+                service.status = ContractServiceStatus.COMPLETED;
+                await manager.save(service);
+                await manager.update(Tasks, { contractService: { id: service.id } }, {
+                    status: TaskStatus.ACCEPTED, actualEndDate: new Date()
+                });
+                await this.triggerRewards(service, manager);
             }
-            s.status = ContractServiceStatus.COMPLETED;
-            await this.serviceRepo.save(s);
 
-            // Fetch and complete all tasks for this service
-            await this.taskRepo.update(
-                { contractService: { id: s.id } },
-                { status: TaskStatus.ACCEPTED, actualEndDate: new Date() }
-            );
-
-            // Reward Vinicoin
-            await this.triggerRewards(s);
-        }
-
-        // Auto trigger completion check
-        if (request.projectId) {
-            await this.syncProjectCompletionStatus(request.projectId);
-        }
-
-        // Notify requester
-        await this.notificationService.createNotification({
-            title: "Yêu cầu nghiệm thu được DUYỆT",
-            content: `Đợt nghiệm thu "${request.name}" đã được duyệt.`,
-            type: "ACCEPTANCE_APPROVED",
-            recipient: request.requester,
-            relatedEntityId: request.id,
-            relatedEntityType: "AcceptanceRequest",
+            if (request.projectId) await this.syncProjectCompletionStatus(request.projectId, manager);
+            await this.notificationService.createNotification({
+                title: "Yêu cầu nghiệm thu được DUYỆT",
+                content: `Đợt nghiệm thu "${request.name}" đã được duyệt.`,
+                type: "ACCEPTANCE_APPROVED",
+                recipient: request.requester,
+                relatedEntityId: request.id,
+                relatedEntityType: "AcceptanceRequest",
+            }, manager);
+            return request;
         });
-
-        return request;
     }
 
-    async rejectRequest(requestId: string, approverId: string, feedback: string) {
-        if (!feedback) throw new Error("Vui lòng nhập lý do từ chối");
+    async rejectRequest(requestId: string, actor: AcceptanceActor, feedback: string) {
+        const approverId = this.assertAcceptanceActor(actor);
+        if (!feedback) throw this.httpError("Vui lòng nhập lý do từ chối", 400);
+        return AppDataSource.transaction(async (manager) => {
+            const request = await this.getLockedRequest(manager, requestId, ["services", "services.tasks", "requester", "project"]);
+            const approver = await manager.getRepository(Users).findOneBy({ id: approverId });
+            if (!approver) throw this.httpError("Người duyệt không tồn tại", 404);
 
-        const request = await this.acceptanceRepo.findOne({
-            where: { id: requestId },
-            relations: ["services", "services.tasks", "requester"] // Need tasks relation
-        });
-
-        if (!request) throw new Error("Không tìm thấy yêu cầu nghiệm thu");
-        if (request.status !== AcceptanceStatus.PENDING) throw new Error("Yêu cầu này đã được xử lý");
-
-        const approver = await this.userRepo.findOneBy({ id: approverId });
-        if (!approver) throw new Error("Người duyệt không tồn tại");
-
-        request.status = AcceptanceStatus.REJECTED;
-        request.approver = approver;
-        request.feedback = feedback;
-
-        await this.acceptanceRepo.save(request);
-
-        // Update services and tasks
-        for (const s of request.services) {
-            if (s.results) {
-                s.results = s.results.map(r => ({ ...r, status: 'REJECTED', feedback }));
+            request.status = AcceptanceStatus.REJECTED;
+            request.approver = approver;
+            request.feedback = feedback;
+            await manager.save(request);
+            for (const service of request.services) {
+                if (service.results) service.results = service.results.map(result => ({ ...result, status: 'REJECTED', feedback }));
+                service.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
+                service.feedback = feedback;
+                await manager.save(service);
+                await manager.update(Tasks, { contractService: { id: service.id } }, { status: TaskStatus.DOING });
             }
-            s.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
-            s.feedback = feedback;
-            await this.serviceRepo.save(s);
-
-            // Fetch tasks for this service to reset them
-            const tasks = await this.taskRepo.find({
-                where: { contractService: { id: s.id } }
-            });
-
-            for (const task of tasks) {
-                task.status = TaskStatus.DOING;
-                await this.taskRepo.save(task);
-            }
-        }
-
-        // Notify requester
-        await this.notificationService.createNotification({
-            title: "Yêu cầu nghiệm thu bị từ chối",
-            content: `Đợt nghiệm thu "${request.name}" của dự án ${request.project?.name} bị từ chối. Lý do: ${feedback}`,
-            type: "ACCEPTANCE_REJECTED",
-            recipient: request.requester,
-            relatedEntityId: request.id,
-            relatedEntityType: "AcceptanceRequest",
-            link: `/acceptance/${request.id}`
+            await this.notificationService.createNotification({
+                title: "Yêu cầu nghiệm thu bị từ chối",
+                content: `Đợt nghiệm thu "${request.name}" của dự án ${request.project?.name} bị từ chối. Lý do: ${feedback}`,
+                type: "ACCEPTANCE_REJECTED",
+                recipient: request.requester,
+                relatedEntityId: request.id,
+                relatedEntityType: "AcceptanceRequest",
+                link: `/acceptance/${request.id}`
+            }, manager);
+            return request;
         });
-
-        return request;
     }
 
-    async processRequest(requestId: string, approverId: string, decisions: { serviceId: string, status: 'APPROVED' | 'REJECTED', feedback?: string }[]) {
-        const request = await this.acceptanceRepo.findOne({
-            where: { id: requestId },
-            relations: ["services", "services.tasks", "services.tasks.job", "services.tasks.assignee", "services.tasks.assignee.account", "services.tasks.helper", "services.tasks.helper.account", "requester"]
-        });
-
-        if (!request) throw new Error("Không tìm thấy yêu cầu nghiệm thu");
-        if (request.status !== AcceptanceStatus.PENDING) throw new Error("Yêu cầu này đã được xử lý");
-
-        const approver = await this.userRepo.findOneBy({ id: approverId });
-        if (!approver) throw new Error("Người duyệt không tồn tại");
+    async processRequest(requestId: string, actor: AcceptanceActor, decisions: { serviceId: string, status: 'APPROVED' | 'REJECTED', feedback?: string }[]) {
+        const approverId = this.assertAcceptanceActor(actor);
+        return AppDataSource.transaction(async (manager) => {
+            const request = await this.getLockedRequest(manager, requestId, [
+                "services", "services.tasks", "services.tasks.job",
+                "services.tasks.assignee", "services.tasks.assignee.account",
+                "services.tasks.helper", "services.tasks.helper.account", "requester", "project"
+            ]);
+            const approver = await manager.getRepository(Users).findOneBy({ id: approverId });
+            if (!approver) throw this.httpError("Người duyệt không tồn tại", 404);
 
         let anyApproved = false;
         let anyRejectedGlobal = false;
@@ -264,16 +269,16 @@ export class AcceptanceService {
 
                             // If rejected, find the specific task and reset it for rework
                             if (rd.status === 'REJECTED') {
-                                const task = await this.taskRepo.findOneBy({ id: rd.taskId });
+                                const task = await manager.getRepository(Tasks).findOneBy({ id: rd.taskId });
                                 if (task) {
                                     task.status = TaskStatus.REWORKING;
                                     task.reviewNote = rd.feedback || "Khách hàng yêu cầu sửa lại (Nghiệm thu bị từ chối)";
                                     task.actualEndDate = null; // Clear end date for rework
-                                    await this.taskRepo.save(task);
+                                    await manager.save(task);
 
                                     // Notify assignee about rework
                                     if (task.assigneeId) {
-                                        const assignee = await this.userRepo.findOneBy({ id: task.assigneeId });
+                                        const assignee = await manager.getRepository(Users).findOneBy({ id: task.assigneeId });
                                         if (assignee) {
                                             await this.notificationService.createNotification({
                                                 title: "Yêu cầu sửa lại (Rework)",
@@ -283,17 +288,17 @@ export class AcceptanceService {
                                                 relatedEntityId: task.id.toString(),
                                                 relatedEntityType: "Task",
                                                 link: `/tasks/${task.id}`
-                                            });
+                                            }, manager);
                                         }
                                     }
                                 }
                             } else if (rd.status === 'APPROVED') {
                                 // Transition to ACCEPTED if individual task is approved
-                                const task = await this.taskRepo.findOneBy({ id: rd.taskId });
+                                const task = await manager.getRepository(Tasks).findOneBy({ id: rd.taskId });
                                 if (task) {
                                     task.status = TaskStatus.ACCEPTED;
                                     task.actualEndDate = new Date();
-                                    await this.taskRepo.save(task);
+                                    await manager.save(task);
                                 }
                             }
                         }
@@ -333,13 +338,14 @@ export class AcceptanceService {
                 anyApproved = true;
 
                 // Complete all remaining tasks just in case
-                await this.taskRepo.update(
+                await manager.update(
+                    Tasks,
                     { contractService: { id: service.id } },
                     { status: TaskStatus.ACCEPTED, actualEndDate: new Date() }
                 );
 
                 // Reward Vinicoin
-                await this.triggerRewards(service);
+                await this.triggerRewards(service, manager);
             } else if (anyRejected) {
                 service.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
                 service.feedback = decision.feedback || "Một số kết quả bị từ chối";
@@ -349,18 +355,18 @@ export class AcceptanceService {
                 service.status = ContractServiceStatus.AWAITING_ACCEPTANCE;
             }
 
-            await this.serviceRepo.save(service);
+            await manager.save(service);
         }
 
         // Auto trigger completion check
         if (request.projectId) {
-            await this.syncProjectCompletionStatus(request.projectId);
+            await this.syncProjectCompletionStatus(request.projectId, manager);
         }
 
         // Update request status to PROCESSED as the batch has been handled
         request.status = AcceptanceStatus.PROCESSED;
         request.approver = approver;
-        await this.acceptanceRepo.save(request);
+        await manager.save(request);
 
         // Notify requester
         await this.notificationService.createNotification({
@@ -371,9 +377,10 @@ export class AcceptanceService {
             relatedEntityId: request.id,
             relatedEntityType: "AcceptanceRequest",
             link: `/acceptance/${request.id}`
-        });
+        }, manager);
 
-        return request;
+            return request;
+        });
     }
 
     async getRequest(id: string) {
@@ -423,39 +430,38 @@ export class AcceptanceService {
         };
     }
 
-    private async triggerRewards(service: ContractServices) {
+    private async triggerRewards(service: ContractServices, manager: EntityManager) {
         if (!service.tasks) return;
 
         for (const task of service.tasks) {
             const rewardAmount = task.job?.vinicoin;
             if (!rewardAmount || rewardAmount <= 0) continue;
 
-            // Reward Assignee
+            const rewardedAccountIds = new Set<string>();
             if (task.assignee?.account?.id && task.performerType === PerformerType.INTERNAL) {
-                await this.vinicoinService.rewardForTask(
-                    task.assignee.account.id,
-                    rewardAmount,
-                    task.id,
-                    service.id
-                );
+                rewardedAccountIds.add(task.assignee.account.id);
             }
-
-            // Reward Helper (if internal)
             if (task.helper?.account?.id && task.performerType === PerformerType.INTERNAL) {
+                rewardedAccountIds.add(task.helper.account.id);
+            }
+            for (const accountId of rewardedAccountIds) {
                 await this.vinicoinService.rewardForTask(
-                    task.helper.account.id,
+                    accountId,
                     rewardAmount,
                     task.id,
-                    service.id
+                    service.id,
+                    manager
                 );
             }
         }
     }
 
-    private async syncProjectCompletionStatus(projectId: string) {
+    private async syncProjectCompletionStatus(projectId: string, manager?: EntityManager) {
+        const projectRepo = manager ? manager.getRepository(Projects) : this.projectRepo;
+        const contractRepo = manager ? manager.getRepository(Contracts) : this.contractRepo;
         // 1. Fetch all services of the project
         // Note: Project and Contract are 1-1, so project.contract.services is our set
-        const project = await this.projectRepo.findOne({
+        const project = await projectRepo.findOne({
             where: { id: projectId },
             relations: ["contract", "contract.services"]
         });
@@ -478,10 +484,10 @@ export class AcceptanceService {
             // Update Project
             project.status = ProjectStatus.COMPLETED;
             project.actualEndDate = new Date();
-            await this.projectRepo.save(project);
+            await projectRepo.save(project);
 
             // Update Contract
-            await this.contractRepo.update(
+            await contractRepo.update(
                 { id: project.contract.id },
                 { status: ContractStatus.COMPLETED }
             );

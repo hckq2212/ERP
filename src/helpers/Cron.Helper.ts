@@ -5,7 +5,8 @@ import { TaskStatus } from '../entity/Enums';
 import { Debts, DebtStatus } from '../entity/Debt.entity';
 import { Accounts } from '../entity/Account.entity';
 import { VinicoinTransactions, VinicoinTransactionType } from '../entity/VinicoinTransaction.entity';
-import { LessThan, Not, In } from 'typeorm';
+import { LessThan, MoreThan, In } from 'typeorm';
+import { ulid } from 'ulid';
 
 export class CronHelper {
     /**
@@ -93,11 +94,16 @@ export class CronHelper {
             console.log('[Cron] Monthly Vinicoin reset started at', new Date().toLocaleString());
             try {
                 const accountRepository = AppDataSource.getRepository(Accounts);
-                const transactionRepository = AppDataSource.getRepository(VinicoinTransactions);
-                
-                // Find all accounts with non-zero vinicoin (available coins)
+                const periodParts = new Intl.DateTimeFormat('en-US', {
+                    timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit'
+                }).formatToParts(new Date());
+                const year = periodParts.find(part => part.type === 'year')?.value;
+                const month = periodParts.find(part => part.type === 'month')?.value;
+                const period = `${year}-${month}`;
+
                 const accountsToReset = await accountRepository.find({
-                    where: { vinicoin: Not(0) }
+                    select: { id: true },
+                    where: { vinicoin: MoreThan(0) }
                 });
 
                 if (accountsToReset.length === 0) {
@@ -105,35 +111,45 @@ export class CronHelper {
                     return;
                 }
 
-                await AppDataSource.transaction(async (manager) => {
-                    const txRepo = manager.getRepository(VinicoinTransactions);
-                    const accRepo = manager.getRepository(Accounts);
+                let processedCount = 0;
+                for (const candidate of accountsToReset) {
+                    const processed = await AppDataSource.transaction(async (manager) => {
+                        const account = await manager.createQueryBuilder(Accounts, 'account')
+                            .where('account.id = :accountId', { accountId: candidate.id })
+                            .setLock('pessimistic_write')
+                            .getOne();
+                        const amountToWithdraw = Number(account?.vinicoin || 0);
+                        if (!account || amountToWithdraw <= 0) return false;
 
-                    for (const account of accountsToReset) {
-                        const amountToWithdraw = account.vinicoin;
+                        const insertResult = await manager.createQueryBuilder()
+                            .insert()
+                            .into(VinicoinTransactions)
+                            .values({
+                                id: ulid(),
+                                amount: amountToWithdraw,
+                                account: { id: account.id } as Accounts,
+                                company: null,
+                                type: VinicoinTransactionType.MONTHLY_WITHDRAWAL,
+                                idempotencyKey: `MONTHLY_WITHDRAWAL:${account.id}:${period}`,
+                                description: `Tự động rút Vinicoin định kỳ tháng ${period}`
+                            })
+                            .orIgnore()
+                            .returning(['id'])
+                            .execute();
+                        if (!Array.isArray(insertResult.raw) || insertResult.raw.length === 0) return false;
 
-                        // 1. Create transaction record for audit
-                        const transaction = txRepo.create({
-                            amount: amountToWithdraw,
-                            account,
-                            type: VinicoinTransactionType.MONTHLY_WITHDRAWAL,
-                            description: `Tự động rút Vinicoin định kỳ hàng tháng`
-                        });
-                        await txRepo.save(transaction);
+                        await manager.increment(Accounts, { id: account.id }, 'vinicoinWithdrawn', amountToWithdraw);
+                        await manager.update(Accounts, { id: account.id }, { vinicoin: 0 });
+                        return true;
+                    });
+                    if (processed) processedCount += 1;
+                }
 
-                        // 2. Update account fields
-                        account.vinicoinWithdrawn = (account.vinicoinWithdrawn || 0) + amountToWithdraw;
-                        account.vinicoin = 0; // Reset available balance
-
-                        await accRepo.save(account);
-                    }
-                });
-
-                console.log(`[Cron] Monthly Vinicoin reset completed for ${accountsToReset.length} accounts.`);
+                console.log(`[Cron] Monthly Vinicoin reset completed for ${processedCount} accounts.`);
             } catch (error) {
                 console.error('[Cron] Error in monthly Vinicoin reset:', error);
             }
-        });
+        }, { timezone: 'Asia/Ho_Chi_Minh' });
 
         console.log('[Cron] Service initialized successfully.');
     }

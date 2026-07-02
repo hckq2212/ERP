@@ -21,23 +21,23 @@ export class AcceptanceController {
 
     approveRequest = async (req: Request, res: Response) => {
         try {
-            const approverId = (req as any).user?.userId || req.body?.approverId;
+            const actor = (req as any).user;
             const feedback = req.body?.feedback;
-            const result = await this.acceptanceService.approveRequest(req.params.id as string, approverId, feedback);
+            const result = await this.acceptanceService.approveRequest(req.params.id as string, actor, feedback);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
     rejectRequest = async (req: Request, res: Response) => {
         try {
-            const approverId = (req as any).user?.userId || req.body?.approverId;
+            const actor = (req as any).user;
             const feedback = req.body?.feedback;
-            const result = await this.acceptanceService.rejectRequest(req.params.id as string, approverId, feedback);
+            const result = await this.acceptanceService.rejectRequest(req.params.id as string, actor, feedback);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -67,11 +67,11 @@ export class AcceptanceController {
 
     processRequest = async (req: Request, res: Response) => {
         try {
-            const approverId = (req as any).user?.userId || req.body?.approverId;
-            const result = await this.acceptanceService.processRequest(req.params.id as string, approverId, req.body.decisions);
+            const actor = (req as any).user;
+            const result = await this.acceptanceService.processRequest(req.params.id as string, actor, req.body.decisions);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 }
