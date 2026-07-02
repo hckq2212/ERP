@@ -17,6 +17,7 @@ import { ContractServices, ContractServiceStatus } from "../entity/ContractServi
 import { Violations } from "../entity/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { UserRole } from "../entity/Account.entity";
+import { TenantContext } from "../context/TenantContext";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -341,11 +342,7 @@ export class TaskService {
         task.actualEndDate = new Date();
         task.lastSubmittedById = currentId;
 
-        if (isTeamLead) {
-            task.status = TaskStatus.INTERNAL_COMPLETED;
-        } else {
-            task.status = TaskStatus.AWAITING_REVIEW;
-        }
+        task.status = TaskStatus.AWAITING_REVIEW;
 
         const savedTask = await this.taskRepository.save(task);
 
@@ -389,8 +386,11 @@ export class TaskService {
             }
         }
 
-        taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, savedTask);
-        return savedTask;
+        const responseTask = isTeamLead
+            ? await this.taskRepository.findOne({ where: { id: task.id } }) || savedTask
+            : savedTask;
+        taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, responseTask);
+        return responseTask;
     }
 
     async requestRework(id: string, data: {
@@ -536,12 +536,13 @@ export class TaskService {
             const isTeamLead = taskWithInfo?.project?.team?.teamLead?.id === currentId;
 
             if (isTeamLead) {
-                task.status = TaskStatus.INTERNAL_COMPLETED;
+                task.status = TaskStatus.AWAITING_REVIEW;
                 task.actualEndDate = new Date();
                 await this.taskRepository.save(task);
 
                 await this.reviewService.initializeReviews(task.id, true);
                 await this.reviewService.checkAndFinalize(task.id);
+                task.status = TaskStatus.INTERNAL_COMPLETED;
             } else {
                 task.status = TaskStatus.AWAITING_REVIEW;
                 await this.taskRepository.save(task);
@@ -1067,27 +1068,56 @@ export class TaskService {
         return await this.taskRepository.save(task);
     }
 
-    async approveByCustomer(id: string) {
-        const task = await this.getOne(id);
+    async approveByCustomer(
+        id: string,
+        currentUser?: { id: string; userId?: string; role: string }
+    ) {
+        const currentUserId = currentUser?.userId || currentUser?.id;
+        if (!currentUserId) throw this.httpError("Bạn cần đăng nhập để duyệt công việc", 401);
 
-        if (task.status !== TaskStatus.INTERNAL_COMPLETED) {
-            throw new Error(`Công việc chưa ở trạng thái Hoàn thành nội bộ (Hiện tại: ${task.status})`);
-        }
+        const company = TenantContext.getCompany();
+        if (!company) throw this.httpError("Thiếu thông tin công ty", 403);
 
-        task.status = TaskStatus.COMPLETED;
-        const savedTask = await this.taskRepository.save(task);
+        const savedTask = await AppDataSource.transaction(async (manager) => {
+            const lockedTask = await manager.createQueryBuilder(Tasks, "task")
+                .select("task.id")
+                .where("task.id = :id", { id })
+                .andWhere("task.companyId = :companyId", { companyId: company.id })
+                .setLock("pessimistic_write")
+                .getOne();
+            if (!lockedTask) throw this.httpError("Không tìm thấy công việc", 404);
 
-        if (task.assignee) {
-            await this.notificationService.createNotification({
-                title: "Khách hàng đã duyệt",
-                content: `Khách hàng đã duyệt công việc: ${this.taskDisplayName(task)}. Trạng thái: Hoàn thành.`,
-                type: "TASK_COMPLETED",
-                recipient: task.assignee,
-                relatedEntityId: task.id.toString(),
-                relatedEntityType: "Task",
+            const task = await manager.getRepository(Tasks).findOne({
+                where: { id, company: { id: company.id } },
+                relations: ["assignee", "project", "project.team", "project.team.teamLead"]
             });
-        }
+            if (!task) throw this.httpError("Không tìm thấy công việc", 404);
 
+            const isAdminOrBod = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.BOD;
+            const isProjectLead = task.project?.team?.teamLead?.id === currentUserId;
+            if (!isAdminOrBod && !isProjectLead) {
+                throw this.httpError("Bạn không có quyền xác nhận khách hàng duyệt công việc này", 403);
+            }
+            if (task.status !== TaskStatus.INTERNAL_COMPLETED) {
+                throw this.httpError(`Công việc chưa ở trạng thái Hoàn thành nội bộ (Hiện tại: ${task.status})`, 409);
+            }
+
+            task.status = TaskStatus.COMPLETED;
+            const saved = await manager.save(task);
+            if (task.assignee) {
+                await this.notificationService.createNotification({
+                    title: "Khách hàng đã duyệt",
+                    content: `Khách hàng đã duyệt công việc: ${this.taskDisplayName(task)}. Trạng thái: Hoàn thành.`,
+                    type: "TASK_COMPLETED",
+                    recipient: task.assignee,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                }, manager);
+            }
+            return saved;
+        });
+
+        taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, savedTask);
         return savedTask;
     }
 

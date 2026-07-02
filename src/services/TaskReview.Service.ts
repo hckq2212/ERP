@@ -8,12 +8,19 @@ import { ContractServices } from "../entity/ContractService.entity";
 import { Users } from "../entity/User.entity";
 import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../events/TaskReviewEmitter";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
+import { TenantContext } from "../context/TenantContext";
 
 export class TaskReviewService {
     private reviewRepository = AppDataSource.getRepository(TaskReviews);
     private taskRepository = AppDataSource.getRepository(Tasks);
     private criteriaRepository = AppDataSource.getRepository(JobCriterias);
     private notificationService = new NotificationService();
+
+    private httpError(message: string, statusCode: number) {
+        const error: any = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
 
     async getTaskReviews(taskId: string) {
         return await this.reviewRepository.find({
@@ -92,105 +99,99 @@ export class TaskReviewService {
     }
 
     async checkAndFinalize(taskId: string, passedCriteriaIds?: string[], reviewNote?: string) {
-        // Update criteria status in batch if provided
-        if (passedCriteriaIds) {
-            const allReviews = await this.reviewRepository.find({
-                where: { task: { id: taskId } }
+        const company = TenantContext.getCompany();
+        if (!company) throw this.httpError("Thiếu thông tin công ty", 403);
+
+        const outcome = await AppDataSource.transaction(async (manager) => {
+            const lockedTask = await manager.createQueryBuilder(Tasks, "task")
+                .select("task.id")
+                .where("task.id = :taskId", { taskId })
+                .andWhere("task.companyId = :companyId", { companyId: company.id })
+                .setLock("pessimistic_write")
+                .getOne();
+            if (!lockedTask) throw this.httpError("Không tìm thấy công việc", 404);
+
+            const task = await manager.getRepository(Tasks).findOne({
+                where: { id: taskId, company: { id: company.id } },
+                relations: ["assignee", "contractService", "job", "project"]
             });
-
-            for (const review of allReviews) {
-                review.isPassed = passedCriteriaIds.includes(review.id);
+            if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+            if (task.status !== TaskStatus.AWAITING_REVIEW) {
+                throw this.httpError(`Công việc đang ở trạng thái ${task.status}, không thể thực hiện phê duyệt.`, 409);
             }
-            await this.reviewRepository.save(allReviews);
-        }
 
-        const reviews = await this.reviewRepository.find({
-            where: { task: { id: taskId } }
-        });
+            const reviewRepository = manager.getRepository(TaskReviews);
+            const reviews = await reviewRepository.find({
+                where: { task: { id: taskId }, company: { id: company.id } }
+            });
+            if (passedCriteriaIds) {
+                for (const review of reviews) {
+                    review.isPassed = passedCriteriaIds.includes(review.id);
+                }
+                await reviewRepository.save(reviews);
+            }
 
-        // Group by ReviewerType
-        const groups: Record<string, TaskReviews[]> = {};
-        for (const r of reviews) {
-            if (!groups[r.reviewerType]) groups[r.reviewerType] = [];
-            groups[r.reviewerType].push(r);
-        }
+            const groups: Record<string, TaskReviews[]> = {};
+            for (const review of reviews) {
+                if (!groups[review.reviewerType]) groups[review.reviewerType] = [];
+                groups[review.reviewerType].push(review);
+            }
+            const allPassed = reviews.length === 0 || Object.values(groups).every(groupItems =>
+                groupItems.every(item => item.isPassed)
+            );
 
-        // All groups must have 100% isPassed. If no reviews, it counts as passed.
-        const allPassed = reviews.length === 0 || Object.values(groups).every(groupItems =>
-            groupItems.every(item => item.isPassed)
-        );
-
-        const task = await this.taskRepository.findOne({
-            where: { id: taskId },
-            relations: ["assignee", "contractService", "job", "project"]
-        });
-
-        if (!task) throw new Error("Không tìm thấy công việc");
-
-        // Allowed statuses for review
-        // const reviewableStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE];
-        // if (!reviewableStatuses.includes(task.status)) {
-        //     throw new Error(`Công việc đang ở trạng thái ${task.status}, không thể thực hiện phê duyệt.`);
-        // }
-
-        if (allPassed) {
-            const isOutputJob = task.isOutput;
+            if (!allPassed) {
+                if (reviewNote) {
+                    task.reviewNote = reviewNote;
+                    await manager.save(task);
+                }
+                return {
+                    result: { finalized: false, message: "Đã cập nhật tiêu chí đánh giá nhưng chưa đủ điều kiện hoàn tất" },
+                    task: null as Tasks | null
+                };
+            }
 
             task.status = TaskStatus.INTERNAL_COMPLETED;
             task.actualEndDate = new Date();
             if (reviewNote) task.reviewNote = reviewNote;
-            await this.taskRepository.save(task);
+            await manager.save(task);
 
-            // Sync result to ContractService if this is an output job
-            if (isOutputJob && task.contractService) {
-                const contractServiceRepository = AppDataSource.getRepository(ContractServices);
+            if (task.isOutput && task.contractService) {
                 const contractService = task.contractService;
                 if (!contractService.results) contractService.results = [];
-
-                // Add or update result in array
-                const existingResultIndex = contractService.results.findIndex(r => r.taskId === task.id);
                 const newResult = {
                     taskId: task.id,
                     type: task.result?.type || 'file',
-                    name: task.code || task.nickname || task.name,
+                    name: task.nickname || task.name || task.code,
                     url: task.result?.url || '',
                     status: 'PENDING' as const
                 };
-
-                if (existingResultIndex >= 0) {
-                    contractService.results[existingResultIndex] = newResult;
-                } else {
-                    contractService.results.push(newResult);
-                }
-
-                await contractServiceRepository.save(contractService);
+                const existingResultIndex = contractService.results.findIndex(result => result.taskId === task.id);
+                if (existingResultIndex >= 0) contractService.results[existingResultIndex] = newResult;
+                else contractService.results.push(newResult);
+                await manager.getRepository(ContractServices).save(contractService);
             }
 
-            // Notify assignee
             if (task.assignee) {
                 await this.notificationService.createNotification({
                     title: "Công việc đã được duyệt",
-                    content: `Công việc "${task.nickname || task.name}" của dự án ${task.project?.name} đã được duyệt nội bộ.`,
+                    content: `Công việc "${task.nickname || task.name || task.code}" của dự án ${task.project?.name} đã được duyệt nội bộ.`,
                     type: "TASK_COMPLETED",
                     recipient: task.assignee,
                     relatedEntityId: task.id.toString(),
                     relatedEntityType: "Task",
-                });
+                }, manager);
             }
 
-            taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, task);
-            taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
+            return {
+                result: { finalized: true, message: "Đã hoàn tất duyệt nội bộ công việc" },
+                task
+            };
+        });
 
-            return { finalized: true, message: "Đã hoàn tất duyệt nội bộ công việc" };
-        } else {
-            // Updated criteria but not finalized
-            if (reviewNote) {
-                task.reviewNote = reviewNote;
-                await this.taskRepository.save(task);
-            }
-            taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
-            return { finalized: false, message: "Đã cập nhật tiêu chí đánh giá nhưng chưa đủ điều kiện hoàn tất" };
-        }
+        if (outcome.task) taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, outcome.task);
+        taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
+        return outcome.result;
     }
 
     async rejectTask(taskId: string, passedCriteriaIds: string[], reviewNote: string) {

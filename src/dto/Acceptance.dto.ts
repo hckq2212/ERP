@@ -1,5 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsEnum } from "class-validator";
-import { AcceptanceStatus } from "../entity/AcceptanceRequest.entity";
+import { IsString, IsNotEmpty, IsOptional, IsArray } from "class-validator";
 
 export class CreateAcceptanceDTO {
     @IsString()
@@ -19,12 +18,14 @@ export class CreateAcceptanceDTO {
     attachments?: any[];
 }
 
-export class UpdateAcceptanceStatusDTO {
-    @IsEnum(AcceptanceStatus)
-    @IsNotEmpty({ message: "Trạng thái không được để trống" })
-    status: AcceptanceStatus;
-
+export class ApproveAcceptanceDTO {
     @IsString()
     @IsOptional()
-    note?: string;
+    feedback?: string;
+}
+
+export class RejectAcceptanceDTO {
+    @IsString()
+    @IsNotEmpty({ message: "Lý do từ chối không được để trống" })
+    feedback: string;
 }

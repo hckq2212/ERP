@@ -33,8 +33,8 @@ export class TaskReviewController {
             // Or we could return 202 Accepted if it's partial? 
             // Let's stick with 200 but use the message from service.
             res.status(200).json(result);
-        } catch (error) {
-            res.status(400).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 400).json({ message: error.message });
         }
     }
 

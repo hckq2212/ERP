@@ -221,10 +221,11 @@ export class TaskController {
 
     approveByCustomer = async (req: Request, res: Response) => {
         try {
-            const result = await this.taskService.approveByCustomer(req.params.id as string);
+            const user = (req as any).user;
+            const result = await this.taskService.approveByCustomer(req.params.id as string, user);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 

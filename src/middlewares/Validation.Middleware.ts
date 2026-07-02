@@ -8,7 +8,7 @@ import { Request, Response, NextFunction } from "express";
  */
 export function validationMiddleware(dtoClass: any) {
     return async (req: Request, res: Response, next: NextFunction) => {
-        const dtoInstance = plainToInstance(dtoClass, req.body);
+        const dtoInstance = plainToInstance(dtoClass, req.body ?? {});
         const errors: ValidationError[] = await validate(dtoInstance, {
             whitelist: true, // Automatically remove non-decorated properties
             forbidNonWhitelisted: false, // Don't throw error if non-whitelisted properties are present
