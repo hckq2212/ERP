@@ -1,9 +1,26 @@
 import { Request, Response } from "express";
-import { AuthService } from "../services/Auth.Service";
+import { AuthService, SESSION_EXPIRED_CODE } from "../services/Auth.Service";
 import { COMPANY_ACCESS_DENIED_MESSAGE } from "../middlewares/Tenant.Middleware";
 
 export class AuthController {
     private authService = new AuthService();
+
+    private setAuthCookies(res: Response, result: {
+        accessToken: string;
+        refreshToken: string;
+        accessMaxAge: number;
+        refreshMaxAge: number;
+    }) {
+        const options = { httpOnly: true, secure: true, sameSite: "none" as const, path: "/" };
+        res.cookie("accessToken", result.accessToken, { ...options, maxAge: result.accessMaxAge });
+        res.cookie("refreshToken", result.refreshToken, { ...options, maxAge: result.refreshMaxAge });
+    }
+
+    private clearAuthCookies(res: Response) {
+        const options = { httpOnly: true, secure: true, sameSite: "none" as const, path: "/" };
+        res.clearCookie("accessToken", options);
+        res.clearCookie("refreshToken", options);
+    }
 
     register = async (req: Request, res: Response) => {
         try {
@@ -18,30 +35,10 @@ export class AuthController {
         try {
             const result = await this.authService.login(req.body, (req as any).company);
 
-            // Set HttpOnly Cookies
-            const isRememberMe = result.rememberMe;
-            const accessMaxAge = isRememberMe ? 30 * 24 * 60 * 60 * 1000 : 240 * 60 * 1000;
-            const refreshMaxAge = isRememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-
-            res.cookie("accessToken", result.accessToken, {
-                httpOnly: true,
-                secure: true,
-                sameSite: "none",
-                maxAge: accessMaxAge,
-                path: "/",
-            });
-
-            res.cookie("refreshToken", result.refreshToken, {
-                httpOnly: true,
-                secure: true,
-                sameSite: "none",
-                maxAge: refreshMaxAge,
-                path: "/"
-            });
+            this.setAuthCookies(res, result);
 
             res.status(200).json({
                 message: "Đăng nhập thành công",
-                accessToken: result.accessToken,
                 user: result.user
             });
         } catch (error: any) {
@@ -51,9 +48,23 @@ export class AuthController {
     }
 
     logout = async (req: Request, res: Response) => {
-        res.clearCookie("accessToken");
-        res.clearCookie("refreshToken");
+        await this.authService.logout(req.cookies?.refreshToken, (req as any).company);
+        this.clearAuthCookies(res);
         res.status(200).json({ message: "Đăng xuất thành công" });
+    }
+
+    refresh = async (req: Request, res: Response) => {
+        try {
+            const result = await this.authService.refresh(req.cookies?.refreshToken, (req as any).company);
+            this.setAuthCookies(res, result);
+            res.status(204).send();
+        } catch {
+            this.clearAuthCookies(res);
+            res.status(401).json({
+                code: SESSION_EXPIRED_CODE,
+                message: "Phiên đăng nhập hết hạn, vui lòng đăng nhập lại."
+            });
+        }
     }
 
     getMe = async (req: Request, res: Response) => {

@@ -19,12 +19,16 @@ const opts = {
         cookieExtractor,
         ExtractJwt.fromAuthHeaderAsBearerToken()
     ]),
-    secretOrKey: process.env.JWT_SECRET || ""
+    secretOrKey: process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || ""
 };
 
 passport.use(
     new JwtStrategy(opts, async (jwt_payload, done) => {
         try {
+            if (jwt_payload.type !== "access") {
+                return done(null, false);
+            }
+
             const accountRepository = AppDataSource.getRepository(Accounts);
             const account = await accountRepository.findOne({
                 where: { id: jwt_payload.id as string },

@@ -33,6 +33,7 @@ import { VinicoinTransactions } from "./entity/VinicoinTransaction.entity"
 import { Violations } from "./entity/Violation.entity"
 import { Companies } from "./entity/Company.entity"
 import { CompanyMembers } from "./entity/CompanyMember.entity"
+import { RefreshSessions } from "./entity/RefreshSession.entity"
 
 
 import { VendorJobs } from "./entity/VendorJob.entity"
@@ -95,7 +96,8 @@ export const AppDataSource = new DataSource({
         Violations
         ,
         Companies,
-        CompanyMembers
+        CompanyMembers,
+        RefreshSessions
     ],
 
     migrations: [],
