@@ -9,7 +9,7 @@ import { RefreshSessions } from "../entity/RefreshSession.entity";
 import { ulid } from "ulid";
 
 export const SESSION_EXPIRED_CODE = "SESSION_EXPIRED";
-const ACCESS_TOKEN_TTL_SECONDS = 30 * 60;
+const ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
 const DEFAULT_REFRESH_TTL_SECONDS = 24 * 60 * 60;
 const REMEMBER_REFRESH_TTL_SECONDS = 30 * DEFAULT_REFRESH_TTL_SECONDS;
 

@@ -498,9 +498,15 @@ export class ContractService {
         return savedContract;
     }
 
-    async uploadProposal(id: string, fileData: any, userInfo?: { id: string, userId?: string }) {
+    async uploadProposal(
+        id: string,
+        proposalUrl: string,
+        quotationLink?: string,
+        userInfo?: { id: string, userId?: string }
+    ) {
         const contract = await this.getOne(id);
-        contract.proposal_contract = fileData.url;
+        contract.proposal_contract = proposalUrl.trim();
+        contract.quotation_link = quotationLink?.trim() || null;
         contract.status = ContractStatus.PROPOSAL_UPLOADED;
         contract.rejectionReason = null; // Clear rejection reason on re-upload
 

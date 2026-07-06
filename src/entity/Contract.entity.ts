@@ -78,6 +78,9 @@ export class Contracts extends TenantEntity {
     proposal_contract: string; // Cloudinary URL
 
     @Column({ nullable: true })
+    quotation_link: string; // Optional external quotation URL
+
+    @Column({ nullable: true })
     signed_contract: string; // Cloudinary URL
 
     @Column({ type: "json", nullable: true })

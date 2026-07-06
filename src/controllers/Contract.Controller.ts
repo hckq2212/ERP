@@ -2,6 +2,15 @@ import { Request, Response } from "express";
 import { ContractService } from "../services/Contract.Service";
 import { uploadToCloudinary } from "../helpers/cloudinary.helper";
 
+const isHttpUrl = (value: string) => {
+    try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+        return false;
+    }
+};
+
 export class ContractController {
     private contractService = new ContractService();
 
@@ -52,13 +61,29 @@ export class ContractController {
 
     uploadProposal = async (req: Request, res: Response) => {
         try {
-            const { file } = req.body;
-            if (!file) {
-                return res.status(400).json({ message: "Không tìm thấy file metadata" });
+            const { file, contractLink, quotationLink } = req.body;
+            if (file && contractLink?.trim()) {
+                return res.status(400).json({ message: "Chỉ được chọn upload file hoặc link hợp đồng" });
+            }
+            const proposalUrl = file?.url || contractLink?.trim();
+
+            if (!proposalUrl) {
+                return res.status(400).json({ message: "Vui lòng tải file .docx hoặc nhập link hợp đồng" });
+            }
+            if (!isHttpUrl(proposalUrl)) {
+                return res.status(400).json({ message: "Link hợp đồng không hợp lệ" });
+            }
+            if (quotationLink?.trim() && !isHttpUrl(quotationLink.trim())) {
+                return res.status(400).json({ message: "Link báo giá không hợp lệ" });
             }
 
             const userInfo = (req as any).user;
-            const contract = await this.contractService.uploadProposal(req.params.id as string, file, userInfo);
+            const contract = await this.contractService.uploadProposal(
+                req.params.id as string,
+                proposalUrl,
+                quotationLink,
+                userInfo
+            );
             res.status(200).json(contract);
         } catch (error) {
             res.status(500).json({ message: error.message });
