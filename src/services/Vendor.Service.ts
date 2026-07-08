@@ -98,7 +98,7 @@ export class VendorService {
         const vendorJob = await this.vendorJobRepository.findOne({
             where: { vendor: { id: vendorId }, job: { id: jobId } }
         });
-        // if (!vendorJob) throw new Error("Nhà cung cấp này chưa được gán công việc này");
+        if (!vendorJob) throw new Error("Không tìm thấy hạng mục cần xóa khỏi nhà cung cấp");
 
         await this.vendorJobRepository.remove(vendorJob);
 
