@@ -34,6 +34,7 @@ import servicePackageRoute from "./routes/ServicePackage.Route"
 import chatRoute from "./routes/Chat.Route"
 import accountRoute from "./routes/Account.Route"
 import profileRoute from "./routes/Profile.Route"
+import adminRoute from "./routes/Admin.Route"
 import { loggingMiddleware } from "./middlewares/Logging.Middleware";
 import { authMiddleware } from "./middlewares/Auth.Middleware";
 import { companyMemberMiddleware, tenantMiddleware } from "./middlewares/Tenant.Middleware";
@@ -103,6 +104,7 @@ app.use("/:companySlug/api/service-packages", tenantMiddleware, authMiddleware, 
 app.use("/:companySlug/api/chat", tenantMiddleware, authMiddleware, companyMemberMiddleware, chatRoute)
 app.use("/:companySlug/api/accounts", tenantMiddleware, authMiddleware, companyMemberMiddleware, accountRoute)
 app.use("/:companySlug/api/me", tenantMiddleware, authMiddleware, companyMemberMiddleware, profileRoute)
+app.use("/:companySlug/api/admin", tenantMiddleware, adminRoute)
 
 app.use("/api/auth", authRoute)
 app.use("/api/opportunities", opportunityRoute)
