@@ -74,6 +74,15 @@ export class ProjectController {
         }
     }
 
+    syncServiceJobs = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.syncServiceJobs(req.params.id as string);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     // start = async (req: Request, res: Response) => {
     //     try {
     //         const project = await this.projectService.start(req.params.id as string);

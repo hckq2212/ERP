@@ -44,12 +44,12 @@ dotenv.config()
 
 const isProduction = process.env.NODE_ENV === "production";
 const useDatabaseUrl = Boolean(process.env.DATABASE_URL);
-const useSsl = process.env.DB_SSL === "true" || isProduction || useDatabaseUrl;
+const useSsl = process.env.DB_SSL === "true";
 const sslOptions = useSsl ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === "true" } : false;
 
 export const AppDataSource = new DataSource({
     type: "postgres",
-    ...(useDatabaseUrl
+    ...(isProduction
         ? { url: process.env.DATABASE_URL, ssl: sslOptions }
         : {
             host: process.env.DB_HOST || "localhost",

@@ -28,7 +28,143 @@ export class ProjectService {
     private notificationService = new NotificationService();
     private googleSheetService = new GoogleSheetService();
 
+    private emptySyncResult() {
+        return {
+            createdTasks: 0,
+            updatedOutputTasks: 0,
+            backfilledResults: 0
+        };
+    }
 
+    private buildContractServiceResult(task: Tasks) {
+        return {
+            taskId: task.id,
+            type: task.result?.type || 'file',
+            name: task.nickname || task.name || task.code,
+            url: task.result?.url || '',
+            status: 'PENDING' as const
+        };
+    }
+
+    private shouldBackfillResult(task: Tasks) {
+        return task.isOutput &&
+            !!task.contractService &&
+            !!task.result &&
+            [TaskStatus.INTERNAL_COMPLETED, TaskStatus.COMPLETED, TaskStatus.ACCEPTED].includes(task.status);
+    }
+
+    private async syncContractServiceJobs(projectId: string, options: { allowCompletedProject?: boolean } = {}) {
+        const syncResult = this.emptySyncResult();
+
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["contract"]
+        });
+        if (!project) throw new Error("KhÃ´ng tÃ¬m tháº¥y dá»± Ã¡n");
+        if (!project.contract) throw new Error("Dá»± Ã¡n chÆ°a liÃªn káº¿t há»£p Ä‘á»“ng");
+        if (!options.allowCompletedProject &&
+            [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
+            throw new Error("Dá»± Ã¡n Ä‘Ã£ hoÃ n táº¥t hoáº·c Ä‘Ã£ há»§y, khÃ´ng thá»ƒ Ä‘á»“ng bá»™ cÃ´ng viá»‡c");
+        }
+
+        const contract = await this.contractRepository.findOne({
+            where: { id: project.contract.id }
+        });
+        if (!contract) throw new Error("KhÃ´ng tÃ¬m tháº¥y há»£p Ä‘á»“ng");
+
+        const contractServices = await this.contractServiceRepository.find({
+            where: { contract: { id: contract.id } },
+            relations: ["service", "service.serviceJobs", "service.serviceJobs.job", "tasks", "tasks.job"]
+        });
+
+        for (const cs of contractServices) {
+            if (!cs.service?.serviceJobs?.length) continue;
+
+            for (const sj of cs.service.serviceJobs) {
+                const job = sj.job;
+                if (!job) continue;
+
+                const quantity = Number(sj.quantity || 1);
+                const existingTasks = (cs.tasks || []).filter(task => task.job?.id === job.id);
+
+                if (sj.isOutput) {
+                    for (const task of existingTasks) {
+                        if (!task.isOutput) {
+                            task.isOutput = true;
+                            await this.taskRepository.save(task);
+                            syncResult.updatedOutputTasks += 1;
+                        }
+                    }
+                }
+
+                for (let i = existingTasks.length; i < quantity; i++) {
+                    const totalCountForProject = await this.taskRepository.count({
+                        where: {
+                            project: { id: project.id },
+                            job: { id: job.id }
+                        }
+                    });
+
+                    const seq = (totalCountForProject + 1).toString().padStart(2, '0');
+                    const jobCode = job.code || `JOB${job.id}`;
+                    const taskCode = `${contract.contractCode}-${jobCode}-${seq}`;
+
+                    const task = this.taskRepository.create({
+                        code: taskCode,
+                        name: job.name,
+                        project,
+                        job,
+                        contractService: cs,
+                        status: TaskStatus.PENDING,
+                        performerType: job.defaultPerformerType,
+                        attachments: contract.attachments || [],
+                        isOutput: sj.isOutput
+                    });
+
+                    const savedTask = await this.taskRepository.save(task);
+                    existingTasks.push(savedTask);
+                    syncResult.createdTasks += 1;
+                }
+            }
+
+            const outputTasks = await this.taskRepository.find({
+                where: {
+                    project: { id: project.id },
+                    contractService: { id: cs.id },
+                    isOutput: true
+                },
+                relations: ["contractService"]
+            });
+
+            const results = Array.isArray(cs.results) ? [...cs.results] : [];
+            let serviceBackfilledResults = 0;
+            for (const task of outputTasks) {
+                if (!this.shouldBackfillResult(task)) continue;
+
+                const resultIndex = results.findIndex(result => result.taskId === task.id);
+                const result = this.buildContractServiceResult(task);
+                if (resultIndex >= 0) {
+                    const current = results[resultIndex];
+                    if (!current.url && result.url) {
+                        results[resultIndex] = { ...current, ...result };
+                        syncResult.backfilledResults += 1;
+                        serviceBackfilledResults += 1;
+                    }
+                } else {
+                    results.push(result);
+                    syncResult.backfilledResults += 1;
+                    serviceBackfilledResults += 1;
+                }
+            }
+
+            if (serviceBackfilledResults > 0) {
+                cs.results = results;
+                await this.contractServiceRepository.save(cs);
+            }
+        }
+
+        return syncResult;
+    }
 
     async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
         const page = parseInt(filters.page) || 1;
@@ -358,65 +494,17 @@ export class ProjectService {
             }) || project;
         }
 
-        // 2. Fetch Contract Services with their Jobs
-        const contractServices = await this.contractServiceRepository.find({
-            where: { contract: { id: contract.id } },
-            relations: ["service", "service.serviceJobs", "service.serviceJobs.job"]
-        });
-
-        // 3. Generate Tasks for each Job in each Service
-        for (const cs of contractServices) {
-            if (!cs.service || !cs.service.serviceJobs) continue;
-
-            for (const sj of cs.service.serviceJobs) {
-                const job = sj.job;
-                if (!job) continue;
-
-                const quantity = Number(sj.quantity || 1);
-
-                for (let i = 1; i <= quantity; i++) {
-                    // 1. Idempotency check: Have we already created 'quantity' tasks for THIS job in THIS service?
-                    const countForService = await this.taskRepository.count({
-                        where: {
-                            project: { id: project.id },
-                            job: { id: job.id },
-                            contractService: { id: cs.id }
-                        }
-                    });
-
-                    if (countForService >= quantity) break;
-
-                    // 2. Sequence generation: Count ALL tasks for this job in the WHOLE PROJECT to ensure unique code
-                    const totalCountForProject = await this.taskRepository.count({
-                        where: {
-                            project: { id: project.id },
-                            job: { id: job.id }
-                        }
-                    });
-
-                    const seq = (totalCountForProject + 1).toString().padStart(2, '0');
-                    const jobCode = job.code || `JOB${job.id}`;
-                    const taskCode = `${contract.contractCode}-${jobCode}-${seq}`;
-
-                    const task = this.taskRepository.create({
-                        code: taskCode,
-                        name: job.name,
-                        project: project,
-                        job: job,
-                        contractService: cs,
-                        status: TaskStatus.PENDING,
-                        performerType: job.defaultPerformerType,
-                        attachments: contract.attachments || [],
-                        isOutput: sj.isOutput // Flag as output if service-job is marked as output
-                    });
-
-                    await this.taskRepository.save(task);
-                }
-            }
-        }
+        await this.syncContractServiceJobs(project.id, { allowCompletedProject: true });
 
         projectEmitter.emit(PROJECT_EVENTS.CREATED, project);
         return project;
+    }
+
+    async syncServiceJobs(id: string) {
+        const result = await this.syncContractServiceJobs(id);
+        const project = await this.projectRepository.findOneBy({ id });
+        if (project) projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
+        return result;
     }
 
     async createGoogleSheet(projectId: string) {

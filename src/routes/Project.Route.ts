@@ -22,6 +22,12 @@ router.post(
     roleMiddleware(["BOD", "ADMIN"]),
     projectController.retryGoogleSheet
 );
+router.post(
+    "/:id/sync-service-jobs",
+    authMiddleware,
+    roleMiddleware(["ADMIN"]),
+    projectController.syncServiceJobs
+);
 // router.post("/:id/start", authMiddleware, projectController.start);
 
 
