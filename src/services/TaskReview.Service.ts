@@ -162,8 +162,10 @@ export class TaskReviewService {
                 const newResult = {
                     taskId: task.id,
                     type: task.result?.type || 'file',
-                    name: task.nickname || task.name || task.code,
-                    url: task.result?.url || '',
+                    name: task.result?.name || task.nickname || task.name || task.code,
+                    url: task.result?.url,
+                    note: task.result?.note,
+                    checklist: task.result?.checklist,
                     status: 'PENDING' as const
                 };
                 const existingResultIndex = contractService.results.findIndex(result => result.taskId === task.id);

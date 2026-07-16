@@ -106,6 +106,14 @@ export class TaskController {
             const { result: bodyResult, link } = req.body;
             let resultData: any = null;
 
+            if (bodyResult && (bodyResult.type === "CHECKLIST" || bodyResult.type === "CONFIRMATION")) {
+                resultData = {
+                    type: bodyResult.type,
+                    name: bodyResult.name || "Xac nhan hoan thanh cong viec",
+                    note: bodyResult.note,
+                    checklist: bodyResult.checklist || []
+                };
+            } else
             if (bodyResult && bodyResult.url) {
                 resultData = {
                     type: bodyResult.type || "FILE",

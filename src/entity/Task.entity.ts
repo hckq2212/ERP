@@ -72,7 +72,15 @@ export class Tasks extends TenantEntity {
     status: TaskStatus;
 
     @Column({ type: "json", nullable: true })
-    result: { type: string, name: string, url: string, size?: number, publicId?: string }; // Store JSON of result (file or link)
+    result: {
+        type: string,
+        name: string,
+        url?: string,
+        size?: number,
+        publicId?: string,
+        note?: string,
+        checklist?: { criteriaId?: string, label: string, description?: string, checked: boolean }[]
+    }; // Store JSON of result (file, link, checklist, or confirmation)
 
     @Column({ type: "timestamptz", nullable: true })
     plannedStartDate: Date;

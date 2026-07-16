@@ -61,7 +61,16 @@ export class ContractServices extends TenantEntity {
     acceptanceRequest: any;
 
     @Column({ type: "jsonb", nullable: true, default: [] })
-    results: { taskId: string, type: string, name: string, url: string, status: 'PENDING' | 'APPROVED' | 'REJECTED', feedback?: string }[];
+    results: {
+        taskId: string,
+        type: string,
+        name: string,
+        url?: string,
+        status: 'PENDING' | 'APPROVED' | 'REJECTED',
+        feedback?: string,
+        note?: string,
+        checklist?: { criteriaId?: string, label: string, description?: string, checked: boolean }[]
+    }[];
 
     @Column({ nullable: true })
     name: string; // Snapshot of service name

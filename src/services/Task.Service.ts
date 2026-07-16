@@ -218,7 +218,7 @@ export class TaskService {
     async getOne(id: string) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "quotation", "supervisor", "iterations", "lastSubmittedBy", "iterations.submittedBy"]
+            relations: ["project", "project.team", "project.team.teamLead", "job", "job.criteria", "assignee", "quotation", "supervisor", "iterations", "lastSubmittedBy", "iterations.submittedBy"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
@@ -337,6 +337,11 @@ export class TaskService {
         const task = await this.getOne(id);
         const currentId = (currentUser as any)?.userId || currentUser?.id;
         const isTeamLead = task.project?.team?.teamLead?.id === currentId;
+
+        const resultType = data.result?.type;
+        if (!data.result || ((resultType === "FILE" || resultType === "LINK") && !data.result.url)) {
+            throw this.httpError("Kết quả công việc không hợp lệ", 400);
+        }
 
         task.result = data.result;
         task.actualEndDate = new Date();
