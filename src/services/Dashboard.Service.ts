@@ -4,6 +4,7 @@ import { Customers } from "../entity/Customer.entity";
 import { Debts, DebtStatus } from "../entity/Debt.entity";
 import { Projects, ProjectStatus } from "../entity/Project.entity";
 import { ContractServiceStatus } from "../entity/ContractService.entity";
+import { Quotations, QuotationStatus } from "../entity/Quotation.entity";
 import { Tasks } from "../entity/Task.entity";
 import { TaskStatus } from "../entity/Enums";
 import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
@@ -18,6 +19,7 @@ export class DashboardService {
     private projectRepo = AppDataSource.getRepository(Projects);
     private taskRepo = AppDataSource.getRepository(Tasks);
     private opportunityRepo = AppDataSource.getRepository(Opportunities);
+    private quotationRepo = AppDataSource.getRepository(Quotations);
 
     async getDashboardData(userId: string, role: UserRole, month?: number, year?: number) {
         const data: any = {};
@@ -359,11 +361,109 @@ export class DashboardService {
 
         const totalDebt = unpaidDebts.reduce((sum, d) => sum + parseFloat(d.amount as any), 0);
 
+        const [pendingQuotations, pendingContracts] = await Promise.all([
+            this.quotationRepo.find({
+                where: [
+                    {
+                        status: QuotationStatus.PENDING_APPROVAL,
+                        ...(dateFilter && { createdAt: dateFilter })
+                    },
+                    {
+                        status: QuotationStatus.DRAFT,
+                        opportunity: { status: OpportunityStatus.PENDING_QUOTE_APPROVAL },
+                        ...(dateFilter && { createdAt: dateFilter })
+                    }
+                ],
+                relations: ["opportunity", "opportunity.customer", "opportunity.createdBy", "createdBy"],
+                order: { createdAt: "DESC" },
+                take: 20
+            }),
+            this.contractRepo.find({
+                where: {
+                    status: ContractStatus.PROPOSAL_UPLOADED,
+                    ...(dateFilter && { createdAt: dateFilter })
+                },
+                relations: ["customer", "opportunity", "createdBy"],
+                order: { createdAt: "DESC" },
+                take: 20
+            })
+        ]);
+
+        const approvalQueue = {
+            quotations: pendingQuotations.map(q => ({
+                id: q.id,
+                type: "QUOTATION",
+                title: `Báo giá lần ${q.version}`,
+                status: q.status,
+                totalAmount: q.totalAmount,
+                createdAt: q.createdAt,
+                opportunityId: q.opportunity?.id,
+                opportunityCode: q.opportunity?.opportunityCode,
+                opportunityName: q.opportunity?.name,
+                customerName: q.opportunity?.customer?.name || q.opportunity?.leadName,
+                createdByName: q.createdBy?.fullName || q.opportunity?.createdBy?.fullName
+            })),
+            contracts: pendingContracts.map(c => ({
+                id: c.id,
+                type: "CONTRACT",
+                title: c.name,
+                status: c.status,
+                totalAmount: c.sellingPrice,
+                createdAt: c.createdAt,
+                contractCode: c.contractCode,
+                opportunityId: c.opportunity?.id,
+                opportunityName: c.opportunity?.name,
+                customerName: c.customer?.name,
+                createdByName: c.createdBy?.fullName,
+                proposalUrl: c.proposal_contract,
+                quotationLink: c.quotation_link
+            }))
+        };
+
+        const currentProjects = await this.getCurrentProjectProgress();
+
         return {
             totalCustomers,
             newCustomers,
             totalRevenue,
-            totalDebt
+            totalDebt,
+            approvalQueue,
+            currentProjects,
+            pendingApprovalCount: approvalQueue.quotations.length + approvalQueue.contracts.length
         };
+    }
+
+    private async getCurrentProjectProgress() {
+        const projects = await this.projectRepo.find({
+            where: {
+                status: In([
+                    ProjectStatus.PENDING_CONFIRMATION,
+                    ProjectStatus.CONFIRMED,
+                    ProjectStatus.IN_PROGRESS
+                ])
+            },
+            relations: ["contract", "contract.customer", "contract.services", "team", "team.teamLead"],
+            order: { createdAt: "DESC" }
+        });
+
+        return projects.map(project => {
+            const services = project.contract?.services || [];
+            const serviceCount = services.length;
+            const completedServiceCount = services.filter(s => s.status === ContractServiceStatus.COMPLETED).length;
+
+            return {
+                id: project.id,
+                name: project.name,
+                status: project.status,
+                customerName: project.contract?.customer?.name,
+                teamName: project.team?.name,
+                teamLeadName: project.team?.teamLead?.fullName,
+                plannedStartDate: project.plannedStartDate,
+                plannedEndDate: project.plannedEndDate,
+                serviceCount,
+                completedServiceCount,
+                progress: serviceCount > 0 ? Math.round((completedServiceCount / serviceCount) * 100) : 0
+            };
+        });
     }
 }

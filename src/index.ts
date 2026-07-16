@@ -36,6 +36,7 @@ import accountRoute from "./routes/Account.Route"
 import profileRoute from "./routes/Profile.Route"
 import { loggingMiddleware } from "./middlewares/Logging.Middleware";
 import { authMiddleware } from "./middlewares/Auth.Middleware";
+import { globalApiLimiter, writeRateLimitMiddleware } from "./middlewares/RateLimit.Middleware";
 import { companyMemberMiddleware, tenantMiddleware } from "./middlewares/Tenant.Middleware";
 import { installTenantRepositoryGuard } from "./helpers/TenantRepositoryGuard";
 import { seedCompaniesAndDefaultMemberships } from "./helpers/CompanySeed.Helper";
@@ -76,33 +77,36 @@ app.use(passport.initialize())
 // Apply logging middleware globally
 app.use(loggingMiddleware);
 
+app.use("/:companySlug/api", globalApiLimiter)
+app.use("/api", globalApiLimiter)
+
 app.use("/:companySlug/api/auth", tenantMiddleware, authRoute)
-app.use("/:companySlug/api/opportunities", tenantMiddleware, authMiddleware, companyMemberMiddleware, opportunityRoute)
-app.use("/:companySlug/api/services", tenantMiddleware, authMiddleware, companyMemberMiddleware, serviceRoute)
-app.use("/:companySlug/api/jobs", tenantMiddleware, authMiddleware, companyMemberMiddleware, jobRoute)
-app.use("/:companySlug/api/contracts", tenantMiddleware, authMiddleware, companyMemberMiddleware, contractRoute)
-app.use("/:companySlug/api/quotations", tenantMiddleware, authMiddleware, companyMemberMiddleware, quotationRoute)
-app.use("/:companySlug/api/payment-milestones", tenantMiddleware, authMiddleware, companyMemberMiddleware, paymentMilestoneRoute)
-app.use("/:companySlug/api/projects", tenantMiddleware, authMiddleware, companyMemberMiddleware, projectRoute)
-app.use("/:companySlug/api/tasks", tenantMiddleware, authMiddleware, companyMemberMiddleware, taskRoute)
-app.use("/:companySlug/api/opportunity-services", tenantMiddleware, authMiddleware, companyMemberMiddleware, opportunityServiceRoute)
-app.use("/:companySlug/api/users", tenantMiddleware, authMiddleware, companyMemberMiddleware, userRoute)
-app.use("/:companySlug/api/teams", tenantMiddleware, authMiddleware, companyMemberMiddleware, projectTeamRoute)
-app.use("/:companySlug/api/notifications", tenantMiddleware, authMiddleware, companyMemberMiddleware, notificationRoute)
-app.use("/:companySlug/api/dashboard", tenantMiddleware, authMiddleware, companyMemberMiddleware, dashboardRoute);
-app.use("/:companySlug/api/customers", tenantMiddleware, authMiddleware, companyMemberMiddleware, customerRoute)
-app.use("/:companySlug/api/vendors", tenantMiddleware, authMiddleware, companyMemberMiddleware, vendorRoute)
-app.use("/:companySlug/api/referral-partners", tenantMiddleware, authMiddleware, companyMemberMiddleware, referralPartnerRoute)
-app.use("/:companySlug/api/debts", tenantMiddleware, authMiddleware, companyMemberMiddleware, debtRoute)
-app.use("/:companySlug/api/contract-addendums", tenantMiddleware, authMiddleware, companyMemberMiddleware, contractAddendumRoute)
-app.use("/:companySlug/api/job-criteria", tenantMiddleware, authMiddleware, companyMemberMiddleware, jobCriteriaRoute)
-app.use("/:companySlug/api/task-reviews", tenantMiddleware, authMiddleware, companyMemberMiddleware, taskReviewRoute)
-app.use("/:companySlug/api/acceptance", tenantMiddleware, authMiddleware, companyMemberMiddleware, acceptanceRoute)
-app.use("/:companySlug/api/cloudinary", tenantMiddleware, authMiddleware, companyMemberMiddleware, cloudinaryRoute)
-app.use("/:companySlug/api/service-packages", tenantMiddleware, authMiddleware, companyMemberMiddleware, servicePackageRoute)
-app.use("/:companySlug/api/chat", tenantMiddleware, authMiddleware, companyMemberMiddleware, chatRoute)
-app.use("/:companySlug/api/accounts", tenantMiddleware, authMiddleware, companyMemberMiddleware, accountRoute)
-app.use("/:companySlug/api/me", tenantMiddleware, authMiddleware, companyMemberMiddleware, profileRoute)
+app.use("/:companySlug/api/opportunities", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, opportunityRoute)
+app.use("/:companySlug/api/services", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, serviceRoute)
+app.use("/:companySlug/api/jobs", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, jobRoute)
+app.use("/:companySlug/api/contracts", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, contractRoute)
+app.use("/:companySlug/api/quotations", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, quotationRoute)
+app.use("/:companySlug/api/payment-milestones", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, paymentMilestoneRoute)
+app.use("/:companySlug/api/projects", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, projectRoute)
+app.use("/:companySlug/api/tasks", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, taskRoute)
+app.use("/:companySlug/api/opportunity-services", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, opportunityServiceRoute)
+app.use("/:companySlug/api/users", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, userRoute)
+app.use("/:companySlug/api/teams", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, projectTeamRoute)
+app.use("/:companySlug/api/notifications", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, notificationRoute)
+app.use("/:companySlug/api/dashboard", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, dashboardRoute);
+app.use("/:companySlug/api/customers", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, customerRoute)
+app.use("/:companySlug/api/vendors", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, vendorRoute)
+app.use("/:companySlug/api/referral-partners", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, referralPartnerRoute)
+app.use("/:companySlug/api/debts", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, debtRoute)
+app.use("/:companySlug/api/contract-addendums", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, contractAddendumRoute)
+app.use("/:companySlug/api/job-criteria", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, jobCriteriaRoute)
+app.use("/:companySlug/api/task-reviews", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, taskReviewRoute)
+app.use("/:companySlug/api/acceptance", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, acceptanceRoute)
+app.use("/:companySlug/api/cloudinary", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, cloudinaryRoute)
+app.use("/:companySlug/api/service-packages", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, servicePackageRoute)
+app.use("/:companySlug/api/chat", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, chatRoute)
+app.use("/:companySlug/api/accounts", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, accountRoute)
+app.use("/:companySlug/api/me", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, profileRoute)
 
 app.use("/api/auth", authRoute)
 app.use("/api/opportunities", opportunityRoute)

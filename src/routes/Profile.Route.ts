@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { ProfileController } from "../controllers/Profile.Controller";
 import { authMiddleware } from "../middlewares/Auth.Middleware";
+import { writeRateLimitMiddleware } from "../middlewares/RateLimit.Middleware";
 
 const router = Router();
 const profileController = new ProfileController();
 
 router.use(authMiddleware);
+router.use(writeRateLimitMiddleware);
 
 router.get("/", profileController.getMe);
 router.patch("/", profileController.updateMe);
