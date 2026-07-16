@@ -2,14 +2,19 @@ import { Response } from "express";
 import { NotificationService } from "../services/Notification.Service";
 import { AuthRequest } from "../middlewares/Auth.Middleware";
 import { notificationManager } from "../events/NotificationEmitter";
+import { TenantRequest } from "../middlewares/Tenant.Middleware";
 
 export class NotificationController {
     private notificationService = new NotificationService();
 
-streamNotifications = async (req: AuthRequest, res: Response) => {
+streamNotifications = async (req: AuthRequest & TenantRequest, res: Response) => {
         const userId = req.user?.userId || req.user?.id;
         if (!userId) {
             return res.status(401).json({ message: "Unauthorized" });
+        }
+        const companyId = req.company?.id;
+        if (!companyId) {
+            return res.status(400).json({ message: "Tenant context is required for SSE stream" });
         }
 
         // SSE Headers
@@ -24,12 +29,12 @@ streamNotifications = async (req: AuthRequest, res: Response) => {
         }, 30000);
 
         // Register connection with Singleton Manager
-        notificationManager.addConnection(userId, res);
+        notificationManager.addConnection(companyId, userId, res);
 
         // Cleanup on connection close
         req.on("close", () => {
             clearInterval(heartbeat);
-            notificationManager.removeConnection(userId, res);
+            notificationManager.removeConnection(companyId, userId, res);
             res.end();
         });
     }

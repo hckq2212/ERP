@@ -4,6 +4,7 @@ import { Users } from "../entity/User.entity";
 import { EntityManager } from "typeorm";
 
 import { notificationEmitter, NOTIFICATION_EVENTS } from "../events/NotificationEmitter";
+import { TenantContext } from "../context/TenantContext";
 
 export class NotificationService {
     private notificationRepository = AppDataSource.getRepository(Notifications);
@@ -25,9 +26,11 @@ export class NotificationService {
         });
 
         const savedNotification = await repo.save(notification);
+        const companyId = TenantContext.getCompany()?.id || (savedNotification as any).company?.id;
 
         // Emit real-time event via SSE emitter
         notificationEmitter.emit(NOTIFICATION_EVENTS.NEW_NOTIFICATION, {
+            companyId,
             recipientId: data.recipient.id,
             notification: savedNotification
         });
