@@ -3,7 +3,7 @@ import { Jobs } from "../entity/Job.entity";
 import { Services } from "../entity/Service.entity";
 import { ServiceService } from "./Service.Service";
 import { ServiceJob } from "../entity/ServiceJob.entity";
-import { In, ILike } from "typeorm";
+import { In, ILike, Raw } from "typeorm";
 
 export class JobService {
     private jobRepository = AppDataSource.getRepository(Jobs);
@@ -31,6 +31,21 @@ export class JobService {
 
     async create(data: any = {}) {
         const { serviceIds, vendorId, ...jobData } = data;
+        const normalizedCode = typeof jobData.code === "string" ? jobData.code.trim() : jobData.code;
+
+        if (normalizedCode) {
+            const existingJob = await this.jobRepository.findOne({
+                where: {
+                    code: Raw((alias) => `LOWER(TRIM(${alias})) = LOWER(TRIM(:code))`, { code: normalizedCode })
+                },
+                relations: ["vendorJobs", "vendorJobs.vendor", "serviceJobs", "serviceJobs.service", "criteria"]
+            });
+
+            if (existingJob) return existingJob;
+
+            jobData.code = normalizedCode;
+        }
+
         const job = this.jobRepository.create(jobData as any) as any;
         const savedJob = (await this.jobRepository.save(job)) as any;
 
