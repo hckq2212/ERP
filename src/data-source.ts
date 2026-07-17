@@ -63,7 +63,7 @@ export const AppDataSource = new DataSource({
     extra: {
         connectionTimeoutMillis: 10000,
     },
-    synchronize: true,
+    synchronize: false,
     schema: "public",
     logging: isProduction ? false : ["error", "warn"], // Enabled some logging in dev
     entities: [
