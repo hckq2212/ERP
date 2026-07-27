@@ -39,7 +39,6 @@ import { authMiddleware } from "./middlewares/Auth.Middleware";
 import { globalApiLimiter, writeRateLimitMiddleware } from "./middlewares/RateLimit.Middleware";
 import { companyMemberMiddleware, tenantMiddleware } from "./middlewares/Tenant.Middleware";
 import { installTenantRepositoryGuard } from "./helpers/TenantRepositoryGuard";
-import { seedCompaniesAndDefaultMemberships } from "./helpers/CompanySeed.Helper";
 
 
 
@@ -134,7 +133,7 @@ app.use("/api/cloudinary", cloudinaryRoute)
 app.use("/api/service-packages", servicePackageRoute)
 app.use("/api/chat", chatRoute)
 app.use("/api/accounts", accountRoute)
-app.use("/api/me", profileRoute)
+app.use("/api/me", tenantMiddleware, authMiddleware, writeRateLimitMiddleware, companyMemberMiddleware, profileRoute)
 app.get("/health", (req, res) => {
     res.status(200).send("OK");
 });
@@ -147,7 +146,6 @@ import { initSubscribers } from "./subscribers";
 
 
 AppDataSource.initialize().then(async () => {
-    await seedCompaniesAndDefaultMemberships();
     // Initialize Event Subscribers
     initSubscribers();
 

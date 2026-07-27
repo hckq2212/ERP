@@ -10,6 +10,7 @@ router.use(authMiddleware);
 router.use(writeRateLimitMiddleware);
 
 router.get("/", profileController.getMe);
+router.get("/vinicoin-transactions", profileController.getVinicoinTransactions);
 router.patch("/", profileController.updateMe);
 
 export default router;
