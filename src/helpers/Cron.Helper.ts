@@ -4,19 +4,27 @@ import { Tasks } from '../entity/Task.entity';
 import { TaskStatus } from '../entity/Enums';
 import { Debts, DebtStatus } from '../entity/Debt.entity';
 import { Accounts } from '../entity/Account.entity';
-import { AccountVinicoinBalances } from '../entity/AccountVinicoinBalance.entity';
 import { VinicoinTransactions, VinicoinTransactionType } from '../entity/VinicoinTransaction.entity';
 import { LessThan, MoreThan, In } from 'typeorm';
 import { ulid } from 'ulid';
 
 export class CronHelper {
+    /**
+     * Initializes all cron jobs for the application.
+     */
     static init() {
+        /**
+         * Task Status Expiry Job
+         * Runs every 30 minutes to check for tasks that have passed their deadline.
+         */
         cron.schedule('*/30 * * * *', async () => {
             console.log('[Cron] Checking for overdue tasks at', new Date().toLocaleString());
             try {
                 const taskRepository = AppDataSource.getRepository(Tasks);
                 const now = new Date();
 
+                // Statuses that represent "Work in Progress" or "Pending" 
+                // and should be marked as OVERDUE if the deadline passes.
                 const activeStatuses = [
                     TaskStatus.PENDING,
                     TaskStatus.DOING,
@@ -44,6 +52,10 @@ export class CronHelper {
             }
         });
 
+        /**
+         * Debt Status Expiry Job
+         * Runs every hour to check for unpaid debts that have passed their due date.
+         */
         cron.schedule('0 * * * *', async () => {
             console.log('[Cron] Checking for overdue debts at', new Date().toLocaleString());
             try {
@@ -72,11 +84,16 @@ export class CronHelper {
                 console.error('[Cron] Error in overdue debts check:', error);
             }
         });
-
+        
+        /**
+         * Monthly Vinicoin Reset Job
+         * Runs at 0:00 on the 1st day of every month.
+         * Transfers available vinicoins to withdrawn total and resets available to 0.
+         */
         cron.schedule('0 0 1 * *', async () => {
             console.log('[Cron] Monthly Vinicoin reset started at', new Date().toLocaleString());
             try {
-                const balanceRepository = AppDataSource.getRepository(AccountVinicoinBalances);
+                const accountRepository = AppDataSource.getRepository(Accounts);
                 const periodParts = new Intl.DateTimeFormat('en-US', {
                     timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit'
                 }).formatToParts(new Date());
@@ -84,29 +101,25 @@ export class CronHelper {
                 const month = periodParts.find(part => part.type === 'month')?.value;
                 const period = `${year}-${month}`;
 
-                const balancesToReset = await balanceRepository.find({
+                const accountsToReset = await accountRepository.find({
                     select: { id: true },
                     where: { vinicoin: MoreThan(0) }
                 });
 
-                if (balancesToReset.length === 0) {
-                    console.log('[Cron] No balances with available vinicoin to reset.');
+                if (accountsToReset.length === 0) {
+                    console.log('[Cron] No accounts with available vinicoin to reset.');
                     return;
                 }
 
                 let processedCount = 0;
-                for (const candidate of balancesToReset) {
+                for (const candidate of accountsToReset) {
                     const processed = await AppDataSource.transaction(async (manager) => {
-                        const balance = await manager.createQueryBuilder(AccountVinicoinBalances, 'balance')
-                            .innerJoinAndSelect('balance.company', 'company')
-                            .where('balance.id = :balanceId', { balanceId: candidate.id })
+                        const account = await manager.createQueryBuilder(Accounts, 'account')
+                            .where('account.id = :accountId', { accountId: candidate.id })
                             .setLock('pessimistic_write')
                             .getOne();
-                        const amountToWithdraw = Number(balance?.vinicoin || 0);
-                        if (!balance || amountToWithdraw <= 0) return false;
-
-                        const companyId = balance.company?.id;
-                        if (!companyId) return false;
+                        const amountToWithdraw = Number(account?.vinicoin || 0);
+                        if (!account || amountToWithdraw <= 0) return false;
 
                         const insertResult = await manager.createQueryBuilder()
                             .insert()
@@ -114,28 +127,25 @@ export class CronHelper {
                             .values({
                                 id: ulid(),
                                 amount: amountToWithdraw,
-                                account: { id: balance.accountId } as Accounts,
-                                company: { id: companyId } as any,
-                                balanceBefore: amountToWithdraw,
-                                balanceAfter: 0,
+                                account: { id: account.id } as Accounts,
+                                company: null,
                                 type: VinicoinTransactionType.MONTHLY_WITHDRAWAL,
-                                idempotencyKey: `MONTHLY_WITHDRAWAL:${companyId}:${balance.accountId}:${period}`,
-                                description: `Tu dong rut Vinicoin dinh ky thang ${period}`
+                                idempotencyKey: `MONTHLY_WITHDRAWAL:${account.id}:${period}`,
+                                description: `Tự động rút Vinicoin định kỳ tháng ${period}`
                             })
                             .orIgnore()
                             .returning(['id'])
                             .execute();
                         if (!Array.isArray(insertResult.raw) || insertResult.raw.length === 0) return false;
 
-                        balance.vinicoin = 0;
-                        balance.vinicoinWithdrawn = Number(balance.vinicoinWithdrawn || 0) + amountToWithdraw;
-                        await manager.save(balance);
+                        await manager.increment(Accounts, { id: account.id }, 'vinicoinWithdrawn', amountToWithdraw);
+                        await manager.update(Accounts, { id: account.id }, { vinicoin: 0 });
                         return true;
                     });
                     if (processed) processedCount += 1;
                 }
 
-                console.log(`[Cron] Monthly Vinicoin reset completed for ${processedCount} balances.`);
+                console.log(`[Cron] Monthly Vinicoin reset completed for ${processedCount} accounts.`);
             } catch (error) {
                 console.error('[Cron] Error in monthly Vinicoin reset:', error);
             }
@@ -144,6 +154,9 @@ export class CronHelper {
         console.log('[Cron] Service initialized successfully.');
     }
 
+    /**
+     * Manual trigger for testing or one-off cleanup
+     */
     static async checkNow() {
         console.log('[Cron] Manual trigger: Checking for overdue tasks...');
         const taskRepository = AppDataSource.getRepository(Tasks);
@@ -167,6 +180,7 @@ export class CronHelper {
             }
         );
 
+        // Debt check
         const debtRepository = AppDataSource.getRepository(Debts);
         const activeDebtStatuses = [DebtStatus.UNPAID, DebtStatus.PARTIAL];
         const debtResult = await debtRepository.update(

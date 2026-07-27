@@ -11,7 +11,6 @@ import { Opportunities, OpportunityStatus } from "../entity/Opportunity.entity";
 import { UserRole } from "../entity/Account.entity";
 import { Between, In, LessThanOrEqual, Not } from "typeorm";
 import { Violations } from "../entity/Violation.entity";
-import { VinicoinService } from "./Vinicoin.Service";
 
 export class DashboardService {
     private contractRepo = AppDataSource.getRepository(Contracts);
@@ -21,7 +20,6 @@ export class DashboardService {
     private taskRepo = AppDataSource.getRepository(Tasks);
     private opportunityRepo = AppDataSource.getRepository(Opportunities);
     private quotationRepo = AppDataSource.getRepository(Quotations);
-    private vinicoinService = new VinicoinService();
 
     async getDashboardData(userId: string, role: UserRole, month?: number, year?: number) {
         const data: any = {};
@@ -178,12 +176,9 @@ export class DashboardService {
             relations: ["account"]
         }) as any;
 
-        const vinicoinBalance = userWithAccount?.account?.id
-            ? await this.vinicoinService.getBalance(userWithAccount.account.id)
-            : { vinicoin: 0, vinicoinTotal: 0, vinicoinWithdrawn: 0 };
-        const vinicoin = vinicoinBalance.vinicoin;
-        const vinicoinTotal = vinicoinBalance.vinicoinTotal;
-        const vinicoinWithdrawn = vinicoinBalance.vinicoinWithdrawn;
+        const vinicoin = userWithAccount?.account?.vinicoin || 0;
+        const vinicoinTotal = userWithAccount?.account?.vinicoinTotal || 0;
+        const vinicoinWithdrawn = userWithAccount?.account?.vinicoinWithdrawn || 0;
 
         const violations = await AppDataSource.getRepository(Violations).find({
             where: {

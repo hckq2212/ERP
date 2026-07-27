@@ -30,7 +30,6 @@ import { ServicePackageItems } from "./entity/ServicePackageItem.entity"
 import { OpportunityPackages } from "./entity/OpportunityPackage.entity"
 import { TaskIterations } from "./entity/TaskIteration.entity"
 import { VinicoinTransactions } from "./entity/VinicoinTransaction.entity"
-import { AccountVinicoinBalances } from "./entity/AccountVinicoinBalance.entity"
 import { Violations } from "./entity/Violation.entity"
 import { Companies } from "./entity/Company.entity"
 import { CompanyMembers } from "./entity/CompanyMember.entity"
@@ -98,7 +97,6 @@ export const AppDataSource = new DataSource({
         ServicePackageItems,
         OpportunityPackages,
         TaskIterations,
-        AccountVinicoinBalances,
         VinicoinTransactions,
         ServiceJob,
         Violations

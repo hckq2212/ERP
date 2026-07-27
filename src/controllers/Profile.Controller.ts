@@ -14,16 +14,6 @@ export class ProfileController {
         }
     }
 
-    getVinicoinTransactions = async (req: Request, res: Response) => {
-        try {
-            const accountId = (req as any).user.id;
-            const result = await this.profileService.getVinicoinTransactions(accountId, req.query as any);
-            res.status(200).json(result);
-        } catch (error: any) {
-            res.status(error.statusCode || 500).json({ message: error.message });
-        }
-    }
-
     updateMe = async (req: Request, res: Response) => {
         try {
             const accountId = (req as any).user.id;

@@ -12,7 +12,7 @@ export enum VinicoinTransactionType {
 @Entity()
 export class VinicoinTransactions extends TenantEntity {
 
-    @Column({ type: "decimal", precision: 15, scale: 3 })
+    @Column()
     amount: number;
 
     @Column({
@@ -24,12 +24,6 @@ export class VinicoinTransactions extends TenantEntity {
 
     @ManyToOne(() => Accounts)
     account: Accounts;
-
-    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
-    balanceBefore: number;
-
-    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
-    balanceAfter: number;
 
     @Column({ type: "varchar", length: 100, nullable: true, unique: true })
     idempotencyKey: string | null;

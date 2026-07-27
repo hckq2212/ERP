@@ -49,15 +49,6 @@ export async function seedCompaniesAndDefaultMemberships() {
             continue;
         }
 
-        const tableExists = await AppDataSource.query(
-            `SELECT to_regclass($1) AS "tableName"`,
-            [`public.${metadata.tableName}`]
-        );
-        if (!tableExists?.[0]?.tableName) {
-            console.warn(`[Seed] Skipping missing table: ${metadata.tableName}`);
-            continue;
-        }
-
         await AppDataSource.query(
             `UPDATE "${metadata.tableName}" SET "companyId" = $1 WHERE "companyId" IS NULL`,
             [getvini.id]

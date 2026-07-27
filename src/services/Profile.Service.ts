@@ -2,12 +2,10 @@ import { AppDataSource } from "../data-source";
 import { Accounts } from "../entity/Account.entity";
 import { Users } from "../entity/User.entity";
 import { encrypt } from "../helpers/helpers";
-import { VinicoinService } from "./Vinicoin.Service";
 
 export class ProfileService {
     private accountRepository = AppDataSource.getRepository(Accounts);
     private userRepository = AppDataSource.getRepository(Users);
-    private vinicoinService = new VinicoinService();
 
     async getProfile(accountId: string) {
         const account = await this.accountRepository.findOne({
@@ -17,8 +15,6 @@ export class ProfileService {
 
         if (!account) throw new Error("Không tìm thấy tài khoản");
 
-        const vinicoinBalance = await this.vinicoinService.getBalance(account.id);
-
         return {
             id: account.user?.id,
             accountId: account.id,
@@ -27,14 +23,10 @@ export class ProfileService {
             username: account.username,
             email: account.email,
             role: account.role,
-            vinicoin: vinicoinBalance.vinicoin,
-            vinicoinTotal: vinicoinBalance.vinicoinTotal,
-            vinicoinWithdrawn: vinicoinBalance.vinicoinWithdrawn
+            vinicoin: account.vinicoin,
+            vinicoinTotal: account.vinicoinTotal,
+            vinicoinWithdrawn: account.vinicoinWithdrawn
         };
-    }
-
-    async getVinicoinTransactions(accountId: string, filters: { page?: number, limit?: number } = {}) {
-        return this.vinicoinService.getTransactions(accountId, filters);
     }
 
     async updateProfile(accountId: string, data: any) {
