@@ -1,5 +1,3 @@
-import { TenantContext } from "../context/TenantContext";
-
 const DEFAULT_COMPANY_FOLDER = "GETVINI";
 
 const sanitizeCloudinarySegment = (value: string) => {
@@ -11,13 +9,12 @@ const sanitizeCloudinarySegment = (value: string) => {
         .replace(/^_+|_+$/g, "") || DEFAULT_COMPANY_FOLDER;
 };
 
-export const getCompanyCloudinaryFolder = () => {
-    const company = TenantContext.getCompany();
-    return sanitizeCloudinarySegment(company?.name || DEFAULT_COMPANY_FOLDER);
+export const getDefaultCloudinaryFolder = () => {
+    return sanitizeCloudinarySegment(DEFAULT_COMPANY_FOLDER);
 };
 
-export const getTenantCloudinaryFolder = (folder?: string) => {
-    const companyFolder = getCompanyCloudinaryFolder();
+export const getCloudinaryFolder = (folder?: string) => {
+    const companyFolder = getDefaultCloudinaryFolder();
     const cleanFolder = (folder || "ERP/others").replace(/^\/+|\/+$/g, "");
 
     if (!cleanFolder) {

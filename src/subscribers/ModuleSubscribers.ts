@@ -5,19 +5,9 @@ import { contractEmitter, CONTRACT_EVENTS } from "../events/ContractEmitter";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../events/TaskReviewEmitter";
 import { notificationEmitter, NOTIFICATION_EVENTS } from "../events/NotificationEmitter";
-import { TenantContext } from "../context/TenantContext";
-
-const resolveCompanyId = (payload: any) => {
-    return TenantContext.getCompany()?.id || payload?.company?.id || payload?.companyId;
-};
 
 const emitModuleEvent = (event: string, payload: any) => {
-    const companyId = resolveCompanyId(payload);
-    if (!companyId) {
-        console.warn(`[SSE] Skipped module event without companyId: ${event}`);
-        return;
-    }
-    notificationEmitter.emit(NOTIFICATION_EVENTS.MODULE_EVENT, { companyId, event, payload });
+    notificationEmitter.emit(NOTIFICATION_EVENTS.MODULE_EVENT, { event, payload });
 };
 
 /**

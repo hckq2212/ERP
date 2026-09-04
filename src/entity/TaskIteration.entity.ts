@@ -1,10 +1,10 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Tasks } from "./Task.entity";
 import { Users } from "./User.entity";
 
 @Entity()
-export class TaskIterations extends TenantEntity {
+export class TaskIterations extends BaseEntity {
 
     @ManyToOne(() => Tasks, (task) => task.iterations)
     @JoinColumn({ name: "taskId" })

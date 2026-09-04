@@ -1,6 +1,24 @@
 import { UserRole } from "../entity/Account.entity";
 
+type ActorInfo = { id: string, role: string, userId?: string, companyId?: string };
+
 export class SecurityService {
+    static getTenantId(userInfo?: any): string | undefined {
+        return undefined;
+    }
+
+    static getTenantWhere(userInfo?: any): any {
+        return {};
+    }
+
+    static withTenant(where: any = {}, userInfo?: any): any {
+        return where;
+    }
+
+    static getTenantCachePart(userInfo?: any): string {
+        return "global";
+    }
+
     /**
      * Generates TypeORM 'where' filter for Opportunities based on user role and ID.
      * 
@@ -8,22 +26,22 @@ export class SecurityService {
      * @returns One or more where clauses (as an object or array)
      * @throws Error if the user role is not allowed to access the resource
      */
-    static getOpportunityFilters(userInfo: { id: string, role: string, userId?: string }): any {
+    static getOpportunityFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
         if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
-            return {};
+            return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) can only see:
         // 1. Opportunities created by them
         // 2. Opportunities linked to customers created by them
         if (role === UserRole.BD || role === UserRole.SALE) {
-            return [
-                { createdBy: { account: { id: id } } },
-                { customer: { createdBy: { account: { id: id } } } }
-            ];
+            return SecurityService.withTenant([
+                { createdBy: { accounts: { id: id } } },
+                { customer: { createdBy: { accounts: { id: id } } } }
+            ], userInfo);
         }
 
         // MEMBER has no access to the list
@@ -32,23 +50,23 @@ export class SecurityService {
         }
 
         // Default: only see their own (restrictive fallback)
-        return { createdBy: { account: { id: id } } };
+        return SecurityService.withTenant({ createdBy: { accounts: { id: id } } }, userInfo);
     }
 
     /**
      * Generates TypeORM 'where' filter for Customers based on user role and ID.
      */
-    static getCustomerFilters(userInfo: { id: string, role: string, userId?: string }): any {
+    static getCustomerFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
         if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
-            return {};
+            return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) or SALE can only see customers created by them
         if (role === UserRole.BD || role === UserRole.SALE) {
-            return { createdBy: { account: { id: id } } };
+            return SecurityService.withTenant({ createdBy: { accounts: { id: id } } }, userInfo);
         }
 
         // HR and MEMBER have no access to the customer list according to requirements
@@ -57,27 +75,27 @@ export class SecurityService {
         }
 
         // Default: only see their own (restrictive fallback)
-        return { createdBy: { account: { id: id } } };
+        return SecurityService.withTenant({ createdBy: { accounts: { id: id } } }, userInfo);
     }
 
     /**
      * Generates TypeORM 'where' filter for Contracts based on user role and ID.
      */
-    static getContractFilters(userInfo: { id: string, role: string, userId?: string }): any {
+    static getContractFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
         if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
-            return {};
+            return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) or SALE can only see contracts created by them OR for customers they created
         if (role === UserRole.BD || role === UserRole.SALE) {
-            return [
+            return SecurityService.withTenant([
                 { createdBy: { id: userInfo.userId } }, // Created by the user (using userId relation)
                 { customer: { createdBy: { id: userInfo.userId } } }, // Customer created by the user
                 { opportunity: { createdBy: { id: userInfo.userId } } } // Opportunity created by the user
-            ];
+            ], userInfo);
         }
 
         // HR and MEMBER have no access to the contract list
@@ -86,26 +104,26 @@ export class SecurityService {
         }
 
         // Default fallback (restrictive)
-        return { createdBy: { id: userInfo.userId } };
+        return SecurityService.withTenant({ createdBy: { id: userInfo.userId } }, userInfo);
     }
 
     /**
      * Generates TypeORM 'where' filter for Projects based on user role and ID.
      */
-    static getProjectFilters(userInfo: { id: string, role: string, userId?: string }): any {
+    static getProjectFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
         if ([UserRole.BOD, UserRole.ADMIN].includes(role as UserRole)) {
-            return {};
+            return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) or SALE can see projects related to their contracts or customers
         if (role === UserRole.BD || role === UserRole.SALE) {
-            return [
+            return SecurityService.withTenant([
                 { contract: { createdBy: { id: userInfo.userId } } },
                 { contract: { customer: { createdBy: { id: userInfo.userId } } } }
-            ];
+            ], userInfo);
         }
 
         // MEMBER can see projects where they are:
@@ -113,11 +131,11 @@ export class SecurityService {
         // 2. A helper on any task in the project
         // 3. A support lead on any task in the project
         if (role === UserRole.MEMBER) {
-            return [
+            return SecurityService.withTenant([
                 { team: { members: { user: { id: userInfo.userId } } } },
                 { tasks: { helper: { id: userInfo.userId } } },
                 { tasks: { supportLeadId: userInfo.userId } }
-            ];
+            ], userInfo);
         }
 
         // HR has no access to projects
@@ -126,26 +144,26 @@ export class SecurityService {
         }
 
         // Default: restrictive fallback
-        return { team: { members: { user: { id: userInfo.userId } } } };
+        return SecurityService.withTenant({ team: { members: { user: { id: userInfo.userId } } } }, userInfo);
     }
 
     /**
      * Generates TypeORM 'where' filter for Payment Milestones based on user role and ID.
      */
-    static getPaymentMilestoneFilters(userInfo: { id: string, role: string, userId?: string }): any {
+    static getPaymentMilestoneFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
 
         // Full access for management, sales admin, and accounting
         if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
-            return {};
+            return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) sees milestones for their contracts or customers
         if (role === UserRole.BD || role === UserRole.SALE) {
-            return [
+            return SecurityService.withTenant([
                 { contract: { createdBy: { id: userInfo.userId } } },
                 { contract: { customer: { createdBy: { id: userInfo.userId } } } }
-            ];
+            ], userInfo);
         }
 
         // HR and MEMBER have no access to payment milestones
@@ -154,26 +172,26 @@ export class SecurityService {
         }
 
         // Default: restrictive fallback
-        return { contract: { createdBy: { id: userInfo.userId } } };
+        return SecurityService.withTenant({ contract: { createdBy: { id: userInfo.userId } } }, userInfo);
     }
 
     /**
      * Generates TypeORM 'where' filter for Debts based on user role and ID.
      */
-    static getDebtFilters(userInfo: { id: string, role: string, userId?: string }): any {
+    static getDebtFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
 
         // Full access for management, sales admin, and accounting
         if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
-            return {};
+            return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) sees debts for their contracts or customers
         if (role === UserRole.BD || role === UserRole.SALE) {
-            return [
+            return SecurityService.withTenant([
                 { contract: { createdBy: { id: userInfo.userId } } },
                 { contract: { customer: { createdBy: { id: userInfo.userId } } } }
-            ];
+            ], userInfo);
         }
 
         // HR and MEMBER have no access to debts
@@ -182,41 +200,41 @@ export class SecurityService {
         }
 
         // Default: restrictive fallback
-        return { contract: { createdBy: { id: userInfo.userId } } };
+        return SecurityService.withTenant({ contract: { createdBy: { id: userInfo.userId } } }, userInfo);
     }
 
     /**
      * Generates TypeORM 'where' filter for Tasks based on user role and ID.
      */
-    static getTaskFilters(userInfo: { id: string, role: string, userId?: string }): any {
+    static getTaskFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
         const userId = userInfo.userId;
 
         // Full access for management roles
         if ([UserRole.BOD, UserRole.ADMIN].includes(role as UserRole)) {
-            return {};
+            return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) or SALE can see tasks related to their contracts or customers
         if (role === UserRole.BD || role === UserRole.SALE) {
-            return [
+            return SecurityService.withTenant([
                 { project: { contract: { createdBy: { id: userId } } } },
                 { project: { contract: { customer: { createdBy: { id: userId } } } } }
-            ];
+            ], userInfo);
         }
 
         // MEMBER access (including Team Leads and Helpers)
         if (role === UserRole.MEMBER) {
-            return [
+            return SecurityService.withTenant([
                 { assignee: { id: userId } },
                 { supervisor: { id: userId } },
                 { helper: { id: userId } },
                 { project: { team: { teamLead: { id: userId } } } },
                 { supportLeadId: userId }
-            ];
+            ], userInfo);
         }
 
         // Default: only see their own assigned tasks
-        return { assignee: { id: userId } };
+        return SecurityService.withTenant({ assignee: { id: userId } }, userInfo);
     }
 }

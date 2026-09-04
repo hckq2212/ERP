@@ -8,7 +8,7 @@ export class PaymentMilestoneService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
     private contractRepository = AppDataSource.getRepository(Contracts);
 
-    async getAll(userInfo?: { id: string, role: string, userId?: string }) {
+    async getAll(userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             try {
@@ -45,7 +45,7 @@ export class PaymentMilestoneService {
         });
     }
 
-    async getByContract(contractId: string, userInfo?: { id: string, role: string, userId?: string }) {
+    async getByContract(contractId: string, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             rbacWhere = SecurityService.getPaymentMilestoneFilters(userInfo);
@@ -74,7 +74,7 @@ export class PaymentMilestoneService {
         const { contractId, milestones } = data;
 
         const contract = await this.contractRepository.findOne({
-            where: { id: contractId },
+            where: SecurityService.withTenant({ id: contractId }),
             relations: ["milestones"]
         });
 
@@ -103,8 +103,9 @@ export class PaymentMilestoneService {
                 percentage: item.percentage,
                 amount: amount,
                 description: item.description,
-                dueDate: item.dueDate
-            });
+                dueDate: item.dueDate,
+                ...SecurityService.getTenantWhere()
+            } as any);
 
             savedMilestones.push(await this.milestoneRepository.save(milestone));
         }
@@ -114,14 +115,14 @@ export class PaymentMilestoneService {
 
     async update(id: string, data: any) {
         const milestone = await this.milestoneRepository.findOne({
-            where: { id },
+            where: SecurityService.withTenant({ id }),
             relations: ["contract"]
         });
 
         if (!milestone) throw new Error("Không tìm thấy giai đoạn thanh toán");
 
         const contract = await this.contractRepository.findOne({
-            where: { id: milestone.contract.id },
+            where: SecurityService.withTenant({ id: milestone.contract.id }),
             relations: ["milestones"]
         });
 
@@ -149,7 +150,7 @@ export class PaymentMilestoneService {
 
     async delete(id: string) {
         const milestone = await this.milestoneRepository.findOne({
-            where: { id },
+            where: SecurityService.withTenant({ id }),
             relations: ["debt"]
         });
 
@@ -165,7 +166,7 @@ export class PaymentMilestoneService {
 
     async bulkSave(contractId: string, milestones: any[]) {
         const contract = await this.contractRepository.findOne({
-            where: { id: contractId },
+            where: SecurityService.withTenant({ id: contractId }),
             relations: ["milestones", "milestones.debt"]
         });
 
@@ -200,8 +201,9 @@ export class PaymentMilestoneService {
                 percentage: item.percentage,
                 amount: amount,
                 description: item.description,
-                dueDate: item.dueDate
-            });
+                dueDate: item.dueDate,
+                ...SecurityService.getTenantWhere()
+            } as any);
             savedMilestones.push(await this.milestoneRepository.save(milestone));
         }
 

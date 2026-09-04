@@ -40,10 +40,10 @@ export class ContractService {
     private async getManagementUsers() {
         return await AppDataSource.getRepository(Users).find({
             where: [
-                { account: { role: UserRole.BOD } },
-                { account: { role: UserRole.ADMIN } }
+                { accounts: { role: UserRole.BOD } },
+                { accounts: { role: UserRole.ADMIN } }
             ],
-            relations: ["account"]
+            relations: ["accounts"]
         });
     }
 
@@ -68,7 +68,7 @@ export class ContractService {
     }
 
 
-    async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
@@ -158,7 +158,7 @@ export class ContractService {
         });
     }
 
-    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             rbacWhere = SecurityService.getContractFilters(userInfo);
@@ -203,7 +203,7 @@ export class ContractService {
         return `${prefix}-${sequence}`;
     }
 
-    async create(data: any, userInfo?: { id: string, role: string, userId?: string }) {
+    async create(data: any, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         const { opportunityId, ...contractData } = data;
 
         // Auto-generate code
@@ -211,7 +211,7 @@ export class ContractService {
             contractData.contractCode = await this.generateContractCode();
         } else {
             const existing = await this.contractRepository.findOne({
-                where: { contractCode: contractData.contractCode }
+                where: SecurityService.withTenant({ contractCode: contractData.contractCode }, userInfo)
             });
             if (existing) {
                 throw new Error("Mã hợp đồng đã tồn tại");
@@ -223,7 +223,7 @@ export class ContractService {
 
         if (opportunityId) {
             opportunity = await this.opportunityRepository.findOne({
-                where: { id: opportunityId },
+                where: SecurityService.withTenant({ id: opportunityId }, userInfo),
                 relations: ["customer", "referralPartner", "quotations", "services"]
             });
 
@@ -243,11 +243,11 @@ export class ContractService {
                 // Check if customer exists by phone or taxId to avoid dupes (basic check)
                 let existingCustomer = null;
                 if (opportunity.leadPhone) {
-                    existingCustomer = await this.customerRepository.findOneBy({ phone: opportunity.leadPhone });
+                    existingCustomer = await this.customerRepository.findOne({ where: SecurityService.withTenant({ phone: opportunity.leadPhone }, userInfo) });
                 }
 
                 if (!existingCustomer && opportunity.leadTaxId) {
-                    existingCustomer = await this.customerRepository.findOneBy({ taxId: opportunity.leadTaxId });
+                    existingCustomer = await this.customerRepository.findOne({ where: SecurityService.withTenant({ taxId: opportunity.leadTaxId }, userInfo) });
                 }
 
                 if (existingCustomer) {
@@ -258,6 +258,7 @@ export class ContractService {
                 } else {
                     // Create NEW Customer
                     const newCustomer = new Customers();
+                    Object.assign(newCustomer, SecurityService.getTenantWhere(userInfo));
                     newCustomer.name = opportunity.leadName;
                     newCustomer.phone = opportunity.leadPhone || "";
                     newCustomer.email = opportunity.leadEmail || "";
@@ -290,7 +291,7 @@ export class ContractService {
             customer = await this.customerService.create(data.customerData, userInfo);
         } else if (data.customerId) {
             // Direct contract without opportunity
-            customer = await this.customerRepository.findOneBy({ id: data.customerId });
+            customer = await this.customerRepository.findOne({ where: SecurityService.withTenant({ id: data.customerId }, userInfo) });
             if (!customer) throw new Error("Không tìm thấy khách hàng");
         } else {
             throw new Error("Cần chọn Cơ hội kinh doanh hoặc Khách hàng");
@@ -326,7 +327,7 @@ export class ContractService {
             if (data.services && Array.isArray(data.services)) {
                 for (const item of data.services) {
                     const serviceId = item.serviceId || item.id;
-                    const service = await this.serviceRepository.findOneBy({ id: serviceId });
+                    const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }, userInfo) });
                     if (service) {
                         const qty = item.quantity || 1;
                         const sellPrice = item.sellingPrice !== undefined ? Number(item.sellingPrice) : Number(service.costPrice || 0);
@@ -339,7 +340,7 @@ export class ContractService {
             if (data.packages && Array.isArray(data.packages)) {
                 for (const pkgItem of data.packages) {
                     const pkg = await this.packageRepository.findOne({
-                        where: { id: pkgItem.servicePackageId },
+                        where: SecurityService.withTenant({ id: pkgItem.servicePackageId }, userInfo),
                         relations: ["items", "items.service"]
                     });
                     if (pkg) {
@@ -363,7 +364,7 @@ export class ContractService {
             }
         }
 
-        const contract = this.contractRepository.create({
+        const contract = this.contractRepository.create(SecurityService.withTenant({
             ...contractData,
             sellingPrice: finalSellingPrice || 0,
             cost: finalCost || 0,
@@ -372,7 +373,7 @@ export class ContractService {
             attachments: opportunity?.attachments || [], // Copy attachments
             description: opportunity?.description || contractData.description,
             createdBy: userInfo?.userId ? { id: userInfo.userId } as Users : undefined
-        } as Partial<Contracts>);
+        }, userInfo) as Partial<Contracts>);
 
 
         if (!contract.createdBy) {
@@ -385,7 +386,7 @@ export class ContractService {
         // MAP Opportunity Services to Contract Services
         if (opportunity) {
             const oppServices = await this.oppServiceRepository.find({
-                where: { opportunity: { id: opportunity.id } },
+                where: SecurityService.withTenant({ opportunity: { id: opportunity.id } }, userInfo),
                 relations: ["service", "opportunity"]
             });
 
@@ -400,8 +401,9 @@ export class ContractService {
                         opportunityService: os,
                         name: os.name,
                         packageName: os.packageName,
-                        isPackageService: os.isPackageService
-                    });
+                        isPackageService: os.isPackageService,
+                        ...SecurityService.getTenantWhere(userInfo)
+                    } as any);
                     await this.contractServiceRepository.save(cs);
                 }
             }
@@ -410,7 +412,7 @@ export class ContractService {
             if (data.services && Array.isArray(data.services)) {
                 for (const item of data.services) {
                     const serviceId = item.serviceId || item.id;
-                    const service = await this.serviceRepository.findOneBy({ id: serviceId });
+                    const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }, userInfo) });
                     if (service) {
                         const qty = item.quantity || 1;
                         const sellPrice = item.sellingPrice !== undefined ? Number(item.sellingPrice) : Number(service.costPrice || 0);
@@ -421,8 +423,9 @@ export class ContractService {
                                 serviceId: service.id,
                                 sellingPrice: sellPrice,
                                 name: service.name,
-                                isPackageService: false
-                            });
+                                isPackageService: false,
+                                ...SecurityService.getTenantWhere(userInfo)
+                            } as any);
                             await this.contractServiceRepository.save(cs);
                         }
                     }
@@ -432,7 +435,7 @@ export class ContractService {
             if (data.packages && Array.isArray(data.packages)) {
                 for (const pkgItem of data.packages) {
                     const pkg = await this.packageRepository.findOne({
-                        where: { id: pkgItem.servicePackageId },
+                        where: SecurityService.withTenant({ id: pkgItem.servicePackageId }, userInfo),
                         relations: ["items", "items.service"]
                     });
                     if (pkg) {
@@ -452,8 +455,9 @@ export class ContractService {
                                         sellingPrice: sellPrice,
                                         name: item.service.name,
                                         packageName: pkg.name,
-                                        isPackageService: true
-                                    });
+                                        isPackageService: true,
+                                        ...SecurityService.getTenantWhere(userInfo)
+                                    } as any);
                                     await this.contractServiceRepository.save(cs);
                                 }
                             }
@@ -477,8 +481,9 @@ export class ContractService {
             percentage: 100,
             amount: savedContract.sellingPrice,
             status: MilestoneStatus.PENDING,
-            dueDate: new Date(new Date().setDate(new Date().getDate() + 30)) // Default 30 days
-        });
+            dueDate: new Date(new Date().setDate(new Date().getDate() + 30)), // Default 30 days
+            ...SecurityService.getTenantWhere(userInfo)
+        } as any);
         await this.milestoneRepository.save(defaultMilestone);
 
         // Invalidate list cache

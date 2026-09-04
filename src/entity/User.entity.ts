@@ -1,11 +1,10 @@
-import { Entity, Column, OneToOne, JoinColumn, OneToMany } from "typeorm"
+import { Entity, Column, OneToMany } from "typeorm"
 import { BaseEntity } from "./BaseEntity"
 import { Accounts } from "./Account.entity"
 import { TeamMembers } from "./TeamMember.entity"
 import { ProjectTeams } from "./ProjectTeam.entity"
 import { Tasks } from "./Task.entity"
 import { Opportunities } from "./Opportunity.entity"
-import { CompanyMembers } from "./CompanyMember.entity"
 
 @Entity()
 export class Users extends BaseEntity {
@@ -16,9 +15,8 @@ export class Users extends BaseEntity {
     @Column()
     phoneNumber: string
 
-    @OneToOne(() => Accounts, (account) => account.user)
-    @JoinColumn()
-    account: Accounts
+    @OneToMany(() => Accounts, (account) => account.user)
+    accounts: Accounts[]
 
     @OneToMany(() => TeamMembers, (teamMember) => teamMember.user)
     teamMemberships: TeamMembers[]
@@ -31,9 +29,6 @@ export class Users extends BaseEntity {
 
     @OneToMany(() => Opportunities, (opportunity) => opportunity.createdBy)
     opportunities: Opportunities[]
-
-    @OneToMany(() => CompanyMembers, (companyMember) => companyMember.user)
-    companyMemberships: CompanyMembers[]
 
     @Column({ type: "simple-json", nullable: true })
     laborContract: any[]

@@ -8,7 +8,6 @@ import { ContractServices } from "../entity/ContractService.entity";
 import { Users } from "../entity/User.entity";
 import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../events/TaskReviewEmitter";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
-import { TenantContext } from "../context/TenantContext";
 
 export class TaskReviewService {
     private reviewRepository = AppDataSource.getRepository(TaskReviews);
@@ -99,20 +98,16 @@ export class TaskReviewService {
     }
 
     async checkAndFinalize(taskId: string, passedCriteriaIds?: string[], reviewNote?: string) {
-        const company = TenantContext.getCompany();
-        if (!company) throw this.httpError("Thiếu thông tin công ty", 403);
-
         const outcome = await AppDataSource.transaction(async (manager) => {
             const lockedTask = await manager.createQueryBuilder(Tasks, "task")
                 .select("task.id")
                 .where("task.id = :taskId", { taskId })
-                .andWhere("task.companyId = :companyId", { companyId: company.id })
                 .setLock("pessimistic_write")
                 .getOne();
             if (!lockedTask) throw this.httpError("Không tìm thấy công việc", 404);
 
             const task = await manager.getRepository(Tasks).findOne({
-                where: { id: taskId, company: { id: company.id } },
+                where: { id: taskId },
                 relations: ["assignee", "contractService", "job", "project"]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
@@ -122,7 +117,7 @@ export class TaskReviewService {
 
             const reviewRepository = manager.getRepository(TaskReviews);
             const reviews = await reviewRepository.find({
-                where: { task: { id: taskId }, company: { id: company.id } }
+                where: { task: { id: taskId } }
             });
             if (passedCriteriaIds) {
                 for (const review of reviews) {

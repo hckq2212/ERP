@@ -26,10 +26,10 @@ export class QuotationService {
     private async getManagementUsers() {
         return await AppDataSource.getRepository(Users).find({
             where: [
-                { account: { role: UserRole.BOD } },
-                { account: { role: UserRole.ADMIN } }
+                { accounts: { role: UserRole.BOD } },
+                { accounts: { role: UserRole.ADMIN } }
             ],
-            relations: ["account"]
+            relations: ["accounts"]
         });
     }
 

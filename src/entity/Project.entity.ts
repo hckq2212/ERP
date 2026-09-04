@@ -1,5 +1,5 @@
 import { Entity, Column, OneToOne, JoinColumn, ManyToOne, OneToMany } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Contracts } from "./Contract.entity";
 import { ProjectTeams } from "./ProjectTeam.entity";
 import { Tasks } from "./Task.entity";
@@ -21,7 +21,7 @@ export enum GoogleSheetStatus {
 }
 
 @Entity()
-export class Projects extends TenantEntity {
+export class Projects extends BaseEntity {
 
     @Column()
     name: string;

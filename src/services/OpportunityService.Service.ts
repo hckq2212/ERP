@@ -2,6 +2,7 @@ import { AppDataSource } from "../data-source";
 import { OpportunityServices } from "../entity/OpportunityService.entity";
 import { Opportunities } from "../entity/Opportunity.entity";
 import { Services } from "../entity/Service.entity";
+import { SecurityService } from "./Security.Service";
 
 export class OpportunityServiceService {
     private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
@@ -10,14 +11,14 @@ export class OpportunityServiceService {
 
     async getAllByOpportunity(opportunityId: string) {
         return await this.oppServiceRepository.find({
-            where: { opportunity: { id: opportunityId } },
+            where: SecurityService.withTenant({ opportunity: { id: opportunityId } }),
             relations: ["service"]
         });
     }
 
     async getOne(id: string) {
         const item = await this.oppServiceRepository.findOne({
-            where: { id },
+            where: SecurityService.withTenant({ id }),
             relations: ["opportunity", "service"]
         });
         if (!item) throw new Error("Không tìm thấy hạng mục dịch vụ");
@@ -25,10 +26,10 @@ export class OpportunityServiceService {
     }
 
     async create(data: { opportunityId: string, serviceId: string, quantity: number, sellingPrice?: number, costAtSale?: number }) {
-        const opportunity = await this.opportunityRepository.findOneBy({ id: data.opportunityId });
+        const opportunity = await this.opportunityRepository.findOne({ where: SecurityService.withTenant({ id: data.opportunityId }) });
         if (!opportunity) throw new Error("Không tìm thấy cơ hội kinh doanh");
 
-        const service = await this.serviceRepository.findOneBy({ id: data.serviceId });
+        const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: data.serviceId }) });
         if (!service) throw new Error("Không tìm thấy dịch vụ gốc");
 
         const oppService = this.oppServiceRepository.create({
@@ -36,8 +37,9 @@ export class OpportunityServiceService {
             service,
             quantity: data.quantity || 1,
             sellingPrice: data.sellingPrice ?? service.costPrice ?? 0,
-            costAtSale: data.costAtSale ?? service.costPrice ?? 0
-        });
+            costAtSale: data.costAtSale ?? service.costPrice ?? 0,
+            ...SecurityService.getTenantWhere()
+        } as any) as unknown as OpportunityServices;
 
         const saved = await this.oppServiceRepository.save(oppService);
         await this.recalculateRevenue(data.opportunityId);
@@ -66,12 +68,12 @@ export class OpportunityServiceService {
 
     private async recalculateRevenue(opportunityId: string) {
         const services = await this.oppServiceRepository.find({
-            where: { opportunity: { id: opportunityId } }
+            where: SecurityService.withTenant({ opportunity: { id: opportunityId } })
         });
 
         const totalRevenue = services.reduce((sum, s) => sum + (Number(s.sellingPrice) * s.quantity), 0);
 
-        await this.opportunityRepository.update(opportunityId, {
+        await this.opportunityRepository.update(SecurityService.withTenant({ id: opportunityId }), {
             expectedRevenue: totalRevenue
         });
     }

@@ -173,12 +173,13 @@ export class DashboardService {
 
         const userWithAccount = await AppDataSource.getRepository("Users").findOne({
             where: { id: userId },
-            relations: ["account"]
+            relations: ["accounts"]
         }) as any;
+        const account = userWithAccount?.accounts?.[0];
 
-        const vinicoin = userWithAccount?.account?.vinicoin || 0;
-        const vinicoinTotal = userWithAccount?.account?.vinicoinTotal || 0;
-        const vinicoinWithdrawn = userWithAccount?.account?.vinicoinWithdrawn || 0;
+        const vinicoin = account?.vinicoin || 0;
+        const vinicoinTotal = account?.vinicoinTotal || 0;
+        const vinicoinWithdrawn = account?.vinicoinWithdrawn || 0;
 
         const violations = await AppDataSource.getRepository(Violations).find({
             where: {

@@ -10,7 +10,6 @@ import { NotificationService } from "./Notification.Service";
 import { VinicoinService } from "./Vinicoin.Service";
 import { EntityManager, In, Not, ILike } from "typeorm";
 import { UserRole } from "../entity/Account.entity";
-import { TenantContext } from "../context/TenantContext";
 
 type AcceptanceActor = { userId?: string; role?: string };
 
@@ -42,19 +41,15 @@ export class AcceptanceService {
     }
 
     private async getLockedRequest(manager: EntityManager, requestId: string, relations: string[]) {
-        const company = TenantContext.getCompany();
-        if (!company) throw this.httpError("Thiếu thông tin công ty", 403);
-
         const locked = await manager.createQueryBuilder(AcceptanceRequests, "request")
             .select("request.id")
             .where("request.id = :requestId", { requestId })
-            .andWhere("request.companyId = :companyId", { companyId: company.id })
             .setLock("pessimistic_write")
             .getOne();
         if (!locked) throw this.httpError("Không tìm thấy yêu cầu nghiệm thu", 404);
 
         const request = await manager.getRepository(AcceptanceRequests).findOne({
-            where: { id: requestId, company: { id: company.id } }, relations
+            where: { id: requestId }, relations
         });
         if (!request) throw this.httpError("Không tìm thấy yêu cầu nghiệm thu", 404);
         if (request.status !== AcceptanceStatus.PENDING) {
@@ -143,7 +138,7 @@ export class AcceptanceService {
         // Notify BOD (Mock: find first admin/bod user for now or common group)
         // In real app, we might notify all users with BOD role
         const bods = await this.userRepo.createQueryBuilder("user")
-            .innerJoin("user.account", "account")
+            .innerJoin("user.accounts", "account")
             .where("account.role IN (:...roles)", { roles: ["BOD", "ADMIN", "ADMIN_SALE", "ACCOUNTANT"] })
             .getMany();
 
@@ -167,8 +162,8 @@ export class AcceptanceService {
         return AppDataSource.transaction(async (manager) => {
             const request = await this.getLockedRequest(manager, requestId, [
                 "services", "services.tasks", "services.tasks.job",
-                "services.tasks.assignee", "services.tasks.assignee.account",
-                "services.tasks.helper", "services.tasks.helper.account", "requester", "project"
+                "services.tasks.assignee", "services.tasks.assignee.accounts",
+                "services.tasks.helper", "services.tasks.helper.accounts", "requester", "project"
             ]);
             const approver = await manager.getRepository(Users).findOneBy({ id: approverId });
             if (!approver) throw this.httpError("Người duyệt không tồn tại", 404);
@@ -238,8 +233,8 @@ export class AcceptanceService {
         return AppDataSource.transaction(async (manager) => {
             const request = await this.getLockedRequest(manager, requestId, [
                 "services", "services.tasks", "services.tasks.job",
-                "services.tasks.assignee", "services.tasks.assignee.account",
-                "services.tasks.helper", "services.tasks.helper.account", "requester", "project"
+                "services.tasks.assignee", "services.tasks.assignee.accounts",
+                "services.tasks.helper", "services.tasks.helper.accounts", "requester", "project"
             ]);
             const approver = await manager.getRepository(Users).findOneBy({ id: approverId });
             if (!approver) throw this.httpError("Người duyệt không tồn tại", 404);
@@ -438,11 +433,13 @@ export class AcceptanceService {
             if (!rewardAmount || rewardAmount <= 0) continue;
 
             const rewardedAccountIds = new Set<string>();
-            if (task.assignee?.account?.id && task.performerType === PerformerType.INTERNAL) {
-                rewardedAccountIds.add(task.assignee.account.id);
+            const assigneeAccount = task.assignee?.accounts?.[0];
+            const helperAccount = task.helper?.accounts?.[0];
+            if (assigneeAccount?.id && task.performerType === PerformerType.INTERNAL) {
+                rewardedAccountIds.add(assigneeAccount.id);
             }
-            if (task.helper?.account?.id && task.performerType === PerformerType.INTERNAL) {
-                rewardedAccountIds.add(task.helper.account.id);
+            if (helperAccount?.id && task.performerType === PerformerType.INTERNAL) {
+                rewardedAccountIds.add(helperAccount.id);
             }
             for (const accountId of rewardedAccountIds) {
                 await this.vinicoinService.rewardForTask(

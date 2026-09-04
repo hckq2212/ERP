@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Opportunities } from "./Opportunity.entity";
 import { QuotationDetails } from "./QuotationDetail.entity";
 import { Tasks } from "./Task.entity";
@@ -19,7 +19,7 @@ export enum QuotationType {
 }
 
 @Entity()
-export class Quotations extends TenantEntity {
+export class Quotations extends BaseEntity {
 
     @Column({ type: "text", nullable: true })
     note: string;

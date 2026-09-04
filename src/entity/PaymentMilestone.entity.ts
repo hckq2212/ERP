@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne, OneToOne } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Contracts } from "./Contract.entity";
 import { Debts } from "./Debt.entity";
 import { ContractAddendums } from "./ContractAddendum.entity";
@@ -10,7 +10,7 @@ export enum MilestoneStatus {
 }
 
 @Entity()
-export class PaymentMilestones extends TenantEntity {
+export class PaymentMilestones extends BaseEntity {
 
     @Column()
     name: string;

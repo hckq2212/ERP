@@ -128,7 +128,6 @@ export class CronHelper {
                                 id: ulid(),
                                 amount: amountToWithdraw,
                                 account: { id: account.id } as Accounts,
-                                company: null,
                                 type: VinicoinTransactionType.MONTHLY_WITHDRAWAL,
                                 idempotencyKey: `MONTHLY_WITHDRAWAL:${account.id}:${period}`,
                                 description: `Tự động rút Vinicoin định kỳ tháng ${period}`

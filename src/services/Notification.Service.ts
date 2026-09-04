@@ -2,9 +2,9 @@ import { AppDataSource } from "../data-source";
 import { Notifications } from "../entity/Notification.entity";
 import { Users } from "../entity/User.entity";
 import { EntityManager } from "typeorm";
+import { SecurityService } from "./Security.Service";
 
 import { notificationEmitter, NOTIFICATION_EVENTS } from "../events/NotificationEmitter";
-import { TenantContext } from "../context/TenantContext";
 
 export class NotificationService {
     private notificationRepository = AppDataSource.getRepository(Notifications);
@@ -22,15 +22,14 @@ export class NotificationService {
         const repo = manager ? manager.getRepository(Notifications) : this.notificationRepository;
         const notification = repo.create({
             ...data,
-            isRead: false
-        });
+            isRead: false,
+            ...SecurityService.getTenantWhere()
+        } as any) as unknown as Notifications;
 
         const savedNotification = await repo.save(notification);
-        const companyId = TenantContext.getCompany()?.id || (savedNotification as any).company?.id;
 
         // Emit real-time event via SSE emitter
         notificationEmitter.emit(NOTIFICATION_EVENTS.NEW_NOTIFICATION, {
-            companyId,
             recipientId: data.recipient.id,
             notification: savedNotification
         });
@@ -40,13 +39,13 @@ export class NotificationService {
 
     async getMyNotifications(userId: string) {
         return await this.notificationRepository.find({
-            where: { recipient: { id: userId } },
+            where: SecurityService.withTenant({ recipient: { id: userId } }),
             order: { createdAt: "DESC" }
         });
     }
 
     async markAsRead(id: string) {
-        const notification = await this.notificationRepository.findOneBy({ id });
+        const notification = await this.notificationRepository.findOne({ where: SecurityService.withTenant({ id }) });
         if (notification) {
             notification.isRead = true;
             notification.readAt = new Date();

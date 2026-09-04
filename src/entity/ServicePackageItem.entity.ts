@@ -1,10 +1,10 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { ServicePackages } from "./ServicePackage.entity";
 import { Services } from "./Service.entity";
 
 @Entity()
-export class ServicePackageItems extends TenantEntity {
+export class ServicePackageItems extends BaseEntity {
 
     @ManyToOne(() => ServicePackages, (pkg) => pkg.items)
     @JoinColumn({ name: "packageId" })

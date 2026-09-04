@@ -8,7 +8,7 @@ export class DebtService {
     private debtRepository = AppDataSource.getRepository(Debts);
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
 
-    async getAll(userInfo?: { id: string, role: string, userId?: string }) {
+    async getAll(userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             try {
@@ -27,7 +27,7 @@ export class DebtService {
         });
     }
 
-    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             rbacWhere = SecurityService.getDebtFilters(userInfo);
@@ -48,7 +48,7 @@ export class DebtService {
         return debt;
     }
 
-    async getByContract(contractId: string, userInfo?: { id: string, role: string, userId?: string }) {
+    async getByContract(contractId: string, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             rbacWhere = SecurityService.getDebtFilters(userInfo);
@@ -75,7 +75,7 @@ export class DebtService {
 
     async createFromMilestone(milestoneId: string) {
         const milestone = await this.milestoneRepository.findOne({
-            where: { id: milestoneId },
+            where: SecurityService.withTenant({ id: milestoneId }),
             relations: ["contract", "debt"]
         });
 
@@ -88,8 +88,9 @@ export class DebtService {
             milestone: milestone,
             amount: milestone.amount,
             dueDate: milestone.dueDate || new Date(),
-            status: DebtStatus.UNPAID
-        });
+            status: DebtStatus.UNPAID,
+            ...SecurityService.getTenantWhere()
+        } as any);
 
         return await this.debtRepository.save(debt);
     }

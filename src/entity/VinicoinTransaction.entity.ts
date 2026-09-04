@@ -1,5 +1,5 @@
 import { Entity, Column, ManyToOne } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Accounts } from "./Account.entity";
 
 export enum VinicoinTransactionType {
@@ -10,7 +10,7 @@ export enum VinicoinTransactionType {
 }
 
 @Entity()
-export class VinicoinTransactions extends TenantEntity {
+export class VinicoinTransactions extends BaseEntity {
 
     @Column()
     amount: number;

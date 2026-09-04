@@ -12,47 +12,22 @@ const RATE_LIMIT_MESSAGE = "Quá nhiều yêu cầu, vui lòng thử lại sau."
 const GLOBAL_NAMESPACE = "global";
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-const getRequestPath = (req: Request): string => {
-    return (req.originalUrl || req.baseUrl || req.url || "").split("?")[0];
-};
-
-const getTenantNamespace = (req: Request): string => {
-    const companySlug = typeof req.params?.companySlug === "string" ? req.params.companySlug : "";
-
-    if (companySlug) {
-        return companySlug;
-    }
-
-    const segments = getRequestPath(req).split("/").filter(Boolean);
-
-    if (segments[0] === "api") {
-        return GLOBAL_NAMESPACE;
-    }
-
-    if (segments[1] === "api" && segments[0]) {
-        return segments[0];
-    }
-
-    return GLOBAL_NAMESPACE;
-};
-
 const getIpKey = (req: Request): string => {
     return ipKeyGenerator(req.ip || "unknown");
 };
 
 const getAuthKey = (req: Request): string => {
-    return `auth:${getTenantNamespace(req)}:${getIpKey(req)}`;
+    return `auth:${GLOBAL_NAMESPACE}:${getIpKey(req)}`;
 };
 
 const getUserScopedKey = (req: Request): string => {
-    const tenantNamespace = getTenantNamespace(req);
     const accountId = typeof (req as any).user?.id === "string" ? (req as any).user.id : "";
 
     if (accountId) {
-        return `api:${tenantNamespace}:${accountId}`;
+        return `api:${GLOBAL_NAMESPACE}:${accountId}`;
     }
 
-    return `api:${tenantNamespace}:${getIpKey(req)}`;
+    return `api:${GLOBAL_NAMESPACE}:${getIpKey(req)}`;
 };
 
 const getRetryAfterSeconds = (req: Request): number => {
@@ -100,7 +75,7 @@ export const globalApiLimiter = createLimiter({
 export const authLimiter = createLimiter({
     identifier: "auth-api",
     windowMs: 15 * 60 * 1000,
-    limit: 10,
+    limit: 50,
     keyGenerator: getAuthKey
 });
 

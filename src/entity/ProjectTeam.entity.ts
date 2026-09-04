@@ -1,11 +1,11 @@
 import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Users } from "./User.entity";
 import { TeamMembers } from "./TeamMember.entity";
 import { Projects } from "./Project.entity";
 
 @Entity()
-export class ProjectTeams extends TenantEntity {
+export class ProjectTeams extends BaseEntity {
 
     @Column()
     name: string;

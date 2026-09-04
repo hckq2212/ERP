@@ -1,11 +1,11 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Quotations } from "./Quotation.entity";
 import { Services } from "./Service.entity";
 import { Jobs } from "./Job.entity";
 
 @Entity()
-export class QuotationDetails extends TenantEntity {
+export class QuotationDetails extends BaseEntity {
 
     @ManyToOne(() => Quotations, (quotation) => quotation.details, { onDelete: 'CASCADE' })
     quotation: Quotations;

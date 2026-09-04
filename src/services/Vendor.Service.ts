@@ -5,6 +5,7 @@ import { Jobs } from "../entity/Job.entity";
 import { validatePartnerData } from "../validations/Partner.Validation";
 import { RedisService } from "./Redis.Service";
 import { ServiceService } from "./Service.Service";
+import { SecurityService } from "./Security.Service";
 
 export class VendorService {
     private vendorRepository = AppDataSource.getRepository(Vendors);
@@ -13,14 +14,14 @@ export class VendorService {
     private async syncJobCostFromVendorPrices(jobId: string) {
         const jobRepository = AppDataSource.getRepository(Jobs);
         const job = await jobRepository.findOne({
-            where: { id: jobId },
+            where: SecurityService.withTenant({ id: jobId }),
             relations: ["serviceJobs"]
         });
 
         if (!job) return;
 
         const vendorJobs = await this.vendorJobRepository.find({
-            where: { job: { id: jobId } }
+            where: SecurityService.withTenant({ job: { id: jobId } })
         });
 
         const nextCost = vendorJobs.length
@@ -43,17 +44,18 @@ export class VendorService {
     }
 
     async getAll() {
-        return await RedisService.fetchWithCache('vendors:all', 3600, async () => {
+        return await RedisService.fetchWithCache(`vendors:${SecurityService.getTenantCachePart()}:all`, 3600, async () => {
             return await this.vendorRepository.find({
+                where: SecurityService.getTenantWhere(),
                 relations: ["vendorJobs"]
             });
         });
     }
 
     async getOne(id: string) {
-        return await RedisService.fetchWithCache(`vendors:detail:${id}`, 3600, async () => {
+        return await RedisService.fetchWithCache(`vendors:${SecurityService.getTenantCachePart()}:detail:${id}`, 3600, async () => {
             const vendor = await this.vendorRepository.findOne({
-                where: { id },
+                where: SecurityService.withTenant({ id }),
                 relations: ["vendorJobs", "vendorJobs.job"]
             });
             if (!vendor) throw new Error("Không tìm thấy nhà cung cấp");
@@ -63,7 +65,7 @@ export class VendorService {
 
     async create(data: any) {
         validatePartnerData(data);
-        const vendor = this.vendorRepository.create(data);
+        const vendor = this.vendorRepository.create(SecurityService.withTenant(data));
         const saved = await this.vendorRepository.save(vendor);
 
         // Invalidate list cache
@@ -100,12 +102,12 @@ export class VendorService {
     async addJob(vendorId: string, jobId: string, priceData: { price: number, note?: string }) {
         const vendor = await this.getOne(vendorId);
         const jobRepository = AppDataSource.getRepository(Jobs);
-        const job = await jobRepository.findOneBy({ id: jobId });
+        const job = await jobRepository.findOne({ where: SecurityService.withTenant({ id: jobId }) });
 
         if (!job) throw new Error("Không tìm thấy công việc (Job)");
 
         let vendorJob = await this.vendorJobRepository.findOne({
-            where: { vendor: { id: vendorId }, job: { id: jobId } }
+            where: SecurityService.withTenant({ vendor: { id: vendorId }, job: { id: jobId } })
         });
 
         if (vendorJob) {
@@ -114,8 +116,9 @@ export class VendorService {
             vendorJob = this.vendorJobRepository.create({
                 vendor,
                 job,
+                ...SecurityService.getTenantWhere(),
                 ...priceData
-            });
+            } as any) as unknown as VendorJobs;
         }
 
         const saved = await this.vendorJobRepository.save(vendorJob);
@@ -130,7 +133,7 @@ export class VendorService {
 
     async removeJob(vendorId: string, jobId: string) {
         const vendorJob = await this.vendorJobRepository.findOne({
-            where: { vendor: { id: vendorId }, job: { id: jobId } }
+            where: SecurityService.withTenant({ vendor: { id: vendorId }, job: { id: jobId } })
         });
         if (!vendorJob) throw new Error("Không tìm thấy hạng mục cần xóa khỏi nhà cung cấp");
 
@@ -146,14 +149,14 @@ export class VendorService {
 
     async getJobs(vendorId: string) {
         return await this.vendorJobRepository.find({
-            where: { vendor: { id: vendorId } },
+            where: SecurityService.withTenant({ vendor: { id: vendorId } }),
             relations: ["job"]
         });
     }
 
     async getByJob(jobId: string) {
         const vendorJobs = await this.vendorJobRepository.find({
-            where: { job: { id: jobId } },
+            where: SecurityService.withTenant({ job: { id: jobId } }),
             relations: ["vendor"]
         });
         // Map to return unique vendors

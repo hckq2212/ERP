@@ -27,12 +27,12 @@ export class OpportunityService {
     private packageRepository = AppDataSource.getRepository(ServicePackages);
     private notificationService = new NotificationService();
 
-    private async checkTaxIdUniqueness(taxId: string, excludeOpportunityId?: string) {
+    private async checkTaxIdUniqueness(taxId: string, userInfo?: { companyId?: string }, excludeOpportunityId?: string) {
         if (!taxId) return;
 
         // 1. Check in Customers (taxId)
         const customerExists = await this.customerRepository.findOne({
-            where: { taxId }
+            where: SecurityService.withTenant({ taxId }, userInfo)
         });
 
         if (customerExists) {
@@ -41,10 +41,10 @@ export class OpportunityService {
 
         // 2. Check in Opportunities (leadTaxId)
         const opportunityExists = await this.opportunityRepository.findOne({
-            where: {
+            where: SecurityService.withTenant({
                 leadTaxId: taxId,
                 ...(excludeOpportunityId ? { id: Not(excludeOpportunityId) } : {})
-            }
+            }, userInfo)
         });
 
         if (opportunityExists) {
@@ -52,7 +52,7 @@ export class OpportunityService {
         }
     }
 
-    async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
+    async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
         const sortBy = filters.sortBy || "createdAt";
@@ -143,7 +143,7 @@ export class OpportunityService {
 
         const filtersKey = JSON.stringify(filters);
         const userInfoKey = userInfo ? `role_${userInfo.role}:user_${userInfo.id}` : 'no_user';
-        const cacheKey = `opportunities:all:${userInfoKey}:${filtersKey}`;
+        const cacheKey = `opportunities:${SecurityService.getTenantCachePart(userInfo)}:all:${userInfoKey}:${filtersKey}`;
 
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             const [items, total] = await this.opportunityRepository.findAndCount({
@@ -166,7 +166,7 @@ export class OpportunityService {
         });
     }
 
-    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             rbacWhere = SecurityService.getOpportunityFilters(userInfo);
@@ -181,7 +181,7 @@ export class OpportunityService {
         }
 
         const userInfoKey = userInfo ? `:role_${userInfo.role}:user_${userInfo.id}` : '';
-        const cacheKey = `opportunities:detail:${id}${userInfoKey}`;
+        const cacheKey = `opportunities:${SecurityService.getTenantCachePart(userInfo)}:detail:${id}${userInfoKey}`;
 
         const result = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             const opportunity = await this.opportunityRepository.findOne({
@@ -196,7 +196,7 @@ export class OpportunityService {
                     "packages.services.service",
                     "quotations",
                     "contracts",
-                    "createdBy"
+                    "createdBy", "createdBy.accounts"
                 ]
             });
             return opportunity;
@@ -224,7 +224,7 @@ export class OpportunityService {
         return `${prefix}-${sequence}`;
     }
 
-    async create(data: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
+    async create(data: any = {}, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         const {
             customerId,
             referralPartnerId,
@@ -243,7 +243,7 @@ export class OpportunityService {
         validateLeadData(data);
 
         if (leadTaxId) {
-            await this.checkTaxIdUniqueness(leadTaxId);
+            await this.checkTaxIdUniqueness(leadTaxId, userInfo);
         }
 
         // Auto-generate code if not provided
@@ -252,14 +252,14 @@ export class OpportunityService {
         } else {
             // Check if opportunity code already exists
             const existing = await this.opportunityRepository.findOne({
-                where: { opportunityCode: opportunityData.opportunityCode }
+                where: SecurityService.withTenant({ opportunityCode: opportunityData.opportunityCode }, userInfo)
             });
             if (existing) {
                 throw new Error("Mã cơ hội đã tồn tại");
             }
         }
 
-        const opportunity = this.opportunityRepository.create({
+        const opportunity = this.opportunityRepository.create(SecurityService.withTenant({
             ...opportunityData,
             customerType: customerType || CustomerType.DIRECT,
             leadName,
@@ -267,11 +267,11 @@ export class OpportunityService {
             leadEmail,
             leadAddress,
             leadTaxId
-        }) as unknown as Opportunities;
+        }, userInfo) as any) as unknown as Opportunities;
 
         // Handle Customer Logic
         if (customerId) {
-            const customer = await this.customerRepository.findOneBy({ id: customerId });
+            const customer = await this.customerRepository.findOne({ where: SecurityService.withTenant({ id: customerId }, userInfo) });
             if (!customer) {
                 throw new Error("Không tìm thấy khách hàng");
             }
@@ -287,7 +287,7 @@ export class OpportunityService {
         // Handle Referral Logic
         const pId = referralPartnerId || null;
         if (customerType === CustomerType.REFERRAL && pId) {
-            const partner = await this.referralPartnerRepository.findOneBy({ id: pId });
+            const partner = await this.referralPartnerRepository.findOne({ where: SecurityService.withTenant({ id: pId }, userInfo) });
             if (!partner) {
                 throw new Error("Không tìm thấy đối tác giới thiệu");
             }
@@ -298,11 +298,11 @@ export class OpportunityService {
         if (userInfo?.userId) {
             const user = await this.userRepository.findOne({
                 where: { id: userInfo.userId },
-                relations: ["account"]
+                relations: ["accounts"]
             });
             if (user) {
                 opportunity.createdBy = user;
-                const role = user.account?.role || userInfo.role;
+                const role = userInfo.role;
                 // Auto-skip approval for BOD/ADMIN
                 if (role === "BOD" || role === "ADMIN") {
                     opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
@@ -317,12 +317,12 @@ export class OpportunityService {
 
         // --- Notifications ---
         if (opportunity.createdBy) {
-            const creatorRole = opportunity.createdBy.account?.role;
+            const creatorRole = userInfo?.role;
             // Notify BOD and ADMIN if creator is NOT one of them
             if (creatorRole !== UserRole.BOD && creatorRole !== UserRole.ADMIN) {
                 const managementUsers = await this.userRepository.find({
-                    where: { account: { role: In([UserRole.BOD, UserRole.ADMIN]) } },
-                    relations: ["account"]
+                    where: { accounts: { role: In([UserRole.BOD, UserRole.ADMIN]), ...(userInfo?.companyId ? { companyId: userInfo.companyId } : {}) } },
+                    relations: ["accounts"]
                 });
 
                 for (const user of managementUsers) {
@@ -349,7 +349,7 @@ export class OpportunityService {
         return freshData;
     }
 
-    async update(id: string, data: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
+    async update(id: string, data: any = {}, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         const {
             customerId,
             referralPartnerId,
@@ -378,7 +378,7 @@ export class OpportunityService {
         if (leadAddress !== undefined) updateObj.leadAddress = leadAddress;
         if (leadTaxId !== undefined) {
             if (leadTaxId) {
-                await this.checkTaxIdUniqueness(leadTaxId, id);
+            await this.checkTaxIdUniqueness(leadTaxId, userInfo, id);
             }
             updateObj.leadTaxId = leadTaxId;
         }
@@ -395,7 +395,7 @@ export class OpportunityService {
 
         // 2. Handle Customer relationship
         if (customerId) {
-            const customer = await this.customerRepository.findOneBy({ id: customerId });
+            const customer = await this.customerRepository.findOne({ where: SecurityService.withTenant({ id: customerId }, userInfo) });
             if (!customer) throw new Error("Không tìm thấy khách hàng");
             updateObj.customer = customer;
             // Clear lead fields when linking a customer
@@ -411,7 +411,7 @@ export class OpportunityService {
         // 3. Handle Referral relationship
         const pId = referralPartnerId !== undefined ? referralPartnerId : undefined;
         if (pId) {
-            const partner = await this.referralPartnerRepository.findOneBy({ id: pId });
+            const partner = await this.referralPartnerRepository.findOne({ where: SecurityService.withTenant({ id: pId }, userInfo) });
             if (!partner) throw new Error("Không tìm thấy đối tác giới thiệu");
             updateObj.referralPartner = partner;
             if (updateObj.customerType !== CustomerType.REFERRAL) {
@@ -426,7 +426,7 @@ export class OpportunityService {
 
         // 5. Update services and packages if provided
         if ((services && Array.isArray(services)) || (packages && Array.isArray(packages))) {
-            const fullEntity = await this.opportunityRepository.findOneBy({ id });
+            const fullEntity = await this.opportunityRepository.findOne({ where: SecurityService.withTenant({ id }, userInfo) });
             if (fullEntity) {
                 await this.syncServicesAndPackages(fullEntity, services, packages);
             }
@@ -438,7 +438,7 @@ export class OpportunityService {
 
         // 7. Return FRESH data from DB (bypassing the getOne cache)
         const freshData = await this.opportunityRepository.findOne({
-            where: { id },
+            where: SecurityService.withTenant({ id }, userInfo),
             relations: [
                 "customer",
                 "referralPartner",
@@ -449,7 +449,7 @@ export class OpportunityService {
                 "packages.services.service",
                 "quotations",
                 "contracts",
-                "createdBy"
+                "createdBy", "createdBy.accounts"
             ]
         });
 
@@ -487,7 +487,7 @@ export class OpportunityService {
         // Fetch full record to get createdBy
         const doc = await this.getOne(id);
         if (doc.createdBy) {
-            const creatorRole = doc.createdBy.account?.role;
+            const creatorRole = doc.createdBy.accounts?.[0]?.role;
             // Notify creator if they are NOT BOD/ADMIN
             if (creatorRole !== UserRole.BOD && creatorRole !== UserRole.ADMIN) {
                 await this.notificationService.createNotification({
@@ -512,8 +512,8 @@ export class OpportunityService {
 
     private async syncServicesAndPackages(opportunity: Opportunities, services: any[], packages: any[]) {
         // Clear existing services and packages
-        await this.opportunityServiceRepository.delete({ opportunity: { id: opportunity.id } });
-        await this.opportunityPackageRepository.delete({ opportunity: { id: opportunity.id } });
+        await this.opportunityServiceRepository.delete(SecurityService.withTenant({ opportunity: { id: opportunity.id } }));
+        await this.opportunityPackageRepository.delete(SecurityService.withTenant({ opportunity: { id: opportunity.id } }));
 
         // Handle Packages
         if (packages && Array.isArray(packages)) {
@@ -523,8 +523,9 @@ export class OpportunityService {
                     servicePackageId: pkgItem.servicePackageId,
                     name: pkgItem.name,
                     description: pkgItem.description,
-                    quantity: pkgItem.quantity || 1
-                });
+                    quantity: pkgItem.quantity || 1,
+                    ...SecurityService.getTenantWhere()
+                } as any) as any;
                 const savedPkg = await this.opportunityPackageRepository.save(pkg);
 
                 if (pkgItem.services && Array.isArray(pkgItem.services)) {
@@ -536,7 +537,7 @@ export class OpportunityService {
                             continue;
                         }
 
-                        const service = await this.serviceRepository.findOneBy({ id: serviceId });
+                        const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }) });
                         if (!service) {
                             console.warn(`[OpportunityService] Service not found for ID: ${serviceId}`);
                             continue;
@@ -552,8 +553,9 @@ export class OpportunityService {
                             quantity: (s.quantity || 1) * (savedPkg.quantity || 1),
                             name: s.name || service.name,
                             packageName: savedPkg.name,
-                            isPackageService: true
-                        });
+                            isPackageService: true,
+                            ...SecurityService.getTenantWhere()
+                        } as any) as any;
                         await this.opportunityServiceRepository.save(oppService);
                     }
                 }
@@ -567,7 +569,7 @@ export class OpportunityService {
                 const quantity = typeof item === 'object' ? (item.quantity || 1) : 1;
                 const sellingPrice = typeof item === 'object' ? item.sellingPrice : undefined;
 
-                const service = await this.serviceRepository.findOneBy({ id: serviceId });
+                const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }) });
                 if (!service) {
                     throw new Error(`Không tìm thấy dịch vụ với ID: ${serviceId}.`);
                 }
@@ -580,8 +582,9 @@ export class OpportunityService {
                     costAtSale: service.costPrice || 0,
                     quantity: quantity,
                     name: (typeof item === 'object' ? item.name : null) || service.name,
-                    isPackageService: false
-                });
+                    isPackageService: false,
+                    ...SecurityService.getTenantWhere()
+                } as any) as any;
                 await this.opportunityServiceRepository.save(oppService);
             }
         }

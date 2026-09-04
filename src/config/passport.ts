@@ -35,7 +35,7 @@ passport.use(
                 relations: ["user"]
             });
 
-            if (account) {
+            if (account && account.isActive) {
                 return done(null, {
                     id: account.id,
                     userId: account.user?.id,

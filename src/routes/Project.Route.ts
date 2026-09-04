@@ -10,12 +10,13 @@ const router = Router();
 const projectController = new ProjectController();
 
 router.get("/", authMiddleware, projectController.getAll);
-router.get("/:id", authMiddleware, projectController.getOne);
 router.get("/contract/:contractId", authMiddleware, projectController.getByContract);
+router.get("/:id/monthly-work-template", authMiddleware, projectController.getMonthlyWorkTemplate);
 
 
 router.post("/assign", authMiddleware, validationMiddleware(AssignTeamDTO), projectController.assign);
 router.post("/:id/confirm", authMiddleware, projectController.confirm);
+router.post("/:id/monthly-work-addendums", authMiddleware, projectController.createMonthlyWorkAddendum);
 router.post(
     "/:id/google-sheet/retry",
     authMiddleware,
@@ -28,6 +29,7 @@ router.post(
     roleMiddleware(["ADMIN"]),
     projectController.syncServiceJobs
 );
+router.get("/:id", authMiddleware, projectController.getOne);
 // router.post("/:id/start", authMiddleware, projectController.start);
 
 

@@ -4,6 +4,7 @@ import { Services } from "../entity/Service.entity";
 import { ServiceService } from "./Service.Service";
 import { ServiceJob } from "../entity/ServiceJob.entity";
 import { In, ILike, Raw } from "typeorm";
+import { SecurityService } from "./Security.Service";
 
 export class JobService {
     private jobRepository = AppDataSource.getRepository(Jobs);
@@ -16,13 +17,14 @@ export class JobService {
         if (filters.name) {
             query.where = { name: ILike(`%${filters.name}%`) };
         }
+        query.where = SecurityService.withTenant(query.where || {});
 
         return await this.jobRepository.find(query);
     }
 
     async getOne(id: string) {
         const job = await this.jobRepository.findOne({
-            where: { id },
+            where: SecurityService.withTenant({ id }),
             relations: ["vendorJobs", "vendorJobs.vendor", "serviceJobs", "serviceJobs.service", "criteria"]
         });
         if (!job) throw new Error("Không tìm thấy công việc");
@@ -36,7 +38,9 @@ export class JobService {
         if (normalizedCode) {
             const existingJob = await this.jobRepository.findOne({
                 where: {
-                    code: Raw((alias) => `LOWER(TRIM(${alias})) = LOWER(TRIM(:code))`, { code: normalizedCode })
+                    ...SecurityService.withTenant({
+                        code: Raw((alias) => `LOWER(TRIM(${alias})) = LOWER(TRIM(:code))`, { code: normalizedCode })
+                    })
                 },
                 relations: ["vendorJobs", "vendorJobs.vendor", "serviceJobs", "serviceJobs.service", "criteria"]
             });
@@ -46,17 +50,18 @@ export class JobService {
             jobData.code = normalizedCode;
         }
 
-        const job = this.jobRepository.create(jobData as any) as any;
+        const job = this.jobRepository.create(SecurityService.withTenant(jobData) as any) as any;
         const savedJob = (await this.jobRepository.save(job)) as any;
 
         if (serviceIds && Array.isArray(serviceIds)) {
             const sjRepo = AppDataSource.getRepository(ServiceJob);
-            const sjs = serviceIds.map(serviceId => sjRepo.create({
-                serviceId,
-                jobId: savedJob.id,
-                quantity: 1,
-                isOutput: false
-            }));
+                const sjs = serviceIds.map(serviceId => sjRepo.create({
+                    serviceId,
+                    jobId: savedJob.id,
+                    quantity: 1,
+                    isOutput: false,
+                    ...SecurityService.getTenantWhere()
+                } as any) as unknown as ServiceJob);
             await sjRepo.save(sjs);
         }
 
@@ -79,18 +84,19 @@ export class JobService {
 
             if (serviceIds && Array.isArray(serviceIds)) {
                 // Sync service associations
-                await sjRepo.delete({ jobId: id });
+                await sjRepo.delete(SecurityService.withTenant({ jobId: id }));
                 const sjs = serviceIds.map(serviceId => sjRepo.create({
                     serviceId,
                     jobId: id,
                     quantity: 1,
-                    isOutput: false
-                }));
+                    isOutput: false,
+                    ...SecurityService.getTenantWhere()
+                } as any) as unknown as ServiceJob);
                 await sjRepo.save(sjs);
             }
 
             const updatedJob = (await this.jobRepository.findOne({
-                where: { id: savedJob.id },
+                where: SecurityService.withTenant({ id: savedJob.id }),
                 relations: ["serviceJobs"]
             })) as any;
             

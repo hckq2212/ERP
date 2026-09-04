@@ -1,10 +1,10 @@
 import { Entity, Column, OneToMany } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { ServicePackageItems } from "./ServicePackageItem.entity";
 import { OpportunityPackages } from "./OpportunityPackage.entity";
 
 @Entity()
-export class ServicePackages extends TenantEntity {
+export class ServicePackages extends BaseEntity {
 
     @Column()
     name: string;

@@ -65,6 +65,32 @@ export class ProjectController {
         }
     }
 
+    getMonthlyWorkTemplate = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.getMonthlyWorkTemplate(
+                req.params.id as string,
+                req.query.month as string | undefined,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    createMonthlyWorkAddendum = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.createMonthlyWorkAddendum(
+                req.params.id as string,
+                req.body,
+                req.user as any
+            );
+            res.status(201).json(result);
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     retryGoogleSheet = async (req: AuthRequest, res: Response) => {
         try {
             const project = await this.projectService.createGoogleSheet(req.params.id as string);

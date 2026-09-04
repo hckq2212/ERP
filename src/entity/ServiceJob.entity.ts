@@ -1,10 +1,10 @@
 import { Entity, Column, ManyToOne, JoinColumn, PrimaryColumn } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Services } from "./Service.entity";
 import { Jobs } from "./Job.entity";
 
 @Entity()
-export class ServiceJob extends TenantEntity {
+export class ServiceJob extends BaseEntity {
 
     @ManyToOne(() => Services, (service) => service.serviceJobs, { onDelete: "CASCADE" })
     @JoinColumn({ name: "serviceId" })

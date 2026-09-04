@@ -1,4 +1,4 @@
-import { Entity, Column, OneToOne } from "typeorm";
+import { Entity, Column, Index, JoinColumn, ManyToOne } from "typeorm";
 import { BaseEntity } from "./BaseEntity";
 import { Users } from "./User.entity";
 
@@ -14,15 +14,17 @@ export enum UserRole {
 }
 
 @Entity()
+@Index(["username"], { unique: true })
+@Index(["email"], { unique: true })
 export class Accounts extends BaseEntity {
 
-    @Column({ unique: true })
+    @Column()
     username: string;
 
     @Column()
     password: string;
 
-    @Column({ unique: true, nullable: true })
+    @Column({ nullable: true })
     email: string;
 
     @Column({
@@ -44,6 +46,11 @@ export class Accounts extends BaseEntity {
     @Column({ default: 0 })
     vinicoinWithdrawn: number;
 
-    @OneToOne(() => Users, (user) => user.account)
+    @ManyToOne(() => Users, (user) => user.accounts, { onDelete: "CASCADE" })
+    @JoinColumn({ name: "userId" })
     user: Users;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    userId: string;
+
 }

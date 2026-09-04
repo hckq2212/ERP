@@ -3,6 +3,7 @@ import { ServicePackages } from "../entity/ServicePackage.entity";
 import { ServicePackageItems } from "../entity/ServicePackageItem.entity";
 import { Services } from "../entity/Service.entity";
 import { RedisService } from "./Redis.Service";
+import { SecurityService } from "./Security.Service";
 
 export class ServicePackageService {
     private packageRepository = AppDataSource.getRepository(ServicePackages);
@@ -10,18 +11,18 @@ export class ServicePackageService {
     private serviceRepository = AppDataSource.getRepository(Services);
 
     async getAll() {
-        return await RedisService.fetchWithCache('service-packages:all', 3600, async () => {
+        return await RedisService.fetchWithCache(`service-packages:${SecurityService.getTenantCachePart()}:all`, 3600, async () => {
             return await this.packageRepository.find({
                 relations: ["items", "items.service"],
-                where: { isActive: true }
+                where: SecurityService.withTenant({ isActive: true })
             });
         });
     }
 
     async getOne(id: string) {
-        return await RedisService.fetchWithCache(`service-packages:detail:${id}`, 3600, async () => {
+        return await RedisService.fetchWithCache(`service-packages:${SecurityService.getTenantCachePart()}:detail:${id}`, 3600, async () => {
             const pkg = await this.packageRepository.findOne({
-                where: { id },
+                where: SecurityService.withTenant({ id }),
                 relations: ["items", "items.service"]
             });
             if (!pkg) throw new Error("Không tìm thấy gói dịch vụ");
@@ -31,7 +32,7 @@ export class ServicePackageService {
 
     async create(data: any) {
         const { name, description, items } = data;
-        const pkg = this.packageRepository.create({ name, description });
+        const pkg = this.packageRepository.create(SecurityService.withTenant({ name, description }) as any) as unknown as ServicePackages;
         const savedPkg = await this.packageRepository.save(pkg);
 
         if (items && Array.isArray(items)) {
@@ -39,7 +40,8 @@ export class ServicePackageService {
                 const serviceItem = this.itemRepository.create({
                     package: savedPkg,
                     serviceId: item.serviceId,
-                    defaultQuantity: item.defaultQuantity || 1
+                    defaultQuantity: item.defaultQuantity || 1,
+                    ...SecurityService.getTenantWhere()
                 });
                 await this.itemRepository.save(serviceItem);
             }
@@ -65,12 +67,13 @@ export class ServicePackageService {
 
         if (items && Array.isArray(items)) {
             // Re-sync items
-            await this.itemRepository.delete({ package: { id } });
+            await this.itemRepository.delete(SecurityService.withTenant({ package: { id } }));
             for (const item of items) {
                 const serviceItem = this.itemRepository.create({
                     package: pkg,
                     serviceId: item.serviceId,
-                    defaultQuantity: item.defaultQuantity || 1
+                    defaultQuantity: item.defaultQuantity || 1,
+                    ...SecurityService.getTenantWhere()
                 });
                 await this.itemRepository.save(serviceItem);
             }
@@ -99,7 +102,7 @@ export class ServicePackageService {
 
     private async recalculatePackagePrice(packageId: string) {
         const pkg = await this.packageRepository.findOne({
-            where: { id: packageId },
+            where: SecurityService.withTenant({ id: packageId }),
             relations: ["items", "items.service"]
         });
 
@@ -113,7 +116,7 @@ export class ServicePackageService {
             }, 0);
         }
 
-        await this.packageRepository.update(packageId, { price: totalPrice });
+        await this.packageRepository.update(SecurityService.withTenant({ id: packageId }), { price: totalPrice });
         
         // Invalidate detail cache after price update
         await RedisService.deleteCache(`service-packages:detail:${packageId}*`);

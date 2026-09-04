@@ -11,15 +11,15 @@ export class CustomerService {
     private customerRepository = AppDataSource.getRepository(Customers);
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
 
-    private async checkTaxIdUniqueness(taxId: string, excludeCustomerId?: string) {
+    private async checkTaxIdUniqueness(taxId: string, userInfo?: { companyId?: string }, excludeCustomerId?: string) {
         if (!taxId) return;
 
         // 1. Check in Customers
         const customerExists = await this.customerRepository.findOne({
-            where: {
+            where: SecurityService.withTenant({
                 taxId,
                 ...(excludeCustomerId ? { id: Not(excludeCustomerId) } : {})
-            }
+            }, userInfo)
         });
 
         if (customerExists) {
@@ -28,7 +28,7 @@ export class CustomerService {
 
         // 2. Check in Opportunities (leadTaxId)
         const opportunityExists = await this.opportunityRepository.findOne({
-            where: { leadTaxId: taxId }
+            where: SecurityService.withTenant({ leadTaxId: taxId }, userInfo)
         });
 
         if (opportunityExists) {
@@ -36,7 +36,7 @@ export class CustomerService {
         }
     }
 
-    async getAll(userInfo?: { id: string, role: string, userId?: string }) {
+    async getAll(userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             try {
@@ -50,7 +50,7 @@ export class CustomerService {
         }
 
         // We prefix with user role and id to avoid RBAC leaking across different caches
-        const cacheKey = userInfo ? `customers:all:role_${userInfo.role}:user_${userInfo.id}` : 'customers:all';
+        const cacheKey = userInfo ? `customers:${SecurityService.getTenantCachePart(userInfo)}:all:role_${userInfo.role}:user_${userInfo.id}` : `customers:${SecurityService.getTenantCachePart()}:all`;
 
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             return await this.customerRepository.find({
@@ -60,18 +60,18 @@ export class CustomerService {
         });
     }
 
-    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+    async getOne(id: string, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         let rbacWhere: any = {};
         if (userInfo) {
             rbacWhere = SecurityService.getCustomerFilters(userInfo);
         }
 
-        const cacheKey = userInfo ? `customers:detail:${id}:role_${userInfo.role}:user_${userInfo.id}` : `customers:detail:${id}`;
+        const cacheKey = userInfo ? `customers:${SecurityService.getTenantCachePart(userInfo)}:detail:${id}:role_${userInfo.role}:user_${userInfo.id}` : `customers:${SecurityService.getTenantCachePart()}:detail:${id}`;
 
         const customer = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             return await this.customerRepository.findOne({
-                where: { id, ...rbacWhere },
-                relations: ["referralPartner", "contracts", "opportunities", "createdBy", "createdBy.account"]
+                where: SecurityService.withTenant({ id, ...rbacWhere }, userInfo),
+                relations: ["referralPartner", "contracts", "opportunities", "createdBy", "createdBy.accounts"]
             });
         });
 
@@ -79,10 +79,10 @@ export class CustomerService {
         return customer;
     }
 
-    async create(data: any, userInfo?: { id: string, role: string, userId?: string }) {
+    async create(data: any, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         validateCustomerData(data);
         if (data.taxId) {
-            await this.checkTaxIdUniqueness(data.taxId);
+            await this.checkTaxIdUniqueness(data.taxId, userInfo);
         }
 
         // Handle phoneNumber from frontend
@@ -90,7 +90,7 @@ export class CustomerService {
             data.phone = data.phoneNumber;
         }
 
-        const customer = this.customerRepository.create(data as Partial<Customers>);
+        const customer = this.customerRepository.create(SecurityService.withTenant(data, userInfo) as Partial<Customers>);
         if (userInfo?.userId) {
             customer.createdBy = { id: userInfo.userId } as Users;
         }
@@ -102,10 +102,10 @@ export class CustomerService {
         return savedCustomer;
     }
 
-    async update(id: string, data: any, userInfo?: { id: string, role: string, userId?: string }) {
+    async update(id: string, data: any, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         validateCustomerData(data);
         if (data.taxId) {
-            await this.checkTaxIdUniqueness(data.taxId, id);
+            await this.checkTaxIdUniqueness(data.taxId, userInfo, id);
         }
 
         console.log(`[CustomerService] Updating customer ${id} with data:`, JSON.stringify(data, null, 2));
@@ -132,7 +132,7 @@ export class CustomerService {
         return savedCustomer;
     }
 
-    async delete(id: string, userInfo?: { id: string, role: string, userId?: string }) {
+    async delete(id: string, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         const customer = await this.getOne(id, userInfo);
         await this.customerRepository.remove(customer);
 

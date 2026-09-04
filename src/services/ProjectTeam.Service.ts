@@ -2,6 +2,7 @@ import { AppDataSource } from "../data-source";
 import { ProjectTeams } from "../entity/ProjectTeam.entity";
 import { TeamMembers, MemberRole } from "../entity/TeamMember.entity";
 import { Users } from "../entity/User.entity";
+import { SecurityService } from "./Security.Service";
 
 export class ProjectTeamService {
     private teamRepository = AppDataSource.getRepository(ProjectTeams);
@@ -10,13 +11,14 @@ export class ProjectTeamService {
 
     async getAll() {
         return await this.teamRepository.find({
+            where: SecurityService.getTenantWhere(),
             relations: ["teamLead", "members", "members.user"]
         });
     }
 
     async getOne(id: string) {
         const team = await this.teamRepository.findOne({
-            where: { id },
+            where: SecurityService.withTenant({ id }),
             relations: ["teamLead", "members", "members.user"]
         });
         if (!team) throw new Error("Không tìm thấy team");
@@ -25,7 +27,7 @@ export class ProjectTeamService {
 
     async getMembers(teamId: string) {
         const team = await this.teamRepository.findOne({
-            where: { id: teamId },
+            where: SecurityService.withTenant({ id: teamId }),
             relations: ["members", "members.user"]
         });
         if (!team) throw new Error("Không tìm thấy team");
@@ -39,8 +41,9 @@ export class ProjectTeamService {
 
         const team = this.teamRepository.create({
             name: data.name,
-            teamLead: teamLead
-        });
+            teamLead: teamLead,
+            ...SecurityService.getTenantWhere()
+        } as any);
 
         return await this.teamRepository.save(team);
     }
@@ -58,7 +61,7 @@ export class ProjectTeamService {
 
     async changeLead(teamId: string, newLeadId: string) {
         const team = await this.teamRepository.findOne({
-            where: { id: teamId },
+            where: SecurityService.withTenant({ id: teamId }),
             relations: ["teamLead"]
         });
         if (!team) throw new Error("Không tìm thấy team");
@@ -74,7 +77,7 @@ export class ProjectTeamService {
         const team = await this.getOne(id);
         // Important: Should we delete members first? TypeORM might handle it if cascade is set, 
         // but let's be safe.
-        await this.memberRepository.delete({ team: { id: id } });
+        await this.memberRepository.delete(SecurityService.withTenant({ team: { id: id } }));
         return await this.teamRepository.remove(team);
     }
 
@@ -85,21 +88,22 @@ export class ProjectTeamService {
 
         // Check if already a member
         const existing = await this.memberRepository.findOne({
-            where: { team: { id: teamId }, user: { id: userId } }
+            where: SecurityService.withTenant({ team: { id: teamId }, user: { id: userId } })
         });
         if (existing) throw new Error("Người dùng đã là thành viên của team này");
 
         const member = this.memberRepository.create({
             team,
             user,
-            role: role || MemberRole.CONTENT_CREATOR
-        });
+            role: role || MemberRole.CONTENT_CREATOR,
+            ...SecurityService.getTenantWhere()
+        } as any);
 
         return await this.memberRepository.save(member);
     }
 
     async updateMember(memberId: string, data: { role?: MemberRole }) {
-        const member = await this.memberRepository.findOneBy({ id: memberId });
+        const member = await this.memberRepository.findOne({ where: SecurityService.withTenant({ id: memberId }) });
         if (!member) throw new Error("Không tìm thấy thành viên");
 
         if (data.role) member.role = data.role;
@@ -109,7 +113,7 @@ export class ProjectTeamService {
 
     async removeMember(memberId: string) {
         const member = await this.memberRepository.findOne({
-            where: { id: memberId },
+            where: SecurityService.withTenant({ id: memberId }),
             relations: ["team", "team.teamLead", "user"]
         });
         if (!member) throw new Error("Không tìm thấy thành viên");

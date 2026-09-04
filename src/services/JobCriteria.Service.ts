@@ -1,6 +1,7 @@
 import { AppDataSource } from "../data-source";
 import { JobCriterias } from "../entity/JobCriteria.entity";
 import { Jobs } from "../entity/Job.entity";
+import { SecurityService } from "./Security.Service";
 
 export class JobCriteriaService {
     private criteriaRepository = AppDataSource.getRepository(JobCriterias);
@@ -8,32 +9,33 @@ export class JobCriteriaService {
 
     async getByJob(jobId: string) {
         return await this.criteriaRepository.find({
-            where: { job: { id: jobId } }
+            where: SecurityService.withTenant({ job: { id: jobId } })
         });
     }
 
     async create(data: { jobId: string, name: string, description?: string }) {
-        const job = await this.jobRepository.findOneBy({ id: data.jobId });
+        const job = await this.jobRepository.findOne({ where: SecurityService.withTenant({ id: data.jobId }) });
         if (!job) throw new Error("Không tìm thấy công việc (Job)");
 
         const criteria = this.criteriaRepository.create({
             job,
             name: data.name,
-            description: data.description
-        });
+            description: data.description,
+            ...SecurityService.getTenantWhere()
+        } as any) as unknown as JobCriterias;
 
         return await this.criteriaRepository.save(criteria);
     }
 
     async delete(id: string) {
-        const criteria = await this.criteriaRepository.findOneBy({ id });
+        const criteria = await this.criteriaRepository.findOne({ where: SecurityService.withTenant({ id }) });
         if (!criteria) throw new Error("Không tìm thấy tiêu chí");
         return await this.criteriaRepository.softRemove(criteria);
     }
 
     async syncCriteria(jobId: string, criteriaData: any[]) {
         const job = await this.jobRepository.findOne({
-            where: { id: jobId },
+            where: SecurityService.withTenant({ id: jobId }),
             relations: ["criteria"]
         });
         if (!job) throw new Error("Không tìm thấy công việc (Job)");
@@ -62,8 +64,9 @@ export class JobCriteriaService {
                 const nouveau = this.criteriaRepository.create({
                     name: data.name,
                     description: data.description,
-                    job: job
-                });
+                    job: job,
+                    ...SecurityService.getTenantWhere()
+                } as any) as unknown as JobCriterias;
                 finalCriteria.push(nouveau);
             }
         }

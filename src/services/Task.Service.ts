@@ -17,7 +17,6 @@ import { ContractServices, ContractServiceStatus } from "../entity/ContractServi
 import { Violations } from "../entity/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { UserRole } from "../entity/Account.entity";
-import { TenantContext } from "../context/TenantContext";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -1080,20 +1079,16 @@ export class TaskService {
         const currentUserId = currentUser?.userId || currentUser?.id;
         if (!currentUserId) throw this.httpError("Bạn cần đăng nhập để duyệt công việc", 401);
 
-        const company = TenantContext.getCompany();
-        if (!company) throw this.httpError("Thiếu thông tin công ty", 403);
-
         const savedTask = await AppDataSource.transaction(async (manager) => {
             const lockedTask = await manager.createQueryBuilder(Tasks, "task")
                 .select("task.id")
                 .where("task.id = :id", { id })
-                .andWhere("task.companyId = :companyId", { companyId: company.id })
                 .setLock("pessimistic_write")
                 .getOne();
             if (!lockedTask) throw this.httpError("Không tìm thấy công việc", 404);
 
             const task = await manager.getRepository(Tasks).findOne({
-                where: { id, company: { id: company.id } },
+                where: { id },
                 relations: ["assignee", "project", "project.team", "project.team.teamLead"]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);

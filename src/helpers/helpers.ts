@@ -11,7 +11,6 @@ const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET || process.env.JWT_S
 export interface RefreshTokenPayload extends jwt.JwtPayload {
     id: string;
     sessionId: string;
-    companyId?: string;
     type: "refresh";
 }
 export class encrypt {
@@ -23,11 +22,11 @@ export class encrypt {
     }
 
     static generateAccessToken(payload: { id: string; role: string }, expiresIn: SignOptions["expiresIn"] = "4h") {
-        return jwt.sign({ id: payload.id, role: payload.role, type: "access" }, ACCESS_TOKEN_SECRET, { expiresIn });
+        return jwt.sign({ ...payload, type: "access" }, ACCESS_TOKEN_SECRET, { expiresIn });
     }
 
     static generateRefreshToken(
-        payload: { id: string; sessionId: string; companyId?: string },
+        payload: { id: string; sessionId: string },
         expiresIn: SignOptions["expiresIn"] = "1d"
     ) {
         return jwt.sign({ ...payload, type: "refresh" }, REFRESH_TOKEN_SECRET, { expiresIn });

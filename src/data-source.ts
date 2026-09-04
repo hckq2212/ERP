@@ -31,8 +31,6 @@ import { OpportunityPackages } from "./entity/OpportunityPackage.entity"
 import { TaskIterations } from "./entity/TaskIteration.entity"
 import { VinicoinTransactions } from "./entity/VinicoinTransaction.entity"
 import { Violations } from "./entity/Violation.entity"
-import { Companies } from "./entity/Company.entity"
-import { CompanyMembers } from "./entity/CompanyMember.entity"
 import { RefreshSessions } from "./entity/RefreshSession.entity"
 
 
@@ -63,7 +61,7 @@ export const AppDataSource = new DataSource({
     extra: {
         connectionTimeoutMillis: 10000,
     },
-    synchronize: false,
+    synchronize: true,
     schema: "public",
     logging: isProduction ? false : ["error", "warn"], // Enabled some logging in dev
     entities: [
@@ -99,10 +97,7 @@ export const AppDataSource = new DataSource({
         TaskIterations,
         VinicoinTransactions,
         ServiceJob,
-        Violations
-        ,
-        Companies,
-        CompanyMembers,
+        Violations,
         RefreshSessions
     ],
 

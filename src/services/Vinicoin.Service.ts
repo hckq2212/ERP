@@ -3,7 +3,6 @@ import { Accounts } from "../entity/Account.entity";
 import { VinicoinTransactions, VinicoinTransactionType } from "../entity/VinicoinTransaction.entity";
 import { EntityManager } from "typeorm";
 import { ulid } from "ulid";
-import { TenantContext } from "../context/TenantContext";
 
 export class VinicoinService {
     /**
@@ -20,7 +19,6 @@ export class VinicoinService {
         const rewardAmount = Number(amount);
         if (!Number.isFinite(rewardAmount) || rewardAmount <= 0) return false;
 
-        const company = TenantContext.getCompany();
         const applyReward = async (transactionalEntityManager: EntityManager) => {
             const account = await transactionalEntityManager
                 .createQueryBuilder(Accounts, "account")
@@ -37,7 +35,6 @@ export class VinicoinService {
                     id: ulid(),
                     amount: rewardAmount,
                     account: { id: accountId } as Accounts,
-                    company: company ? { id: company.id } : null,
                     relatedTaskId: taskId,
                     relatedServiceId: serviceId,
                     type: VinicoinTransactionType.REWARD,

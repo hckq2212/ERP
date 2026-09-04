@@ -1,11 +1,11 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
-import { TenantEntity } from "./TenantEntity";
+import { BaseEntity } from "./BaseEntity";
 import { Tasks } from "./Task.entity";
 import { Users } from "./User.entity";
 import { ViolationType } from "./Enums";
 
 @Entity()
-export class Violations extends TenantEntity {
+export class Violations extends BaseEntity {
 
     @ManyToOne(() => Tasks)
     @JoinColumn({ name: "taskId" })

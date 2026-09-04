@@ -1,10 +1,7 @@
 import { AppDataSource } from "../data-source";
 import { Accounts } from "../entity/Account.entity";
-import { Companies } from "../entity/Company.entity";
-import { CompanyMemberRole, CompanyMembers } from "../entity/CompanyMember.entity";
 import { Users } from "../entity/User.entity";
 import { encrypt } from "../helpers/helpers";
-import { COMPANY_ACCESS_DENIED_MESSAGE } from "../middlewares/Tenant.Middleware";
 import { RefreshSessions } from "../entity/RefreshSession.entity";
 import { ulid } from "ulid";
 
@@ -16,14 +13,16 @@ const REMEMBER_REFRESH_TTL_SECONDS = 30 * DEFAULT_REFRESH_TTL_SECONDS;
 export class AuthService {
     private accountRepository = AppDataSource.getRepository(Accounts);
     private userRepository = AppDataSource.getRepository(Users);
-    private memberRepository = AppDataSource.getRepository(CompanyMembers);
     private refreshSessionRepository = AppDataSource.getRepository(RefreshSessions);
 
-    async register(data: any, company?: Companies) {
+    async register(data: any) {
         const { username, password, email, fullName, phoneNumber } = data;
 
         const existingAccount = await this.accountRepository.findOne({
-            where: [{ username }, { email }]
+            where: [
+                { username },
+                { email }
+            ]
         });
 
         if (existingAccount) {
@@ -42,32 +41,27 @@ export class AuthService {
         user.phoneNumber = phoneNumber;
 
         await AppDataSource.transaction(async (transactionalEntityManager) => {
-            const savedAccount = await transactionalEntityManager.save(account);
-            user.account = savedAccount;
             const savedUser = await transactionalEntityManager.save(user);
-
-            if (company) {
-                const member = transactionalEntityManager.create(CompanyMembers, {
-                    company,
-                    user: savedUser,
-                    role: CompanyMemberRole.MEMBER
-                });
-                await transactionalEntityManager.save(member);
-            }
+            account.user = savedUser;
+            account.userId = savedUser.id;
+            await transactionalEntityManager.save(account);
         });
 
         return { message: "Đăng ký thành công" };
     }
 
-    async login(data: any, company?: Companies) {
+    async login(data: any) {
         const { username, password } = data;
 
         const account = await this.accountRepository.findOne({
-            where: [{ username }, { email: username }],
+            where: [
+                { username },
+                { email: username }
+            ],
             relations: ["user"]
         });
 
-        if (!account) {
+        if (!account || !account.isActive) {
             throw new Error("Tên đăng nhập hoặc mật khẩu không chính xác");
         }
 
@@ -76,29 +70,17 @@ export class AuthService {
             throw new Error("Tên đăng nhập hoặc mật khẩu không chính xác");
         }
 
-        if (company) {
-            if (!account.user?.id) {
-                throw new Error(COMPANY_ACCESS_DENIED_MESSAGE);
-            }
-
-            const member = await this.memberRepository.findOne({
-                where: {
-                    company: { id: company.id },
-                    user: { id: account.user.id }
-                }
-            });
-
-            if (!member) {
-                throw new Error(COMPANY_ACCESS_DENIED_MESSAGE);
-            }
-        }
+        const user = account.user;
 
         const { rememberMe } = data;
         const refreshTtlSeconds = rememberMe ? REMEMBER_REFRESH_TTL_SECONDS : DEFAULT_REFRESH_TTL_SECONDS;
         const sessionId = ulid();
-        const accessToken = encrypt.generateAccessToken({ id: account.id, role: account.role }, ACCESS_TOKEN_TTL_SECONDS);
+        const accessToken = encrypt.generateAccessToken({
+            id: account.id,
+            role: account.role
+        }, ACCESS_TOKEN_TTL_SECONDS);
         const refreshToken = encrypt.generateRefreshToken(
-            { id: account.id, sessionId, companyId: company?.id },
+            { id: account.id, sessionId },
             refreshTtlSeconds
         );
 
@@ -106,8 +88,6 @@ export class AuthService {
             id: sessionId,
             account,
             accountId: account.id,
-            company,
-            companyId: company?.id ?? null,
             tokenHash: encrypt.hashToken(refreshToken),
             expiresAt: new Date(Date.now() + refreshTtlSeconds * 1000)
         }));
@@ -119,21 +99,15 @@ export class AuthService {
             refreshMaxAge: refreshTtlSeconds * 1000,
             rememberMe,
             user: {
-                id: account.user?.id,
-                fullName: account.user?.fullName,
-                role: account.role,
-                company: company ? {
-                    id: company.id,
-                    name: company.name,
-                    slug: company.slug
-                } : undefined
+                id: user?.id,
+                fullName: user?.fullName,
+                role: account.role
             }
         };
     }
 
-    async refresh(rawRefreshToken: string | undefined, company?: Companies) {
+    async refresh(rawRefreshToken: string | undefined) {
         if (!rawRefreshToken) throw new Error(SESSION_EXPIRED_CODE);
-        const requestedCompanyId = company?.id ?? null;
 
         let payload;
         try {
@@ -142,23 +116,28 @@ export class AuthService {
             throw new Error(SESSION_EXPIRED_CODE);
         }
 
-        if (payload.type !== "refresh" || !payload.sessionId || (payload.companyId ?? null) !== requestedCompanyId) {
+        if (payload.type !== "refresh" || !payload.sessionId) {
             throw new Error(SESSION_EXPIRED_CODE);
         }
 
         const result = await AppDataSource.transaction(async (manager) => {
             const sessionRepository = manager.getRepository(RefreshSessions);
+            const lockedSession = await sessionRepository.createQueryBuilder("session")
+                .where("session.id = :sessionId", { sessionId: payload.sessionId })
+                .setLock("pessimistic_write")
+                .getOne();
+
+            if (!lockedSession) return null;
+
             const session = await sessionRepository.findOne({
-                where: { id: payload.sessionId },
-                relations: ["account", "account.user"],
-                lock: { mode: "pessimistic_write" }
+                where: { id: lockedSession.id },
+                relations: ["account", "account.user"]
             });
 
             if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) return null;
 
             if (
                 session.accountId !== payload.id ||
-                session.companyId !== requestedCompanyId ||
                 session.tokenHash !== encrypt.hashToken(rawRefreshToken)
             ) {
                 session.revokedAt = new Date();
@@ -167,21 +146,11 @@ export class AuthService {
             }
 
             const account = session.account;
-            if (!account?.isActive || !account.user?.id) {
+            const user = account?.user;
+            if (!account?.isActive || !user?.id) {
                 session.revokedAt = new Date();
                 await sessionRepository.save(session);
                 return null;
-            }
-
-            if (company) {
-                const member = await manager.getRepository(CompanyMembers).findOne({
-                    where: { company: { id: company.id }, user: { id: account.user.id } }
-                });
-                if (!member) {
-                    session.revokedAt = new Date();
-                    await sessionRepository.save(session);
-                    return null;
-                }
             }
 
             const remainingSeconds = Math.floor((session.expiresAt.getTime() - Date.now()) / 1000);
@@ -192,7 +161,7 @@ export class AuthService {
                 ACCESS_TOKEN_TTL_SECONDS
             );
             const refreshToken = encrypt.generateRefreshToken(
-                { id: account.id, sessionId: session.id, companyId: company?.id },
+                { id: account.id, sessionId: session.id },
                 remainingSeconds
             );
             session.tokenHash = encrypt.hashToken(refreshToken);
@@ -210,14 +179,14 @@ export class AuthService {
         return result;
     }
 
-    async logout(rawRefreshToken: string | undefined, company?: Companies) {
+    async logout(rawRefreshToken: string | undefined) {
         if (!rawRefreshToken) return;
 
         try {
             const payload = encrypt.verifyRefreshToken(rawRefreshToken, true);
-            if (payload.type !== "refresh" || (payload.companyId ?? null) !== (company?.id ?? null) || !payload.sessionId) return;
+            if (payload.type !== "refresh" || !payload.sessionId) return;
             const session = await this.refreshSessionRepository.findOneBy({ id: payload.sessionId, accountId: payload.id });
-            if (session && session.companyId === (company?.id ?? null)) {
+            if (session) {
                 session.revokedAt = new Date();
                 await this.refreshSessionRepository.save(session);
             }

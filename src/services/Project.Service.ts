@@ -1,11 +1,13 @@
 import { AppDataSource } from "../data-source";
-import { Like, ILike, In } from "typeorm";
+import { Like, ILike, In, IsNull, Not } from "typeorm";
 import { GoogleSheetStatus, Projects, ProjectStatus } from "../entity/Project.entity";
 import { Contracts, ContractStatus } from "../entity/Contract.entity";
 import { ProjectTeams } from "../entity/ProjectTeam.entity";
 import { Users } from "../entity/User.entity";
 import { OpportunityStatus } from "../entity/Opportunity.entity";
 import { ContractServices } from "../entity/ContractService.entity";
+import { AddendumStatus, AddendumType, ContractAddendums } from "../entity/ContractAddendum.entity";
+import { Services } from "../entity/Service.entity";
 import { Tasks } from "../entity/Task.entity";
 import { TaskStatus } from "../entity/Enums";
 import { Jobs } from "../entity/Job.entity";
@@ -23,10 +25,58 @@ export class ProjectService {
     private contractRepository = AppDataSource.getRepository(Contracts);
     private teamRepository = AppDataSource.getRepository(ProjectTeams);
     private contractServiceRepository = AppDataSource.getRepository(ContractServices);
+    private addendumRepository = AppDataSource.getRepository(ContractAddendums);
     private taskRepository = AppDataSource.getRepository(Tasks);
     private userRepository = AppDataSource.getRepository(Users);
     private notificationService = new NotificationService();
     private googleSheetService = new GoogleSheetService();
+
+    private assertMonthKey(monthKey?: string) {
+        const value = monthKey || new Date().toISOString().slice(0, 7);
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) {
+            throw new Error("Tháng không hợp lệ, định dạng cần là YYYY-MM");
+        }
+        return value;
+    }
+
+    private formatMonthName(monthKey: string) {
+        const [year, month] = monthKey.split("-");
+        return `${month}/${year}`;
+    }
+
+    private canManageMonthlyWork(project: Projects, userInfo?: { id: string, role: string, userId?: string }) {
+        if (!userInfo) return false;
+        if ([UserRole.ADMIN, UserRole.BOD].includes(userInfo.role as UserRole)) return true;
+        return project.team?.teamLead?.id === (userInfo.userId || userInfo.id);
+    }
+
+    private mapContractServiceToMonthlyItem(cs: ContractServices) {
+        const opportunityPackage = cs.opportunityService?.opportunityPackage;
+        const packageQuantity = Number(opportunityPackage?.quantity || 1);
+        const serviceQuantity = Number(cs.opportunityService?.quantity || 1);
+
+        return {
+            contractServiceId: cs.id,
+            contractServiceIds: [cs.id],
+            serviceId: cs.service?.id || cs.serviceId,
+            serviceName: cs.name || cs.service?.name || "Dịch vụ",
+            packageKey: opportunityPackage?.id || cs.packageName || cs.id,
+            packageName: cs.packageName,
+            packageQuantity,
+            quantity: cs.isPackageService && packageQuantity > 0 ? serviceQuantity / packageQuantity : 1,
+            isPackageService: cs.isPackageService,
+            sellingPrice: Number(cs.sellingPrice || 0),
+            cost: Number(cs.service?.costPrice || 0),
+            unit: cs.service?.unit || "",
+            description: cs.service?.description,
+            jobs: (cs.service?.serviceJobs || []).map(sj => ({
+                jobId: sj.job?.id,
+                jobName: sj.job?.name,
+                quantity: Number(sj.quantity || 1),
+                isOutput: sj.isOutput
+            })).filter(job => !!job.jobId)
+        };
+    }
 
     private emptySyncResult() {
         return {
@@ -509,6 +559,188 @@ export class ProjectService {
         return result;
     }
 
+    async getMonthlyWorkTemplate(id: string, monthKey?: string, userInfo?: { id: string, role: string, userId?: string }) {
+        const normalizedMonthKey = this.assertMonthKey(monthKey);
+        const project = await this.projectRepository.findOne({
+            where: { id },
+            relations: ["contract", "team", "team.teamLead"]
+        });
+        if (!project) throw new Error("Không tìm thấy dự án");
+        if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");
+        if (!this.canManageMonthlyWork(project, userInfo)) {
+            throw new Error("Bạn không có quyền tạo công việc tháng mới cho dự án này");
+        }
+
+        const contractServices = await this.contractServiceRepository.find({
+            where: {
+                contract: { id: project.contract.id },
+                addendum: IsNull()
+            },
+            relations: [
+                "service",
+                "service.serviceJobs",
+                "service.serviceJobs.job",
+                "opportunityService",
+                "opportunityService.opportunityPackage"
+            ],
+            order: { packageName: "ASC", createdAt: "ASC" } as any
+        });
+
+        const items = contractServices.map(cs => this.mapContractServiceToMonthlyItem(cs));
+        const packageMap = new Map<string, any>();
+        const standalone: any[] = [];
+
+        for (const item of items) {
+            if (item.isPackageService && item.packageName) {
+                if (!packageMap.has(item.packageKey)) {
+                    packageMap.set(item.packageKey, {
+                        packageKey: item.packageKey,
+                        packageName: item.packageName,
+                        packageQuantity: item.packageQuantity,
+                        items: []
+                    });
+                }
+                const packageGroup = packageMap.get(item.packageKey);
+                const existingItem = packageGroup.items.find((groupItem: any) => groupItem.serviceId === item.serviceId);
+                if (existingItem) {
+                    existingItem.contractServiceIds.push(item.contractServiceId);
+                    existingItem.sellingPrice += Number(item.sellingPrice || 0);
+                    existingItem.cost += Number(item.cost || 0);
+                } else {
+                    packageGroup.items.push(item);
+                }
+            } else {
+                const existingItem = standalone.find(groupItem => groupItem.serviceId === item.serviceId);
+                if (existingItem) {
+                    existingItem.contractServiceIds.push(item.contractServiceId);
+                    existingItem.sellingPrice += Number(item.sellingPrice || 0);
+                    existingItem.cost += Number(item.cost || 0);
+                    existingItem.quantity += 1;
+                } else {
+                    standalone.push(item);
+                }
+            }
+        }
+
+        return {
+            projectId: project.id,
+            contractId: project.contract.id,
+            monthKey: normalizedMonthKey,
+            defaultName: `${project.name} - ${this.formatMonthName(normalizedMonthKey)}`,
+            packages: Array.from(packageMap.values()),
+            standalone
+        };
+    }
+
+    async createMonthlyWorkAddendum(
+        id: string,
+        data: {
+            monthKey?: string,
+            name?: string,
+            description?: string,
+            items?: {
+                contractServiceId?: string,
+                serviceId?: string,
+                serviceName?: string,
+                packageName?: string,
+                isPackageService?: boolean,
+                sellingPrice?: number,
+                cost?: number
+            }[]
+        },
+        userInfo?: { id: string, role: string, userId?: string }
+    ) {
+        const monthKey = this.assertMonthKey(data.monthKey);
+        const project = await this.projectRepository.findOne({
+            where: { id },
+            relations: ["contract", "team", "team.teamLead"]
+        });
+        if (!project) throw new Error("Không tìm thấy dự án");
+        if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");
+        if (!this.canManageMonthlyWork(project, userInfo)) {
+            throw new Error("Bạn không có quyền tạo công việc tháng mới cho dự án này");
+        }
+
+        const requestedItems = data.items || [];
+        if (requestedItems.length === 0) throw new Error("Vui lòng chọn ít nhất một dịch vụ");
+        const requestedIds = Array.from(new Set(requestedItems.map(item => item.contractServiceId).filter(Boolean)));
+
+        const existing = await this.addendumRepository.findOne({
+            where: {
+                contract: { id: project.contract.id },
+                project: { id: project.id },
+                type: AddendumType.MONTHLY_TASKS,
+                monthKey,
+                status: Not(In([AddendumStatus.SALE_REJECTED, AddendumStatus.BOD_REJECTED, AddendumStatus.CANCELLED]))
+            }
+        });
+        if (existing) throw new Error(`Đã có phụ lục công việc tháng ${this.formatMonthName(monthKey)} đang chờ duyệt hoặc đã duyệt`);
+
+        const contractServices = requestedIds.length > 0 ? await this.contractServiceRepository.find({
+            where: requestedIds.map(contractServiceId => ({
+                id: contractServiceId,
+                contract: { id: project.contract.id },
+                addendum: IsNull()
+            })),
+            relations: ["service"]
+        }) : [];
+        if (requestedIds.length > 0 && contractServices.length !== requestedIds.length) {
+            throw new Error("Một số dịch vụ không hợp lệ hoặc không thuộc hợp đồng gốc");
+        }
+
+        const contractServiceMap = new Map(contractServices.map(cs => [cs.id, cs]));
+        const selectedItems: any[] = [];
+
+        for (const item of requestedItems) {
+            if (item.contractServiceId) {
+                const cs = contractServiceMap.get(item.contractServiceId);
+                if (!cs) continue;
+                selectedItems.push({
+                    sourceContractServiceId: cs.id,
+                    serviceId: cs.service?.id || cs.serviceId,
+                    serviceName: cs.name || cs.service?.name || "Dịch vụ",
+                    packageName: cs.packageName,
+                    isPackageService: cs.isPackageService,
+                    sellingPrice: Number(cs.sellingPrice || 0),
+                    cost: Number(cs.service?.costPrice || 0)
+                });
+                continue;
+            }
+
+            if (!item.serviceId) throw new Error("Dịch vụ thêm mới không hợp lệ");
+            const service = await AppDataSource.getRepository(Services).findOneBy({ id: item.serviceId });
+            if (!service) throw new Error("Không tìm thấy dịch vụ thêm mới");
+            selectedItems.push({
+                sourceContractServiceId: null,
+                serviceId: service.id,
+                serviceName: item.serviceName || service.name,
+                packageName: item.packageName,
+                isPackageService: !!item.isPackageService,
+                sellingPrice: Number(item.sellingPrice || 0),
+                cost: Number(item.cost ?? service.costPrice ?? 0)
+            });
+        }
+
+        if (selectedItems.length === 0) throw new Error("Vui lòng chọn ít nhất một dịch vụ");
+
+        const addendum = this.addendumRepository.create({
+            contract: project.contract,
+            project,
+            name: data.name || `${project.name} - ${this.formatMonthName(monthKey)}`,
+            description: data.description,
+            type: AddendumType.MONTHLY_TASKS,
+            monthKey,
+            selectedItems,
+            sellingPrice: selectedItems.reduce((sum, item) => sum + Number(item.sellingPrice || 0), 0),
+            cost: selectedItems.reduce((sum, item) => sum + Number(item.cost || 0), 0),
+            status: AddendumStatus.PENDING_SALE
+        });
+
+        const saved = await this.addendumRepository.save(addendum);
+        projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
+        return saved;
+    }
+
     async createGoogleSheet(projectId: string) {
         const project = await this.projectRepository.findOne({
             where: { id: projectId },
@@ -618,8 +850,8 @@ export class ProjectService {
         // Notify BOD members
         // ... (rest of notification logic)
         const bodUsers = await this.userRepository.find({
-            relations: ["account"],
-            where: { account: { role: "BOD" as any } }
+            relations: ["accounts"],
+            where: { accounts: { role: "BOD" as any } }
         });
 
         for (const bod of bodUsers) {

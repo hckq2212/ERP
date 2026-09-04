@@ -46,4 +46,40 @@ export class ContractAddendumController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    saleApprove = async (req: Request, res: Response) => {
+        try {
+            const result = await this.service.saleApprove(req.params.id as string, (req as any).user, req.body?.note);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    saleReject = async (req: Request, res: Response) => {
+        try {
+            const result = await this.service.saleReject(req.params.id as string, (req as any).user, req.body?.note);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    bodApprove = async (req: Request, res: Response) => {
+        try {
+            const result = await this.service.bodApprove(req.params.id as string, (req as any).user, req.body?.note);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    bodReject = async (req: Request, res: Response) => {
+        try {
+            const result = await this.service.bodReject(req.params.id as string, (req as any).user, req.body?.note);
+            res.status(200).json(result);
+        } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
 }

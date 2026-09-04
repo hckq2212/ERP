@@ -16,18 +16,20 @@ export const NOTIFICATION_EVENTS = {
     MODULE_EVENT: "module_event", // New event for transient FE updates
 };
 
+export const GLOBAL_NOTIFICATION_CHANNEL = "global";
+
 /**
  * NotificationManager - Manages active SSE connections and broadcasts events.
  * This ensures we only have ONE listener on the EventEmitter regardless of connection count.
  */
 type NewNotificationEvent = {
-    companyId?: string;
+    channelId?: string;
     recipientId: string;
     notification: any;
 };
 
 type ModuleEvent = {
-    companyId?: string;
+    channelId?: string;
     recipientId?: string;
     event: string;
     payload: any;
@@ -39,19 +41,12 @@ class NotificationManager {
     constructor() {
         // REGISTER SINGLETON LISTENER for Persistent Notifications
         notificationEmitter.on(NOTIFICATION_EVENTS.NEW_NOTIFICATION, (data: NewNotificationEvent) => {
-            if (!data.companyId) {
-                console.warn(`[SSE] Skipped notification without companyId for recipient ${data.recipientId}`);
-                return;
-            }
-            this.broadcastToUser(data.companyId, data.recipientId, data.notification);
+            this.broadcastToUser(data.channelId || GLOBAL_NOTIFICATION_CHANNEL, data.recipientId, data.notification);
         });
 
         // REGISTER SINGLETON LISTENER for Transient Module Events
         notificationEmitter.on(NOTIFICATION_EVENTS.MODULE_EVENT, (data: ModuleEvent) => {
-            if (!data.companyId) {
-                console.warn(`[SSE] Skipped module event without companyId: ${data.event}`);
-                return;
-            }
+            const channel = data.channelId || GLOBAL_NOTIFICATION_CHANNEL;
 
             const wrappedPayload = {
                 __isModuleEvent: true,
@@ -60,63 +55,63 @@ class NotificationManager {
             };
 
             if (data.recipientId) {
-                console.log(`[SSE] Tenant broadcast to ${data.companyId}:${data.recipientId} for event ${data.event}`);
-                this.broadcastToUser(data.companyId, data.recipientId, wrappedPayload);
+                console.log(`[SSE] User broadcast to ${channel}:${data.recipientId} for event ${data.event}`);
+                this.broadcastToUser(channel, data.recipientId, wrappedPayload);
             } else {
-                const connectionCount = this.getCompanyConnectionCount(data.companyId);
-                console.log(`[SSE] Company broadcast for event ${data.event} to ${connectionCount} active connections`);
-                this.broadcastToCompany(data.companyId, wrappedPayload);
+                const connectionCount = this.getChannelConnectionCount(channel);
+                console.log(`[SSE] Broadcast for event ${data.event} to ${connectionCount} active connections`);
+                this.broadcastToChannel(channel, wrappedPayload);
             }
         });
     }
 
-    addConnection(companyId: string, userId: string, res: Response) {
-        const companyConnections = this.connections.get(companyId) || new Map<string, Response[]>();
-        const userConnections = companyConnections.get(userId) || [];
+    addConnection(channelId: string, userId: string, res: Response) {
+        const channelConnections = this.connections.get(channelId) || new Map<string, Response[]>();
+        const userConnections = channelConnections.get(userId) || [];
         userConnections.push(res);
-        companyConnections.set(userId, userConnections);
-        this.connections.set(companyId, companyConnections);
+        channelConnections.set(userId, userConnections);
+        this.connections.set(channelId, channelConnections);
     }
 
-    removeConnection(companyId: string, userId: string, res: Response) {
-        const companyConnections = this.connections.get(companyId);
-        if (!companyConnections) return;
+    removeConnection(channelId: string, userId: string, res: Response) {
+        const channelConnections = this.connections.get(channelId);
+        if (!channelConnections) return;
 
-        let userConnections = companyConnections.get(userId) || [];
+        let userConnections = channelConnections.get(userId) || [];
         userConnections = userConnections.filter(c => c !== res);
 
         if (userConnections.length === 0) {
-            companyConnections.delete(userId);
+            channelConnections.delete(userId);
         } else {
-            companyConnections.set(userId, userConnections);
+            channelConnections.set(userId, userConnections);
         }
 
-        if (companyConnections.size === 0) {
-            this.connections.delete(companyId);
+        if (channelConnections.size === 0) {
+            this.connections.delete(channelId);
         }
     }
 
-    broadcastToUser(companyId: string, recipientId: string, payload: any, sseEvent?: string) {
-        const userConnections = this.connections.get(companyId)?.get(recipientId);
+    broadcastToUser(channelId: string, recipientId: string, payload: any, sseEvent?: string) {
+        const userConnections = this.connections.get(channelId)?.get(recipientId);
         if (userConnections) {
             this.writeToConnections(userConnections, payload, sseEvent);
         }
     }
 
-    broadcastToCompany(companyId: string, payload: any, sseEvent?: string) {
-        const companyConnections = this.connections.get(companyId);
-        if (!companyConnections) return;
+    broadcastToChannel(channelId: string, payload: any, sseEvent?: string) {
+        const channelConnections = this.connections.get(channelId);
+        if (!channelConnections) return;
 
-        for (const userConnections of companyConnections.values()) {
+        for (const userConnections of channelConnections.values()) {
             this.writeToConnections(userConnections, payload, sseEvent);
         }
     }
 
-    private getCompanyConnectionCount(companyId: string) {
-        const companyConnections = this.connections.get(companyId);
-        if (!companyConnections) return 0;
+    private getChannelConnectionCount(channelId: string) {
+        const channelConnections = this.connections.get(channelId);
+        if (!channelConnections) return 0;
         let total = 0;
-        for (const userConnections of companyConnections.values()) {
+        for (const userConnections of channelConnections.values()) {
             total += userConnections.length;
         }
         return total;

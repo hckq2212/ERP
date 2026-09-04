@@ -4,6 +4,7 @@ import { Jobs } from "../entity/Job.entity";
 import { ServiceJob } from "../entity/ServiceJob.entity";
 import { In, ILike } from "typeorm";
 import { RedisService } from "./Redis.Service";
+import { SecurityService } from "./Security.Service";
 
 export class ServiceService {
     private serviceRepository = AppDataSource.getRepository(Services);
@@ -22,9 +23,10 @@ export class ServiceService {
         if (filters.name) {
             query.where = { name: ILike(`%${filters.name}%`) };
         }
+        query.where = SecurityService.withTenant(query.where || {});
 
         const filtersKey = JSON.stringify(filters);
-        const cacheKey = `services:all:${filtersKey}`;
+        const cacheKey = `services:${SecurityService.getTenantCachePart()}:all:${filtersKey}`;
 
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             const [items, total] = await this.serviceRepository.findAndCount(query);
@@ -41,10 +43,10 @@ export class ServiceService {
     }
 
     async getOne(id: string) {
-        const cacheKey = `services:detail:${id}`;
+        const cacheKey = `services:${SecurityService.getTenantCachePart()}:detail:${id}`;
         const service = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             return await this.serviceRepository.findOne({
-                where: { id },
+                where: SecurityService.withTenant({ id }),
                 relations: ["serviceJobs", "serviceJobs.job"]
             });
         });
@@ -54,7 +56,7 @@ export class ServiceService {
 
     async recalculateCost(serviceId: string) {
         const service = await this.serviceRepository.findOne({
-            where: { id: serviceId },
+            where: SecurityService.withTenant({ id: serviceId }),
             relations: ["serviceJobs", "serviceJobs.job"]
         });
         if (!service) return;
@@ -73,7 +75,7 @@ export class ServiceService {
 
     async create(data: any = {}) {
         const { jobIds, outputJobIds, ...serviceData } = data;
-        const service = this.serviceRepository.create(serviceData as Partial<Services>);
+        const service = this.serviceRepository.create(SecurityService.withTenant(serviceData) as Partial<Services>);
         const savedService = (await this.serviceRepository.save(service)) as unknown as Services;
 
         // Invalidate list cache
@@ -85,8 +87,9 @@ export class ServiceService {
                 serviceId: savedService.id,
                 jobId,
                 quantity: 1,
-                isOutput: (outputJobIds || []).includes(jobId)
-            }));
+                isOutput: (outputJobIds || []).includes(jobId),
+                ...SecurityService.getTenantWhere()
+            } as any) as unknown as ServiceJob);
             await sjRepo.save(serviceJobs);
         }
 
@@ -108,14 +111,15 @@ export class ServiceService {
         if (jobConfigs && Array.isArray(jobConfigs)) {
             const sjRepo = AppDataSource.getRepository(ServiceJob);
             // Simple approach: clear and recreation or sync
-            await sjRepo.delete({ serviceId: id });
+            await sjRepo.delete(SecurityService.withTenant({ serviceId: id }));
             
             const newSjs = jobConfigs.map(config => sjRepo.create({
                 serviceId: id,
                 jobId: config.jobId,
                 quantity: config.quantity || 1,
-                isOutput: config.isOutput || false
-            }));
+                isOutput: config.isOutput || false,
+                ...SecurityService.getTenantWhere()
+            } as any) as unknown as ServiceJob);
             await sjRepo.save(newSjs);
         }
 
@@ -137,7 +141,7 @@ export class ServiceService {
     async bulkDelete(ids: string[]) {
         if (!ids || ids.length === 0) throw new Error("Danh sách ID không được để trống");
         
-        await this.serviceRepository.delete({ id: In(ids) });
+        await this.serviceRepository.delete(SecurityService.withTenant({ id: In(ids) }));
 
         // Invalidate caches
         await RedisService.deleteCache('services:all*');
@@ -150,10 +154,10 @@ export class ServiceService {
 
     async addJob(serviceId: string, jobId: string) {
         const sjRepo = AppDataSource.getRepository(ServiceJob);
-        const existing = await sjRepo.findOneBy({ serviceId, jobId });
+        const existing = await sjRepo.findOne({ where: SecurityService.withTenant({ serviceId, jobId }) });
 
         if (!existing) {
-            const sj = sjRepo.create({ serviceId, jobId, quantity: 1, isOutput: false });
+            const sj = sjRepo.create(SecurityService.withTenant({ serviceId, jobId, quantity: 1, isOutput: false }));
             await sjRepo.save(sj);
             await this.recalculateCost(serviceId);
 
@@ -167,7 +171,7 @@ export class ServiceService {
 
     async removeJob(serviceId: string, jobId: string) {
         const sjRepo = AppDataSource.getRepository(ServiceJob);
-        await sjRepo.delete({ serviceId, jobId });
+        await sjRepo.delete(SecurityService.withTenant({ serviceId, jobId }));
         await this.recalculateCost(serviceId);
 
         // Invalidate caches

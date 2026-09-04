@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import cloudinary from "../config/cloudinary";
-import { getTenantCloudinaryFolder } from "../helpers/CloudinaryFolder.Helper";
+import { getCloudinaryFolder } from "../helpers/CloudinaryFolder.Helper";
 
 export class CloudinaryController {
     /**
@@ -9,7 +9,7 @@ export class CloudinaryController {
      */
     getSignature = async (req: Request, res: Response) => {
         try {
-            const folder = getTenantCloudinaryFolder(req.query.folder as string | undefined);
+            const folder = getCloudinaryFolder(req.query.folder as string | undefined);
             const timestamp = Math.round(new Date().getTime() / 1000);
 
             // Use process.env directly

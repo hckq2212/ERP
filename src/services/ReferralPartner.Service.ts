@@ -2,13 +2,15 @@ import { AppDataSource } from "../data-source";
 import { ReferralPartners } from "../entity/ReferralPartner.entity";
 import { validatePartnerData } from "../validations/Partner.Validation";
 import { RedisService } from "./Redis.Service";
+import { SecurityService } from "./Security.Service";
 
 export class ReferralPartnerService {
     private referralPartnerRepository = AppDataSource.getRepository(ReferralPartners);
 
     async getAll() {
-        return await RedisService.fetchWithCache('referral-partners:all', 3600, async () => {
+        return await RedisService.fetchWithCache(`referral-partners:${SecurityService.getTenantCachePart()}:all`, 3600, async () => {
             return await this.referralPartnerRepository.find({
+                where: SecurityService.getTenantWhere(),
                 relations: ["customers", "opportunities", "contracts"],
                 order: {
                     createdAt: "DESC"
@@ -18,9 +20,9 @@ export class ReferralPartnerService {
     }
 
     async getOne(id: string) {
-        return await RedisService.fetchWithCache(`referral-partners:detail:${id}`, 3600, async () => {
+        return await RedisService.fetchWithCache(`referral-partners:${SecurityService.getTenantCachePart()}:detail:${id}`, 3600, async () => {
             const partner = await this.referralPartnerRepository.findOne({
-                where: { id },
+                where: SecurityService.withTenant({ id }),
                 relations: ["customers", "opportunities", "contracts"]
             });
             if (!partner) throw new Error("Không tìm thấy đối tác");
@@ -30,7 +32,7 @@ export class ReferralPartnerService {
 
     async create(data: any) {
         validatePartnerData(data);
-        const partner = this.referralPartnerRepository.create(data);
+        const partner = this.referralPartnerRepository.create(SecurityService.withTenant(data));
         const saved = await this.referralPartnerRepository.save(partner);
 
         // Invalidate list cache
