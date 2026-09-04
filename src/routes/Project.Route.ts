@@ -20,13 +20,13 @@ router.post("/:id/monthly-work-addendums", authMiddleware, projectController.cre
 router.post(
     "/:id/google-sheet/retry",
     authMiddleware,
-    roleMiddleware(["BOD", "ADMIN"]),
+    roleMiddleware(["BOD", "ADMIN", "PM"]),
     projectController.retryGoogleSheet
 );
 router.post(
     "/:id/sync-service-jobs",
     authMiddleware,
-    roleMiddleware(["ADMIN"]),
+    roleMiddleware(["ADMIN", "PM"]),
     projectController.syncServiceJobs
 );
 router.get("/:id", authMiddleware, projectController.getOne);

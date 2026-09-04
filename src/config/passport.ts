@@ -19,7 +19,7 @@ const opts = {
         cookieExtractor,
         ExtractJwt.fromAuthHeaderAsBearerToken()
     ]),
-    secretOrKey: process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || ""
+    secretOrKey: process.env.JWT_SECRET || ""
 };
 
 passport.use(

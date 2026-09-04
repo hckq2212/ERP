@@ -8,7 +8,7 @@ import { ApproveAcceptanceDTO, CreateAcceptanceDTO, RejectAcceptanceDTO } from "
 
 const router = Router();
 const controller = new AcceptanceController();
-const acceptanceRoles = ["BOD", "ADMIN", "ADMIN_SALE", "ACCOUNTANT"];
+const acceptanceRoles = ["BOD", "ADMIN", "ADMIN_SALE", "PM"];
 
 router.get("/", authMiddleware, controller.getAllRequests);
 router.get("/:id", authMiddleware, controller.getRequest);

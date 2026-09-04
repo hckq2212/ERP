@@ -16,7 +16,7 @@ import { SecurityService } from "./Security.Service";
 import { ContractServices, ContractServiceStatus } from "../entity/ContractService.entity";
 import { Violations } from "../entity/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
-import { UserRole } from "../entity/Account.entity";
+import { isProjectManagementRole, UserRole } from "../entity/Account.entity";
 
 export class TaskService {
     private taskRepository = AppDataSource.getRepository(Tasks);
@@ -237,7 +237,7 @@ export class TaskService {
         if (!task) throw this.httpError("Không tìm thấy công việc", 404);
 
         const currentUserId = currentUser?.userId || currentUser?.id;
-        const isAdminOrBod = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.BOD;
+        const isAdminOrBod = isProjectManagementRole(currentUser?.role);
         const isProjectLead = Boolean(task.project && task.project.team?.teamLead?.id === currentUserId);
 
         if (!isAdminOrBod && !isProjectLead) {
@@ -728,7 +728,7 @@ export class TaskService {
             }
 
             const currentUserId = currentUser?.userId || currentUser?.id;
-            const isAdminOrBod = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.BOD;
+            const isAdminOrBod = isProjectManagementRole(currentUser?.role);
             const isProjectLead = project.team?.teamLead?.id === currentUserId;
 
             if (!isAdminOrBod && !isProjectLead) {
@@ -1093,7 +1093,7 @@ export class TaskService {
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
 
-            const isAdminOrBod = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.BOD;
+            const isAdminOrBod = isProjectManagementRole(currentUser.role);
             const isProjectLead = task.project?.team?.teamLead?.id === currentUserId;
             if (!isAdminOrBod && !isProjectLead) {
                 throw this.httpError("Bạn không có quyền xác nhận khách hàng duyệt công việc này", 403);

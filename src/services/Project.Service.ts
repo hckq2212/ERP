@@ -15,7 +15,7 @@ import { PerformerType } from "../entity/Enums";
 import { NotificationService } from "./Notification.Service";
 
 import { SecurityService } from "./Security.Service";
-import { UserRole } from "../entity/Account.entity";
+import { isProjectManagementRole, isStaffRole, UserRole } from "../entity/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
 import { GoogleSheetService } from "./GoogleSheet.Service";
@@ -46,7 +46,7 @@ export class ProjectService {
 
     private canManageMonthlyWork(project: Projects, userInfo?: { id: string, role: string, userId?: string }) {
         if (!userInfo) return false;
-        if ([UserRole.ADMIN, UserRole.BOD].includes(userInfo.role as UserRole)) return true;
+        if (isProjectManagementRole(userInfo.role)) return true;
         return project.team?.teamLead?.id === (userInfo.userId || userInfo.id);
     }
 
@@ -410,7 +410,7 @@ export class ProjectService {
         }
 
         // Data Restriction for Support Teams
-        if (userInfo && userInfo.role === UserRole.MEMBER && project.team) {
+        if (userInfo && isStaffRole(userInfo.role) && project.team) {
             const isCoreMember = project.team.teamLead?.id === userInfo.userId ||
                 project.team.members?.some(m => m.user?.id === userInfo.userId);
 

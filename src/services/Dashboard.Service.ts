@@ -57,7 +57,7 @@ export class DashboardService {
         }
 
         // 3. Sale Data
-        if (role === UserRole.BD || role === UserRole.SALE) {
+        if (role === UserRole.BD) {
             const [myOpportunities, myCustomers, myContracts] = await Promise.all([
                 this.opportunityRepo.find({
                     where: {

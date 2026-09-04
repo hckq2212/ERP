@@ -1,5 +1,5 @@
 import { Users } from "../entity/User.entity";
-import { Accounts } from "../entity/Account.entity";
+import { Accounts, UserRole } from "../entity/Account.entity";
 import { encrypt } from "../helpers/helpers";
 import { validateUserData } from "../validations/User.Validation";
 import { AppDataSource } from "../data-source";
@@ -100,7 +100,7 @@ export class UserService {
         account.username = username;
         account.password = hashedPassword;
         account.email = email;
-        account.role = role || "MEMBER";
+        account.role = role || UserRole.STAFF_D;
 
         let user = userId ? await this.userRepository.findOne({ where: { id: userId } }) : null;
         if (!user) {

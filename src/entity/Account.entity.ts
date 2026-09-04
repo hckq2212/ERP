@@ -3,15 +3,43 @@ import { BaseEntity } from "./BaseEntity";
 import { Users } from "./User.entity";
 
 export enum UserRole {
-    SALE = "SALE",
     BOD = "BOD",
-    MEMBER = "MEMBER",
     ADMIN = "ADMIN",
-    ACCOUNTANT = "ACCOUNTANT",
     ADMIN_SALE = "ADMIN_SALE",
     BD = "BD",
-    HR = "HR",
+    PM = "PM",
+    STAFF_A = "STAFF_A",
+    STAFF_B = "STAFF_B",
+    STAFF_C = "STAFF_C",
+    STAFF_D = "STAFF_D",
 }
+
+export const STAFF_ROLES = [
+    UserRole.STAFF_A,
+    UserRole.STAFF_B,
+    UserRole.STAFF_C,
+    UserRole.STAFF_D,
+];
+
+export const MANAGEMENT_ROLES = [
+    UserRole.BOD,
+    UserRole.ADMIN,
+];
+
+export const SALES_ROLES = [
+    UserRole.BD,
+    UserRole.ADMIN_SALE,
+];
+
+export const PROJECT_MANAGEMENT_ROLES = [
+    UserRole.BOD,
+    UserRole.ADMIN,
+    UserRole.PM,
+];
+
+export const isStaffRole = (role?: string): role is UserRole => STAFF_ROLES.includes(role as UserRole);
+export const isManagementRole = (role?: string): role is UserRole => MANAGEMENT_ROLES.includes(role as UserRole);
+export const isProjectManagementRole = (role?: string): role is UserRole => PROJECT_MANAGEMENT_ROLES.includes(role as UserRole);
 
 @Entity()
 @Index(["username"], { unique: true })
@@ -30,7 +58,7 @@ export class Accounts extends BaseEntity {
     @Column({
         type: "enum",
         enum: UserRole,
-        default: UserRole.MEMBER
+        default: UserRole.STAFF_D
     })
     role: UserRole;
 

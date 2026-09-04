@@ -23,7 +23,7 @@ export class AcceptanceService {
     private notificationService = new NotificationService();
     private vinicoinService = new VinicoinService();
     private readonly acceptanceRoles = new Set<string>([
-        UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT
+        UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.PM
     ]);
 
     private httpError(message: string, statusCode: number) {
@@ -139,7 +139,7 @@ export class AcceptanceService {
         // In real app, we might notify all users with BOD role
         const bods = await this.userRepo.createQueryBuilder("user")
             .innerJoin("user.accounts", "account")
-            .where("account.role IN (:...roles)", { roles: ["BOD", "ADMIN", "ADMIN_SALE", "ACCOUNTANT"] })
+            .where("account.role IN (:...roles)", { roles: ["BOD", "ADMIN", "ADMIN_SALE", "PM"] })
             .getMany();
 
         for (const bod of bods) {

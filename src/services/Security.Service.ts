@@ -1,4 +1,4 @@
-import { UserRole } from "../entity/Account.entity";
+import { isProjectManagementRole, isStaffRole, UserRole } from "../entity/Account.entity";
 
 type ActorInfo = { id: string, role: string, userId?: string, companyId?: string };
 
@@ -30,22 +30,22 @@ export class SecurityService {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
-        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
+        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE].includes(role as UserRole)) {
             return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) can only see:
         // 1. Opportunities created by them
         // 2. Opportunities linked to customers created by them
-        if (role === UserRole.BD || role === UserRole.SALE) {
+        if (role === UserRole.BD) {
             return SecurityService.withTenant([
                 { createdBy: { accounts: { id: id } } },
                 { customer: { createdBy: { accounts: { id: id } } } }
             ], userInfo);
         }
 
-        // MEMBER has no access to the list
-        if (role === UserRole.MEMBER) {
+        // Staff and PM have no access to the opportunity list
+        if (isStaffRole(role) || role === UserRole.PM) {
             throw new Error("FORBIDDEN_ACCESS");
         }
 
@@ -60,17 +60,17 @@ export class SecurityService {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
-        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
+        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE].includes(role as UserRole)) {
             return SecurityService.getTenantWhere(userInfo);
         }
 
-        // Business Development (BD) or SALE can only see customers created by them
-        if (role === UserRole.BD || role === UserRole.SALE) {
+        // Business Development (BD) can only see customers created by them
+        if (role === UserRole.BD) {
             return SecurityService.withTenant({ createdBy: { accounts: { id: id } } }, userInfo);
         }
 
-        // HR and MEMBER have no access to the customer list according to requirements
-        if (role === UserRole.HR || role === UserRole.MEMBER) {
+        // Staff and PM have no access to the customer list
+        if (isStaffRole(role) || role === UserRole.PM) {
             throw new Error("FORBIDDEN_ACCESS");
         }
 
@@ -85,12 +85,12 @@ export class SecurityService {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
-        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
+        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE].includes(role as UserRole)) {
             return SecurityService.getTenantWhere(userInfo);
         }
 
-        // Business Development (BD) or SALE can only see contracts created by them OR for customers they created
-        if (role === UserRole.BD || role === UserRole.SALE) {
+        // Business Development (BD) can only see contracts created by them OR for customers they created
+        if (role === UserRole.BD) {
             return SecurityService.withTenant([
                 { createdBy: { id: userInfo.userId } }, // Created by the user (using userId relation)
                 { customer: { createdBy: { id: userInfo.userId } } }, // Customer created by the user
@@ -98,8 +98,8 @@ export class SecurityService {
             ], userInfo);
         }
 
-        // HR and MEMBER have no access to the contract list
-        if (role === UserRole.HR || role === UserRole.MEMBER) {
+        // Staff and PM have no access to the contract list
+        if (isStaffRole(role) || role === UserRole.PM) {
             throw new Error("FORBIDDEN_ACCESS");
         }
 
@@ -114,33 +114,28 @@ export class SecurityService {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
-        if ([UserRole.BOD, UserRole.ADMIN].includes(role as UserRole)) {
+        if (isProjectManagementRole(role)) {
             return SecurityService.getTenantWhere(userInfo);
         }
 
-        // Business Development (BD) or SALE can see projects related to their contracts or customers
-        if (role === UserRole.BD || role === UserRole.SALE) {
+        // Business Development (BD) can see projects related to their contracts or customers
+        if (role === UserRole.BD) {
             return SecurityService.withTenant([
                 { contract: { createdBy: { id: userInfo.userId } } },
                 { contract: { customer: { createdBy: { id: userInfo.userId } } } }
             ], userInfo);
         }
 
-        // MEMBER can see projects where they are:
+        // Staff can see projects where they are:
         // 1. In the assigned project team
         // 2. A helper on any task in the project
         // 3. A support lead on any task in the project
-        if (role === UserRole.MEMBER) {
+        if (isStaffRole(role)) {
             return SecurityService.withTenant([
                 { team: { members: { user: { id: userInfo.userId } } } },
                 { tasks: { helper: { id: userInfo.userId } } },
                 { tasks: { supportLeadId: userInfo.userId } }
             ], userInfo);
-        }
-
-        // HR has no access to projects
-        if (role === UserRole.HR) {
-            throw new Error("FORBIDDEN_ACCESS");
         }
 
         // Default: restrictive fallback
@@ -154,20 +149,20 @@ export class SecurityService {
         const { id, role } = userInfo;
 
         // Full access for management, sales admin, and accounting
-        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
+        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE].includes(role as UserRole)) {
             return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) sees milestones for their contracts or customers
-        if (role === UserRole.BD || role === UserRole.SALE) {
+        if (role === UserRole.BD) {
             return SecurityService.withTenant([
                 { contract: { createdBy: { id: userInfo.userId } } },
                 { contract: { customer: { createdBy: { id: userInfo.userId } } } }
             ], userInfo);
         }
 
-        // HR and MEMBER have no access to payment milestones
-        if (role === UserRole.HR || role === UserRole.MEMBER) {
+        // Staff and PM have no access to payment milestones
+        if (isStaffRole(role) || role === UserRole.PM) {
             throw new Error("FORBIDDEN_ACCESS");
         }
 
@@ -182,20 +177,20 @@ export class SecurityService {
         const { id, role } = userInfo;
 
         // Full access for management, sales admin, and accounting
-        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE, UserRole.ACCOUNTANT].includes(role as UserRole)) {
+        if ([UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE].includes(role as UserRole)) {
             return SecurityService.getTenantWhere(userInfo);
         }
 
         // Business Development (BD) sees debts for their contracts or customers
-        if (role === UserRole.BD || role === UserRole.SALE) {
+        if (role === UserRole.BD) {
             return SecurityService.withTenant([
                 { contract: { createdBy: { id: userInfo.userId } } },
                 { contract: { customer: { createdBy: { id: userInfo.userId } } } }
             ], userInfo);
         }
 
-        // HR and MEMBER have no access to debts
-        if (role === UserRole.HR || role === UserRole.MEMBER) {
+        // Staff and PM have no access to debts
+        if (isStaffRole(role) || role === UserRole.PM) {
             throw new Error("FORBIDDEN_ACCESS");
         }
 
@@ -211,20 +206,20 @@ export class SecurityService {
         const userId = userInfo.userId;
 
         // Full access for management roles
-        if ([UserRole.BOD, UserRole.ADMIN].includes(role as UserRole)) {
+        if (isProjectManagementRole(role)) {
             return SecurityService.getTenantWhere(userInfo);
         }
 
-        // Business Development (BD) or SALE can see tasks related to their contracts or customers
-        if (role === UserRole.BD || role === UserRole.SALE) {
+        // Business Development (BD) can see tasks related to their contracts or customers
+        if (role === UserRole.BD) {
             return SecurityService.withTenant([
                 { project: { contract: { createdBy: { id: userId } } } },
                 { project: { contract: { customer: { createdBy: { id: userId } } } } }
             ], userInfo);
         }
 
-        // MEMBER access (including Team Leads and Helpers)
-        if (role === UserRole.MEMBER) {
+        // Staff access (including Team Leads and Helpers)
+        if (isStaffRole(role)) {
             return SecurityService.withTenant([
                 { assignee: { id: userId } },
                 { supervisor: { id: userId } },

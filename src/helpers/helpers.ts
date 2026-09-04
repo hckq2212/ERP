@@ -5,8 +5,8 @@ import * as dotenv from "dotenv";
 import { createHash } from "crypto";
 
 dotenv.config();
-const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || "";
-const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "";
+const ACCESS_TOKEN_SECRET = process.env.JWT_SECRET || "";
+const REFRESH_TOKEN_SECRET = process.env.JWT_SECRET || "";
 
 export interface RefreshTokenPayload extends jwt.JwtPayload {
     id: string;
