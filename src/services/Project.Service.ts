@@ -1,8 +1,9 @@
 import { AppDataSource } from "../data-source";
 import { Like, ILike, In, IsNull, Not } from "typeorm";
-import { GoogleSheetStatus, Projects, ProjectStatus } from "../entity/Project.entity";
+import { Projects, ProjectStatus } from "../entity/Project.entity";
 import { Contracts, ContractStatus } from "../entity/Contract.entity";
 import { ProjectTeams } from "../entity/ProjectTeam.entity";
+import { TeamMembers, MemberRole } from "../entity/TeamMember.entity";
 import { Users } from "../entity/User.entity";
 import { OpportunityStatus } from "../entity/Opportunity.entity";
 import { ContractServices } from "../entity/ContractService.entity";
@@ -18,18 +19,20 @@ import { SecurityService } from "./Security.Service";
 import { isProjectManagementRole, isStaffRole, UserRole } from "../entity/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
-import { GoogleSheetService } from "./GoogleSheet.Service";
+// Google Sheet integration is temporarily disabled.
+// import { GoogleSheetService } from "./GoogleSheet.Service";
 
 export class ProjectService {
     private projectRepository = AppDataSource.getRepository(Projects);
     private contractRepository = AppDataSource.getRepository(Contracts);
     private teamRepository = AppDataSource.getRepository(ProjectTeams);
+    private memberRepository = AppDataSource.getRepository(TeamMembers);
     private contractServiceRepository = AppDataSource.getRepository(ContractServices);
     private addendumRepository = AppDataSource.getRepository(ContractAddendums);
     private taskRepository = AppDataSource.getRepository(Tasks);
     private userRepository = AppDataSource.getRepository(Users);
     private notificationService = new NotificationService();
-    private googleSheetService = new GoogleSheetService();
+    // private googleSheetService = new GoogleSheetService();
 
     private assertMonthKey(monthKey?: string) {
         const value = monthKey || new Date().toISOString().slice(0, 7);
@@ -447,7 +450,7 @@ export class ProjectService {
     }
 
 
-    async assign(data: { contractId: string, teamId: string, name?: string }) {
+    async assign(data: { contractId: string, pmId: string, name?: string }) {
         const contract = await this.contractRepository.findOne({
             where: { id: data.contractId },
             relations: ["opportunity"]
@@ -458,51 +461,86 @@ export class ProjectService {
             throw new Error("Hợp đồng chưa được duyệt hoặc ký, không thể phân công dự án");
         }
 
-        const team = await this.teamRepository.findOne({
-            where: { id: data.teamId },
-            relations: ["teamLead"]
+        const pm = await this.userRepository.findOne({
+            where: { id: data.pmId },
+            relations: ["accounts"]
         });
-        if (!team) throw new Error("Không tìm thấy team");
+        if (!pm) throw new Error("Không tìm thấy PM");
+        if (!pm.accounts?.some(account => account.role === UserRole.PM)) {
+            throw new Error("Người được chọn không phải PM");
+        }
 
 
         // Check if project already exists for this contract
-        let project = await this.projectRepository.findOne({ where: { contract: { id: data.contractId } } });
+        let project = await this.projectRepository.findOne({
+            where: { contract: { id: data.contractId } },
+            relations: ["team"]
+        });
 
         let isNewProject = false;
         if (project) {
-            // If project already exists (e.g. created automatically), just assign the team
-            project.team = team;
             project.name = data.name || project.name;
         } else {
             isNewProject = true;
             project = this.projectRepository.create({
                 name: data.name || `Dự án cho HĐ ${contract.contractCode}`,
                 contract: contract,
-                team: team,
                 status: ProjectStatus.PENDING_CONFIRMATION,
                 plannedStartDate: new Date()
             });
         }
 
+        let team = project.team;
+        if (!team) {
+            team = this.teamRepository.create({
+                name: `Đội dự án ${project.name}`,
+                teamLead: pm,
+                ...SecurityService.getTenantWhere()
+            } as Partial<ProjectTeams>) as ProjectTeams;
+        } else {
+            team.name = `Đội dự án ${project.name}`;
+            team.teamLead = pm;
+        }
+
+        team = await this.teamRepository.save(team);
+        project.team = team;
+
         let savedProject = await this.projectRepository.save(project);
 
-        if (isNewProject) {
-            await this.tryCreateGoogleSheet(savedProject.id);
-            savedProject = await this.projectRepository.findOneBy({ id: savedProject.id }) || savedProject;
+        const existingPmMember = await this.memberRepository.findOne({
+            where: SecurityService.withTenant({ team: { id: team.id }, user: { id: pm.id } })
+        });
+        if (!existingPmMember) {
+            const pmMember = this.memberRepository.create({
+                team,
+                user: pm,
+                role: MemberRole.PROJECT_MANAGER,
+                ...SecurityService.getTenantWhere()
+            } as any);
+            await this.memberRepository.save(pmMember);
+        } else if (existingPmMember.role !== MemberRole.PROJECT_MANAGER) {
+            existingPmMember.role = MemberRole.PROJECT_MANAGER;
+            await this.memberRepository.save(existingPmMember);
         }
 
-        // Send Notification to Team Lead
-        if (team.teamLead) {
-            await this.notificationService.createNotification({
-                title: "Dự án mới được phân công",
-                content: `Dự án "${savedProject.name}" đã được phân công cho team của bạn.`,
-                type: "PROJECT_ASSIGNED",
-                recipient: team.teamLead,
-                relatedEntityId: savedProject.id,
-                relatedEntityType: "Project",
-                link: `/projects/${savedProject.id}`
-            });
+        if (isNewProject) {
+            // Google Sheet integration is temporarily disabled.
+            // await this.tryCreateGoogleSheet(savedProject.id);
+            savedProject = await this.projectRepository.findOne({
+                where: { id: savedProject.id },
+                relations: ["team", "team.teamLead", "team.members", "team.members.user"]
+            }) || savedProject;
         }
+
+        await this.notificationService.createNotification({
+            title: "Dự án mới được phân công",
+            content: `Bạn được phân công quản lý dự án "${savedProject.name}".`,
+            type: "PROJECT_ASSIGNED",
+            recipient: pm,
+            relatedEntityId: savedProject.id,
+            relatedEntityType: "Project",
+            link: `/projects/${savedProject.id}`
+        });
 
         // Update Opportunity Status
 
@@ -539,7 +577,8 @@ export class ProjectService {
         }
 
         if (isNewProject) {
-            await this.tryCreateGoogleSheet(project.id);
+            // Google Sheet integration is temporarily disabled.
+            // await this.tryCreateGoogleSheet(project.id);
             project = await this.projectRepository.findOne({
                 where: { id: project.id },
                 relations: ["contract"]
@@ -742,74 +781,9 @@ export class ProjectService {
     }
 
     async createGoogleSheet(projectId: string) {
-        const project = await this.projectRepository.findOne({
-            where: { id: projectId },
-            relations: ["contract", "contract.customer"]
-        });
-
-        if (!project) {
-            throw new Error("Không tìm thấy dự án");
-        }
-
-        if (project.googleSheetId && project.googleSheetStatus === GoogleSheetStatus.CREATED) {
-            return project;
-        }
-
-        const lockResult = await this.projectRepository.update(
-            {
-                id: projectId,
-                googleSheetStatus: In([
-                    GoogleSheetStatus.NOT_CREATED,
-                    GoogleSheetStatus.FAILED
-                ])
-            },
-            {
-                googleSheetStatus: GoogleSheetStatus.CREATING,
-                googleSheetError: null
-            }
-        );
-
-        if (!lockResult.affected) {
-            throw new Error("Google Sheet đang được tạo hoặc đã được tạo");
-        }
-
-        try {
-            const sheetName = project.contract?.contractCode
-                ? `${project.contract.contractCode} - ${project.name}`
-                : project.name;
-            const result = await this.googleSheetService.createFromTemplate({
-                name: sheetName,
-                customerName: project.contract?.customer?.name
-            });
-
-            await this.projectRepository.update(projectId, {
-                googleSheetId: result.spreadsheetId,
-                googleSheetUrl: result.spreadsheetUrl,
-                googleSheetStatus: GoogleSheetStatus.CREATED,
-                googleSheetError: null,
-                googleSheetCreatedAt: new Date()
-            });
-        } catch (error: any) {
-            const message = error?.message || "Không thể tạo Google Sheet";
-            await this.projectRepository.update(projectId, {
-                googleSheetStatus: GoogleSheetStatus.FAILED,
-                googleSheetError: message
-            });
-            throw new Error(message);
-        }
-
-        return await this.projectRepository.findOne({
-            where: { id: projectId },
-            relations: ["contract", "contract.customer"]
-        });
-    }
-
-    private async tryCreateGoogleSheet(projectId: string): Promise<void> {
-        try {
-            await this.createGoogleSheet(projectId);
-        } catch (error: any) {
-            console.error(`[ProjectService] Google Sheet creation failed for project ${projectId}:`, error.message);
-        }
+        // Google Sheet integration is temporarily disabled.
+        void projectId;
+        throw new Error("Google Sheet integration is temporarily disabled");
     }
 
 

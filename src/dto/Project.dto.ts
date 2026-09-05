@@ -55,8 +55,8 @@ export class AssignTeamDTO {
     contractId: string;
 
     @IsString()
-    @IsNotEmpty({ message: "ID team không được để trống" })
-    teamId: string;
+    @IsNotEmpty({ message: "ID PM không được để trống" })
+    pmId: string;
 
     @IsString()
     @IsOptional()

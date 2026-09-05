@@ -7,7 +7,7 @@ export class UserController {
 
     getAll = async (req: Request, res: Response) => {
         try {
-            const result = await this.userService.getAll();
+            const result = await this.userService.getAll(req.query as any);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(500).json({ message: error.message });

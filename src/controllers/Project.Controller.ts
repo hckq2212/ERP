@@ -45,7 +45,7 @@ export class ProjectController {
 
     assign = async (req: Request, res: Response) => {
         try {
-            // body: { contractId, teamId, name? }
+            // body: { contractId, pmId, name? }
             const project = await this.projectService.assign(req.body);
             res.status(201).json(project);
         } catch (error) {
@@ -92,12 +92,9 @@ export class ProjectController {
     }
 
     retryGoogleSheet = async (req: AuthRequest, res: Response) => {
-        try {
-            const project = await this.projectService.createGoogleSheet(req.params.id as string);
-            res.status(200).json(project);
-        } catch (error: any) {
-            res.status(500).json({ message: error.message });
-        }
+        // Google Sheet integration is temporarily disabled.
+        void req;
+        res.status(503).json({ message: "Google Sheet integration is temporarily disabled" });
     }
 
     syncServiceJobs = async (req: AuthRequest, res: Response) => {

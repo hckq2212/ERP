@@ -17,12 +17,13 @@ router.get("/:id/monthly-work-template", authMiddleware, projectController.getMo
 router.post("/assign", authMiddleware, validationMiddleware(AssignTeamDTO), projectController.assign);
 router.post("/:id/confirm", authMiddleware, projectController.confirm);
 router.post("/:id/monthly-work-addendums", authMiddleware, projectController.createMonthlyWorkAddendum);
-router.post(
-    "/:id/google-sheet/retry",
-    authMiddleware,
-    roleMiddleware(["BOD", "ADMIN", "PM"]),
-    projectController.retryGoogleSheet
-);
+// Google Sheet integration is temporarily disabled.
+// router.post(
+//     "/:id/google-sheet/retry",
+//     authMiddleware,
+//     roleMiddleware(["BOD", "ADMIN", "PM"]),
+//     projectController.retryGoogleSheet
+// );
 router.post(
     "/:id/sync-service-jobs",
     authMiddleware,

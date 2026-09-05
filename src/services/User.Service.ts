@@ -14,9 +14,10 @@ export class UserService {
         return key;
     }
 
-    async getAll() {
+    async getAll(filters: { role?: string } = {}) {
         return await RedisService.fetchWithCache(this.getCacheKey('users:all'), 3600, async () => {
             const users = await this.userRepository.find({
+                where: filters.role ? { accounts: { role: filters.role as any } } : undefined,
                 relations: ["tasks", "accounts"],
                 select: {
                     id: true,
