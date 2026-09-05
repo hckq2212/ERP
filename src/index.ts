@@ -1,44 +1,44 @@
 import 'dotenv/config';
-import "./entity/Enums";
+import "./shared/entities/Enums";
 
 import { AppDataSource } from "./data-source"
 import express from "express"
 import cors from "cors"
 import cookieParser from "cookie-parser"
-import passport from "./config/passport"
+import passport from "./shared/config/passport"
 
-import authRoute from "./routes/Auth.Route"
-import opportunityRoute from "./routes/Opportunity.Route"
-import serviceRoute from "./routes/Service.Route"
-import jobRoute from "./routes/Job.Route"
-import contractRoute from "./routes/Contract.Route"
-import quotationRoute from "./routes/Quotation.Route"
-import paymentMilestoneRoute from "./routes/PaymentMilestone.Route"
-import projectRoute from "./routes/Project.Route"
-import taskRoute from "./routes/Task.Route"
-import opportunityServiceRoute from "./routes/OpportunityService.Route"
-import userRoute from "./routes/User.Route"
-import projectTeamRoute from "./routes/ProjectTeam.Route"
-import notificationRoute from "./routes/Notification.Route"
-import dashboardRoute from "./routes/Dashboard.Route";
-import customerRoute from "./routes/Customer.Route"
-import vendorRoute from "./routes/Vendor.Route"
-import referralPartnerRoute from "./routes/ReferralPartner.Route"
-import debtRoute from "./routes/Debt.Route"
-import contractAddendumRoute from "./routes/ContractAddendum.Route"
-import jobCriteriaRoute from "./routes/JobCriteria.Route"
-import taskReviewRoute from "./routes/TaskReview.Route"
-import acceptanceRoute from "./routes/Acceptance.Route"
-import cloudinaryRoute from "./routes/Cloudinary.Route"
-import servicePackageRoute from "./routes/ServicePackage.Route"
-import chatRoute from "./routes/Chat.Route"
-import accountRoute from "./routes/Account.Route"
-import profileRoute from "./routes/Profile.Route"
-import { loggingMiddleware } from "./middlewares/Logging.Middleware";
-import { authMiddleware } from "./middlewares/Auth.Middleware";
-import { globalApiLimiter, writeRateLimitMiddleware } from "./middlewares/RateLimit.Middleware";
-import { CronHelper } from "./helpers/Cron.Helper";
-import { initSubscribers } from "./subscribers";
+import authRoute from "./modules/auth/routes/Auth.Route"
+import opportunityRoute from "./modules/opportunity/routes/Opportunity.Route"
+import serviceRoute from "./modules/service/routes/Service.Route"
+import jobRoute from "./modules/job/routes/Job.Route"
+import contractRoute from "./modules/contract/routes/Contract.Route"
+import quotationRoute from "./modules/quotation/routes/Quotation.Route"
+import paymentMilestoneRoute from "./modules/payment-milestone/routes/PaymentMilestone.Route"
+import projectRoute from "./modules/project/routes/Project.Route"
+import taskRoute from "./modules/task/routes/Task.Route"
+import opportunityServiceRoute from "./modules/opportunity-service/routes/OpportunityService.Route"
+import userRoute from "./modules/user/routes/User.Route"
+import projectTeamRoute from "./modules/project/routes/ProjectTeam.Route"
+import notificationRoute from "./modules/notification/routes/Notification.Route"
+import dashboardRoute from "./modules/dashboard/routes/Dashboard.Route";
+import customerRoute from "./modules/customer/routes/Customer.Route"
+import vendorRoute from "./modules/vendor/routes/Vendor.Route"
+import referralPartnerRoute from "./modules/referral-partner/routes/ReferralPartner.Route"
+import debtRoute from "./modules/debt/routes/Debt.Route"
+import contractAddendumRoute from "./modules/contract-addendum/routes/ContractAddendum.Route"
+import jobCriteriaRoute from "./modules/job-criteria/routes/JobCriteria.Route"
+import taskReviewRoute from "./modules/task/routes/TaskReview.Route"
+import acceptanceRoute from "./modules/acceptance/routes/Acceptance.Route"
+import cloudinaryRoute from "./modules/cloudinary/routes/Cloudinary.Route"
+import servicePackageRoute from "./modules/service-package/routes/ServicePackage.Route"
+import chatRoute from "./modules/chat/routes/Chat.Route"
+import accountRoute from "./modules/account/routes/Account.Route"
+import profileRoute from "./modules/profile/routes/Profile.Route"
+import { loggingMiddleware } from "./shared/middlewares/Logging.Middleware";
+import { authMiddleware } from "./shared/middlewares/Auth.Middleware";
+import { globalApiLimiter, writeRateLimitMiddleware } from "./shared/middlewares/RateLimit.Middleware";
+import { CronHelper } from "./shared/helpers/Cron.Helper";
+import { initSubscribers } from "./shared/subscribers";
 
 
 

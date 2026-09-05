@@ -1,0 +1,470 @@
+import { AppDataSource } from "../../../data-source";
+import { Contracts, ContractStatus } from "../../contract/entities/Contract.entity";
+import { Customers } from "../../customer/entities/Customer.entity";
+import { Debts, DebtStatus } from "../../debt/entities/Debt.entity";
+import { Projects, ProjectStatus } from "../../project/entities/Project.entity";
+import { ContractServiceStatus } from "../../contract/entities/ContractService.entity";
+import { Quotations, QuotationStatus } from "../../quotation/entities/Quotation.entity";
+import { Tasks } from "../../task/entities/Task.entity";
+import { TaskStatus } from "../../../shared/entities/Enums";
+import { Opportunities, OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
+import { UserRole } from "../../account/entities/Account.entity";
+import { Between, In, LessThanOrEqual, Not } from "typeorm";
+import { Violations } from "../../task/entities/Violation.entity";
+
+export class DashboardService {
+    private contractRepo = AppDataSource.getRepository(Contracts);
+    private customerRepo = AppDataSource.getRepository(Customers);
+    private debtRepo = AppDataSource.getRepository(Debts);
+    private projectRepo = AppDataSource.getRepository(Projects);
+    private taskRepo = AppDataSource.getRepository(Tasks);
+    private opportunityRepo = AppDataSource.getRepository(Opportunities);
+    private quotationRepo = AppDataSource.getRepository(Quotations);
+
+    async getDashboardData(userId: string, role: UserRole, month?: number, year?: number) {
+        const data: any = {};
+        const dateFilter = this.getDateFilter(month, year);
+
+        // 1. BOD/ADMIN Data
+        if (role === UserRole.BOD || role === UserRole.ADMIN) {
+            data.admin = await this.getAdminMetrics(dateFilter);
+        }
+
+        // 2. Team Lead Data
+        const ledProjects = await this.projectRepo.find({
+            where: {
+                team: { teamLead: { id: userId } },
+                status: Not(In([ProjectStatus.CANCELLED, ProjectStatus.COMPLETED]))
+                // ...(dateFilter && { createdAt: dateFilter })
+            },
+            relations: ["contract", "contract.services"]
+        });
+
+        if (ledProjects.length > 0) {
+            data.teamLead = ledProjects.map(p => {
+                const services = p.contract?.services || [];
+                const totalServices = services.length;
+                const completedServices = services.filter(s => s.status === ContractServiceStatus.COMPLETED).length;
+                return {
+                    id: p.id,
+                    name: p.name,
+                    status: p.status,
+                    serviceCount: totalServices,
+                    completedServiceCount: completedServices,
+                    progress: totalServices > 0 ? Math.round((completedServices / totalServices) * 100) : 0
+                };
+            });
+        }
+
+        // 3. Sale Data
+        if (role === UserRole.BD) {
+            const [myOpportunities, myCustomers, myContracts] = await Promise.all([
+                this.opportunityRepo.find({
+                    where: {
+                        createdBy: { id: userId },
+                        ...(dateFilter && { createdAt: dateFilter })
+                    }
+                }),
+                this.customerRepo.count({
+                    where: {
+                        createdBy: { id: userId },
+                        ...(dateFilter && { createdAt: dateFilter })
+                    }
+                }),
+                this.contractRepo.find({
+                    where: [
+                        { customer: { createdBy: { id: userId } }, ...(dateFilter && { createdAt: dateFilter }) },
+                        { opportunity: { createdBy: { id: userId } }, ...(dateFilter && { createdAt: dateFilter }) }
+                    ],
+                    relations: ["debts", "debts.payments", "project", "customer"]
+                })
+            ]);
+
+            const statusCounts = myOpportunities.reduce((acc: any, opp) => {
+                acc[opp.status] = (acc[opp.status] || 0) + 1;
+                return acc;
+            }, {});
+
+            let totalDebt = 0;
+            const upcomingDebts: any[] = [];
+            const saleProjects: any[] = [];
+            const processedProjectIds = new Set();
+
+            myContracts.forEach(contract => {
+                contract.debts?.forEach(debt => {
+                    const paidAmount = debt.payments?.reduce((sum, p) => sum + parseFloat(p.amount as any), 0) || 0;
+                    const remaining = parseFloat(debt.amount as any) - paidAmount;
+                    if (remaining > 0 && debt.status !== DebtStatus.PAID) {
+                        totalDebt += remaining;
+                        upcomingDebts.push({
+                            id: debt.id,
+                            name: debt.name,
+                            amount: debt.amount,
+                            remaining: remaining,
+                            dueDate: debt.dueDate,
+                            customerName: contract.customer?.name,
+                            contractCode: contract.contractCode
+                        });
+                    }
+                });
+
+                if (contract.project && !processedProjectIds.has(contract.project.id)) {
+                    processedProjectIds.add(contract.project.id);
+                    saleProjects.push({
+                        id: contract.project.id,
+                        name: contract.project.name,
+                        status: contract.project.status,
+                        customerName: contract.customer?.name
+                    });
+                }
+            });
+
+            const sortedDebts = upcomingDebts
+                .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+                .slice(0, 5);
+
+            data.sale = {
+                totalOpportunities: myOpportunities.length,
+                totalExpectedRevenue: myOpportunities.reduce((sum, opp) => sum + parseFloat(opp.expectedRevenue as any), 0),
+                statusCounts,
+                totalCustomers: myCustomers,
+                totalDebt,
+                upcomingDebts: sortedDebts,
+                projects: saleProjects
+            };
+        }
+
+        // 4. Member Data
+        const myTasks = await this.taskRepo.find({
+            where: [
+                { assignee: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }) },
+                { helper: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }) }
+            ],
+            relations: ["project", "project.contract", "project.contract.customer", "project.contract.services", "assignee", "helper"],
+            select: {
+                id: true,
+                name: true,
+                nickname: true,
+                status: true,
+                code: true,
+                plannedStartDate: true,
+                plannedEndDate: true,
+                project: {
+                    id: true,
+                    name: true,
+                    status: true,
+                    contract: {
+                        id: true,
+                        customer: {
+                            id: true,
+                            name: true
+                        },
+                        services: {
+                            id: true,
+                            status: true
+                        }
+                    }
+                }
+            },
+            order: { plannedEndDate: "DESC" }
+        });
+
+        const activeTasks = myTasks.filter(t => !t.project || (t.project.status !== ProjectStatus.COMPLETED && t.project.status !== ProjectStatus.CANCELLED));
+
+        const userWithAccount = await AppDataSource.getRepository("Users").findOne({
+            where: { id: userId },
+            relations: ["accounts"]
+        }) as any;
+        const account = userWithAccount?.accounts?.[0];
+
+        const vinicoin = account?.vinicoin || 0;
+        const vinicoinTotal = account?.vinicoinTotal || 0;
+        const vinicoinWithdrawn = account?.vinicoinWithdrawn || 0;
+
+        const violations = await AppDataSource.getRepository(Violations).find({
+            where: {
+                userId,
+                ...(dateFilter && { createdAt: dateFilter })
+            },
+            select: { id: true, type: true, createdAt: true }
+        });
+
+        const violationStats = violations.reduce((acc: any, v) => {
+            acc[v.type] = (acc[v.type] || 0) + 1;
+            return acc;
+        }, {});
+
+        // Participating Projects
+        const teamProjects = await this.projectRepo.find({
+            where: [
+                { team: { teamLead: { id: userId } } },
+                { team: { members: { user: { id: userId } } } }
+            ],
+            relations: ["contract", "contract.customer", "contract.services"]
+        });
+
+        const projectMap = new Map();
+
+        const addProjectToMap = (project: any) => {
+            if (project && !projectMap.has(project.id)) {
+                const services = project.contract?.services || [];
+                const totalServices = services.length;
+                const completedServices = services.filter(s => s.status === ContractServiceStatus.COMPLETED).length;
+                
+                projectMap.set(project.id, {
+                    id: project.id,
+                    name: project.name,
+                    status: project.status,
+                    clientName: project.contract?.customer?.name,
+                    serviceCount: totalServices,
+                    completedServiceCount: completedServices,
+                    progress: totalServices > 0 ? Math.round((completedServices / totalServices) * 100) : 0
+                });
+            }
+        };
+
+        teamProjects.forEach(p => addProjectToMap(p));
+        activeTasks.forEach(t => addProjectToMap(t.project));
+
+        const participatingProjects = Array.from(projectMap.values()).filter(p =>
+            [ProjectStatus.PENDING_CONFIRMATION, ProjectStatus.CONFIRMED, ProjectStatus.IN_PROGRESS].includes(p.status)
+        );
+
+        // Chart Stats (Still using yearly context if year provided, otherwise current year)
+        const chartYear = year || new Date().getFullYear();
+        const completionStats = Array(12).fill(0);
+
+        // We query all tasks for the chart year to show the trend
+        const allTasksForChart = await this.taskRepo.find({
+            where: [
+                { assignee: { id: userId }, plannedEndDate: Between(new Date(`${chartYear}-01-01`), new Date(`${chartYear}-12-31`)) },
+                { helper: { id: userId }, plannedEndDate: Between(new Date(`${chartYear}-01-01`), new Date(`${chartYear}-12-31`)) }
+            ],
+            select: { status: true, actualEndDate: true }
+        });
+
+        allTasksForChart.forEach(t => {
+            if (t.status === TaskStatus.ACCEPTED && t.actualEndDate) {
+                const date = new Date(t.actualEndDate);
+                if (date.getFullYear() === chartYear) {
+                    completionStats[date.getMonth()]++;
+                }
+            }
+        });
+
+        const statusCounts = activeTasks.reduce((acc: any, t) => {
+            acc[t.status] = (acc[t.status] || 0) + 1;
+            return acc;
+        }, {});
+
+        data.member = {
+            vinicoin,
+            vinicoinTotal,
+            vinicoinWithdrawn,
+            totalTasks: activeTasks.length,
+            statusCounts,
+            doingCount: (statusCounts[TaskStatus.DOING] || 0) + (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),
+            reworkCount: (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),
+            reworkTasks: activeTasks
+                .filter(t => t.status === TaskStatus.REWORKING || t.status === TaskStatus.REJECTED)
+                .map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    nickname: t.nickname,
+                    projectName: t.project?.name,
+                    clientName: t.project?.contract?.customer?.name,
+                    code: t.code,
+                    deadline: t.plannedEndDate
+                })),
+            completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0),
+            participatingProjects,
+            upcomingDeadlines: activeTasks
+                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.INTERNAL_COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
+                .slice(0, 10)
+                .map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    nickname: t.nickname,
+                    deadline: t.plannedEndDate,
+                    status: t.status,
+                    projectName: t.project?.name,
+                    code: t.code
+                })),
+            calendarTasks: activeTasks
+                .filter(t => t.plannedStartDate || t.plannedEndDate)
+                .map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    nickname: t.nickname,
+                    start: t.plannedStartDate,
+                    end: t.plannedEndDate,
+                    status: t.status,
+                    code: t.code,
+                    project: t.project
+                })),
+            completionStats: completionStats.map((count, index) => ({
+                month: index + 1,
+                count
+            })),
+            violationCount: violations.length,
+            violationStats
+        };
+
+        return data;
+    }
+
+    private getDateFilter(month?: number, year?: number) {
+        if (!year && !month) return null;
+
+        let start: Date;
+        let end: Date;
+
+        if (year && month) {
+            start = new Date(year, month - 1, 1);
+            end = new Date(year, month, 0, 23, 59, 59, 999);
+        } else if (year) {
+            start = new Date(year, 0, 1);
+            end = new Date(year, 11, 31, 23, 59, 59, 999);
+        } else {
+            // Only month provided (unlikely from UI but for safety)
+            const currentYear = new Date().getFullYear();
+            start = new Date(currentYear, month! - 1, 1);
+            end = new Date(currentYear, month!, 0, 23, 59, 59, 999);
+        }
+
+        return Between(start, end);
+    }
+
+    private async getAdminMetrics(dateFilter: any | null) {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const [totalCustomers, newCustomers] = await Promise.all([
+            this.customerRepo.count(dateFilter ? { where: { createdAt: dateFilter } as any } : {}),
+            this.customerRepo.count({ where: { createdAt: Between(thirtyDaysAgo, new Date()) } as any })
+        ]);
+
+        const signedContracts = await this.contractRepo.find({
+            where: {
+                status: In([ContractStatus.SIGNED, ContractStatus.COMPLETED]),
+                ...(dateFilter && { createdAt: dateFilter })
+            }
+        });
+
+        const totalRevenue = signedContracts.reduce((sum, c) => sum + parseFloat(c.sellingPrice as any), 0);
+
+        const unpaidDebts = await this.debtRepo.find({
+            where: {
+                status: In([DebtStatus.UNPAID, DebtStatus.PARTIAL]),
+                ...(dateFilter && { createdAt: dateFilter })
+            }
+        });
+
+        const totalDebt = unpaidDebts.reduce((sum, d) => sum + parseFloat(d.amount as any), 0);
+
+        const [pendingQuotations, pendingContracts] = await Promise.all([
+            this.quotationRepo.find({
+                where: [
+                    {
+                        status: QuotationStatus.PENDING_APPROVAL,
+                        ...(dateFilter && { createdAt: dateFilter })
+                    },
+                    {
+                        status: QuotationStatus.DRAFT,
+                        opportunity: { status: OpportunityStatus.PENDING_QUOTE_APPROVAL },
+                        ...(dateFilter && { createdAt: dateFilter })
+                    }
+                ],
+                relations: ["opportunity", "opportunity.customer", "opportunity.createdBy", "createdBy"],
+                order: { createdAt: "DESC" },
+                take: 20
+            }),
+            this.contractRepo.find({
+                where: {
+                    status: ContractStatus.PROPOSAL_UPLOADED,
+                    ...(dateFilter && { createdAt: dateFilter })
+                },
+                relations: ["customer", "opportunity", "createdBy"],
+                order: { createdAt: "DESC" },
+                take: 20
+            })
+        ]);
+
+        const approvalQueue = {
+            quotations: pendingQuotations.map(q => ({
+                id: q.id,
+                type: "QUOTATION",
+                title: `Báo giá lần ${q.version}`,
+                status: q.status,
+                totalAmount: q.totalAmount,
+                createdAt: q.createdAt,
+                opportunityId: q.opportunity?.id,
+                opportunityCode: q.opportunity?.opportunityCode,
+                opportunityName: q.opportunity?.name,
+                customerName: q.opportunity?.customer?.name || q.opportunity?.leadName,
+                createdByName: q.createdBy?.fullName || q.opportunity?.createdBy?.fullName
+            })),
+            contracts: pendingContracts.map(c => ({
+                id: c.id,
+                type: "CONTRACT",
+                title: c.name,
+                status: c.status,
+                totalAmount: c.sellingPrice,
+                createdAt: c.createdAt,
+                contractCode: c.contractCode,
+                opportunityId: c.opportunity?.id,
+                opportunityName: c.opportunity?.name,
+                customerName: c.customer?.name,
+                createdByName: c.createdBy?.fullName,
+                proposalUrl: c.proposal_contract,
+                quotationLink: c.quotation_link
+            }))
+        };
+
+        const currentProjects = await this.getCurrentProjectProgress();
+
+        return {
+            totalCustomers,
+            newCustomers,
+            totalRevenue,
+            totalDebt,
+            approvalQueue,
+            currentProjects,
+            pendingApprovalCount: approvalQueue.quotations.length + approvalQueue.contracts.length
+        };
+    }
+
+    private async getCurrentProjectProgress() {
+        const projects = await this.projectRepo.find({
+            where: {
+                status: In([
+                    ProjectStatus.PENDING_CONFIRMATION,
+                    ProjectStatus.CONFIRMED,
+                    ProjectStatus.IN_PROGRESS
+                ])
+            },
+            relations: ["contract", "contract.customer", "contract.services", "team", "team.teamLead"],
+            order: { createdAt: "DESC" }
+        });
+
+        return projects.map(project => {
+            const services = project.contract?.services || [];
+            const serviceCount = services.length;
+            const completedServiceCount = services.filter(s => s.status === ContractServiceStatus.COMPLETED).length;
+
+            return {
+                id: project.id,
+                name: project.name,
+                status: project.status,
+                customerName: project.contract?.customer?.name,
+                teamName: project.team?.name,
+                teamLeadName: project.team?.teamLead?.fullName,
+                plannedStartDate: project.plannedStartDate,
+                plannedEndDate: project.plannedEndDate,
+                serviceCount,
+                completedServiceCount,
+                progress: serviceCount > 0 ? Math.round((completedServiceCount / serviceCount) * 100) : 0
+            };
+        });
+    }
+}
