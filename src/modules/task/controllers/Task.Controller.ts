@@ -11,8 +11,8 @@ export class TaskController {
             const filters = req.query;
             const tasks = await this.taskService.getAll(filters, userInfo);
             res.status(200).json(tasks);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -21,8 +21,8 @@ export class TaskController {
         try {
             const task = await this.taskService.getOne(req.params.id as string);
             res.status(200).json(task);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -31,8 +31,8 @@ export class TaskController {
             const user = (req as any).user;
             const task = await this.taskService.create(req.body, user);
             res.status(201).json(task);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -41,8 +41,8 @@ export class TaskController {
             const user = (req as any).user;
             const task = await this.taskService.createInternalTask(req.body, user);
             res.status(201).json(task);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -51,8 +51,8 @@ export class TaskController {
             const user = (req as any).user;
             const task = await this.taskService.update(req.params.id as string, req.body, user);
             res.status(200).json(task);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -286,10 +286,11 @@ export class TaskController {
 
     sendReminder = async (req: Request, res: Response) => {
         try {
-            const result = await this.taskService.sendReminder(req.params.id as string);
+            const user = (req as any).user;
+            const result = await this.taskService.sendReminder(req.params.id as string, user);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 }

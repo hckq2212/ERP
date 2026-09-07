@@ -28,14 +28,14 @@ export class TaskAssignmentService extends TaskBaseService {
     ) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "project.team", "project.team.teamLead"]
+            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
         });
 
         if (!task) throw this.httpError("Không tìm thấy công việc", 404);
 
         const currentUserId = currentUser?.userId || currentUser?.id;
         const isAdminOrBod = isProjectManagementRole(currentUser?.role);
-        const isProjectLead = Boolean(task.project && task.project.team?.teamLead?.id === currentUserId);
+        const isProjectLead = this.isProjectOperatorFromTeam(task.project?.team, currentUser);
 
         if (!isAdminOrBod && !isProjectLead) {
             throw this.httpError("Bạn không có quyền thay đổi nickname của công việc này", 403);
@@ -54,7 +54,7 @@ export class TaskAssignmentService extends TaskBaseService {
         return saved;
     }
 
-    async update(id: string, data: Partial<Tasks> & { assigneeId?: string }, currentUser?: { id: string, userId?: string }) {
+    async update(id: string, data: Partial<Tasks> & { assigneeId?: string }, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
 
         if (data.assigneeId && (!task.assignee || task.assignee.id !== data.assigneeId)) {
@@ -85,11 +85,10 @@ export class TaskAssignmentService extends TaskBaseService {
             // Re-fetch to ensure we have lead info
             const taskWithInfo = await this.taskRepository.findOne({
                 where: { id: task.id },
-                relations: ["project", "project.team", "project.team.teamLead"]
+                relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
             });
 
-            const currentId = (currentUser as any)?.userId || currentUser?.id;
-            const isTeamLead = taskWithInfo?.project?.team?.teamLead?.id === currentId;
+            const isTeamLead = this.isProjectOperatorFromTeam(taskWithInfo?.project?.team, currentUser);
 
             if (isTeamLead) {
                 task.status = TaskStatus.AWAITING_REVIEW;
@@ -97,7 +96,7 @@ export class TaskAssignmentService extends TaskBaseService {
                 await this.taskRepository.save(task);
 
                 await this.reviewService.initializeReviews(task.id, true);
-                await this.reviewService.checkAndFinalize(task.id);
+                await this.reviewService.checkAndFinalize(task.id, undefined, undefined, currentUser);
                 task.status = TaskStatus.INTERNAL_COMPLETED;
             } else {
                 task.status = TaskStatus.AWAITING_REVIEW;
@@ -131,7 +130,7 @@ export class TaskAssignmentService extends TaskBaseService {
         plannedStartDate: Date;
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
-    }, currentUser?: { id: string }) {
+    }, currentUser?: { id: string; userId?: string; role?: string }) {
         return await AppDataSource.transaction(async (transactionalEntityManager) => {
             const results = [];
             const contractCostUpdates = new Map<string, number>();
@@ -139,7 +138,7 @@ export class TaskAssignmentService extends TaskBaseService {
             for (const id of taskIds) {
                 const task = await transactionalEntityManager.findOne(Tasks, {
                     where: { id },
-                    relations: ["project", "project.contract", "job"]
+                    relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job"]
                 });
                 if (!task) continue;
 
@@ -167,6 +166,12 @@ export class TaskAssignmentService extends TaskBaseService {
                         link: `/tasks/${task.id}`
                     }, transactionalEntityManager);
                 } else {
+                    const canAssignMainPerformer = isProjectManagementRole(currentUser?.role) ||
+                        this.isProjectOperatorFromTeam(task.project?.team, currentUser);
+                    if (!canAssignMainPerformer) {
+                        throw this.httpError("Bạn không có quyền phân công công việc trong dự án này", 403);
+                    }
+
                     // Clear support fields when reassigning the main performer
                     task.isSupportRequested = false;
                     task.isSupportAccepted = false;
@@ -231,7 +236,9 @@ export class TaskAssignmentService extends TaskBaseService {
                 }
 
                 if (currentUser) {
-                    task.assignerId = (currentUser as any).userId || currentUser.id;
+                    const assignerId = await this.resolveActorUserId(currentUser, transactionalEntityManager);
+                    if (!assignerId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để phân công công việc", 401);
+                    task.assignerId = assignerId;
                 }
 
                 results.push(await transactionalEntityManager.save(task));
@@ -259,7 +266,7 @@ export class TaskAssignmentService extends TaskBaseService {
         plannedStartDate: Date;
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
-    }, currentUser?: { id: string }) {
+    }, currentUser?: { id: string; userId?: string; role?: string }) {
         const results = await this.bulkAssign([id], data, currentUser);
         return results[0];
     }
@@ -272,7 +279,7 @@ export class TaskAssignmentService extends TaskBaseService {
         const result = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const project = await transactionalEntityManager.findOne(Projects, {
                 where: { id: projectId },
-                relations: ["team", "team.teamLead", "contract"]
+                relations: ["team", "team.teamLead", "team.members", "team.members.user", "contract"]
             });
 
             if (!project) {
@@ -281,7 +288,7 @@ export class TaskAssignmentService extends TaskBaseService {
 
             const currentUserId = currentUser?.userId || currentUser?.id;
             const isAdminOrBod = isProjectManagementRole(currentUser?.role);
-            const isProjectLead = project.team?.teamLead?.id === currentUserId;
+            const isProjectLead = this.isProjectOperatorFromTeam(project.team, currentUser);
 
             if (!isAdminOrBod && !isProjectLead) {
                 throw this.httpError("Bạn không có quyền xoá phân công trong dự án này", 403);
@@ -395,10 +402,10 @@ export class TaskAssignmentService extends TaskBaseService {
         assigneeId: string;
         performerType: PerformerType;
         reason: string;
-    }, currentUser: { id: string }) {
+    }, currentUser: { id: string; userId?: string; role?: string }) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "project.contract", "job", "assignee", "vendor"]
+            relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job", "assignee", "vendor"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
@@ -430,6 +437,12 @@ export class TaskAssignmentService extends TaskBaseService {
             newPerformerName = user.fullName;
             newRecipient = user;
         } else {
+            const canReassignMainPerformer = isProjectManagementRole(currentUser?.role) ||
+                this.isProjectOperatorFromTeam(task.project?.team, currentUser);
+            if (!canReassignMainPerformer) {
+                throw this.httpError("Bạn không có quyền chuyển giao công việc trong dự án này", 403);
+            }
+
             // Clear support fields when reassigning the main performer
             task.isSupportRequested = false;
             task.isSupportAccepted = false;
@@ -483,7 +496,9 @@ export class TaskAssignmentService extends TaskBaseService {
         }
 
         task.reassignNote = data.reason;
-        task.assignerId = (currentUser as any).userId || currentUser.id;
+        const assignerId = await this.resolveActorUserId(currentUser);
+        if (!assignerId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để chuyển giao công việc", 401);
+        task.assignerId = assignerId;
 
         // Update Contract Cost if changed
         if (oldCost !== newCost && task.project?.contract) {

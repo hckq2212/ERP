@@ -243,7 +243,8 @@ export class ProjectBaseService {
                 "team",
                 "team.teamLead",
                 "team.members",
-                "team.members.user"
+                "team.members.user",
+                "team.members.user.accounts"
             ],
             select: {
                 id: true,
@@ -273,8 +274,16 @@ export class ProjectBaseService {
                         phoneNumber: true,
                     },
                     members: {
+                        id: true,
+                        role: true,
                         user: {
-                            id: true
+                            id: true,
+                            fullName: true,
+                            phoneNumber: true,
+                            accounts: {
+                                id: true,
+                                role: true
+                            }
                         }
                     }
                 }

@@ -48,7 +48,7 @@ export class ProjectService {
         return this.lifecycleService.createGoogleSheet(projectId);
     }
 
-    confirm(id: string, userId: string) {
-        return this.lifecycleService.confirm(id, userId);
+    confirm(id: string, actor: { id: string; userId?: string; role: string }) {
+        return this.lifecycleService.confirm(id, actor);
     }
 }

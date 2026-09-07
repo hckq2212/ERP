@@ -38,7 +38,7 @@ passport.use(
             if (account && account.isActive) {
                 return done(null, {
                     id: account.id,
-                    userId: account.user?.id,
+                    userId: account.user?.id || account.userId,
                     role: account.role,
                     username: account.username
                 });

@@ -29,7 +29,7 @@ export class TaskCreationService extends TaskBaseService {
         plannedStartDate?: Date,
         plannedEndDate?: Date,
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[]
-    }, currentUser?: { id: string }) {
+    }, currentUser?: { id: string; userId?: string; role?: string }) {
         const assignee = await this.userRepository.findOneBy({ id: data.assigneeId });
         if (!assignee) throw new Error("Không tìm thấy người thực hiện");
 
@@ -55,6 +55,7 @@ export class TaskCreationService extends TaskBaseService {
 
         const sequence = (internalTaskCount + 1).toString().padStart(2, '0');
         const taskCode = `CVK-${initials}-${year}-${month}-${sequence}`;
+        const assignerId = await this.resolveActorUserId(currentUser);
 
         const task = this.taskRepository.create({
             code: taskCode,
@@ -68,7 +69,7 @@ export class TaskCreationService extends TaskBaseService {
             plannedEndDate: data.plannedEndDate,
             description: data.description,
             attachments: data.attachments,
-            assignerId: (currentUser as any)?.userId || currentUser?.id
+            assignerId
         });
 
         const savedTask = await this.taskRepository.save(task);
@@ -110,7 +111,7 @@ export class TaskCreationService extends TaskBaseService {
         plannedStartDate?: Date,
         plannedEndDate?: Date,
         isExtra?: boolean
-    }, currentUser?: { id: string }) {
+    }, currentUser?: { id: string; userId?: string; role?: string }) {
         let project = null;
         let taskCode = null;
 
@@ -120,10 +121,13 @@ export class TaskCreationService extends TaskBaseService {
         if (data.projectId) {
             project = await this.projectRepository.findOne({
                 where: { id: data.projectId },
-                relations: ["contract"]
+                relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user"]
             });
             if (!project) throw new Error("Không tìm thấy dự án");
             if (!project.contract) throw new Error("Dự án không có hợp đồng liên kết");
+            if (currentUser && !await this.isProjectOperator(project.id, currentUser)) {
+                throw this.httpError("Bạn không có quyền tạo công việc trong dự án này", 403);
+            }
 
             const contractCode = project.contract.contractCode;
             const jobCode = job.code || `JOB${job.id}`;
@@ -138,6 +142,7 @@ export class TaskCreationService extends TaskBaseService {
             const sequence = (count + 1).toString().padStart(2, '0');
             taskCode = `${contractCode}-${jobCode}-${sequence}`;
         }
+        const assignerId = await this.resolveActorUserId(currentUser);
 
         const task = this.taskRepository.create({
             code: taskCode,
@@ -151,7 +156,7 @@ export class TaskCreationService extends TaskBaseService {
             plannedEndDate: data.plannedEndDate,
             isExtra: data.isExtra || false,
             pricingStatus: data.isExtra ? PricingStatus.PENDING : null,
-            assignerId: (currentUser as any)?.userId || currentUser?.id
+            assignerId
         });
 
         if (data.assigneeId) {

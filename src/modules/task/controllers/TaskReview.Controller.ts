@@ -16,10 +16,11 @@ export class TaskReviewController {
     toggleCriteria = async (req: Request, res: Response) => {
         try {
             const { isPassed, note } = req.body;
-            const result = await this.reviewService.toggleCriteria(req.params.id as string, isPassed, note);
+            const user = (req as any).user;
+            const result = await this.reviewService.toggleCriteria(req.params.id as string, isPassed, note, user);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -27,7 +28,8 @@ export class TaskReviewController {
         try {
             const taskId = req.params.taskId as string;
             const { passedCriteriaIds, reviewNote } = req.body;
-            const result = await this.reviewService.checkAndFinalize(taskId, passedCriteriaIds, reviewNote);
+            const user = (req as any).user;
+            const result = await this.reviewService.checkAndFinalize(taskId, passedCriteriaIds, reviewNote, user);
             
             // If not all criteria were passed, we still returned 200 but with a specific state
             // Or we could return 202 Accepted if it's partial? 
@@ -47,10 +49,11 @@ export class TaskReviewController {
                 return res.status(400).json({ message: "Vui lòng nhập lý do từ chối" });
             }
 
-            const result = await this.reviewService.rejectTask(taskId, passedCriteriaIds, reviewNote);
+            const user = (req as any).user;
+            const result = await this.reviewService.rejectTask(taskId, passedCriteriaIds, reviewNote, user);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(400).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 400).json({ message: error.message });
         }
     }
 }

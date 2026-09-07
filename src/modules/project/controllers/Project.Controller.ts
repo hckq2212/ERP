@@ -55,13 +55,15 @@ export class ProjectController {
 
     confirm = async (req: AuthRequest, res: Response) => {
         try {
-            const userId = req.user?.userId || req.user?.id;
-            if (!userId) throw new Error("Bạn cần đăng nhập để thực hiện hành động này");
+            const actor = req.user || (req as any).user;
+            if (!actor) {
+                return res.status(401).json({ message: "Bạn cần đăng nhập để thực hiện hành động này" });
+            }
 
-            const project = await this.projectService.confirm(req.params.id as string, userId as string);
+            const project = await this.projectService.confirm(req.params.id as string, actor as any);
             res.status(200).json(project);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 

@@ -49,7 +49,7 @@ export class ProjectAssignmentService extends ProjectBaseService {
         // Check if project already exists for this contract
         let project = await this.projectRepository.findOne({
             where: { contract: { id: data.contractId } },
-            relations: ["team"]
+            relations: ["team", "team.teamLead", "team.teamLead.accounts"]
         });
 
         let isNewProject = false;
@@ -69,18 +69,29 @@ export class ProjectAssignmentService extends ProjectBaseService {
         if (!team) {
             team = this.teamRepository.create({
                 name: `Đội dự án ${project.name}`,
-                teamLead: pm,
                 ...SecurityService.getTenantWhere()
             } as Partial<ProjectTeams>) as ProjectTeams;
         } else {
             team.name = `Đội dự án ${project.name}`;
-            team.teamLead = pm;
+            const currentLeadIsPm = team.teamLead?.accounts?.some(account => account.role === UserRole.PM);
+            if (currentLeadIsPm) {
+                team.teamLead = null as any;
+            }
         }
 
         team = await this.teamRepository.save(team);
         project.team = team;
 
         let savedProject = await this.projectRepository.save(project);
+
+        const existingProjectManagers = await this.memberRepository.find({
+            where: SecurityService.withTenant({ team: { id: team.id }, role: MemberRole.PROJECT_MANAGER }),
+            relations: ["user"]
+        });
+        const oldProjectManagers = existingProjectManagers.filter(member => member.user?.id !== pm.id);
+        if (oldProjectManagers.length > 0) {
+            await this.memberRepository.remove(oldProjectManagers);
+        }
 
         const existingPmMember = await this.memberRepository.findOne({
             where: SecurityService.withTenant({ team: { id: team.id }, user: { id: pm.id } })

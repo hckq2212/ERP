@@ -16,7 +16,7 @@ import { PerformerType } from "../../../shared/entities/Enums";
 import { NotificationService } from "../../notification/services/Notification.Service";
 
 import { SecurityService } from "../../../shared/services/Security.Service";
-import { isProjectManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
+import { Accounts, isProjectManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 // Google Sheet integration is temporarily disabled.
@@ -24,23 +24,63 @@ import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events
 
 import { ProjectBaseService } from "./Project.BaseService";
 
+type ActorInfo = { id: string; userId?: string; role: string };
+
 export class ProjectLifecycleService extends ProjectBaseService {
+    private httpError(message: string, statusCode: number) {
+        const error: any = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
+
     async createGoogleSheet(projectId: string) {
-        // Google Sheet integration is temporarily disabled.
         void projectId;
         throw new Error("Google Sheet integration is temporarily disabled");
     }
 
-    async confirm(id: string, userId: string) {
-        // userId should be the team leader's ID (from token)
-        const project = await this.getOne(id);
+    private async resolveActorUser(actor: ActorInfo) {
+        if (actor.userId) {
+            const user = await this.userRepository.findOneBy({ id: actor.userId });
+            if (user) return user;
+        }
+
+        const account = await AppDataSource.getRepository(Accounts).findOne({
+            where: { id: actor.id },
+            relations: ["user"]
+        });
+        if (account?.user) return account.user;
+        if (account?.userId) {
+            const user = await this.userRepository.findOneBy({ id: account.userId });
+            if (user) return user;
+        }
+
+        throw this.httpError("Tài khoản chưa được liên kết nhân sự để chấp nhận dự án", 403);
+    }
+
+    async confirm(id: string, actor: ActorInfo) {
+        const userConfirming = await this.resolveActorUser(actor);
+        const project = await this.projectRepository.findOne({
+            where: SecurityService.withTenant({ id }),
+            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user"]
+        });
+        if (!project) throw this.httpError("Không tìm thấy dự án", 404);
 
         if (project.status !== ProjectStatus.PENDING_CONFIRMATION) {
             throw new Error("Dự án không ở trạng thái chờ xác nhận");
         }
 
-        const userConfirming = await this.userRepository.findOneBy({ id: userId });
-        if (!userConfirming) throw new Error("Không tìm thấy thông tin người xác nhận");
+        const isTeamLead = project.team?.teamLead?.id === userConfirming.id;
+        const isProjectManager = project.team?.members?.some(member =>
+            member.user?.id === userConfirming.id && member.role === MemberRole.PROJECT_MANAGER
+        );
+        const isAccountManager = project.team?.members?.some(member =>
+            member.user?.id === userConfirming.id && member.role === MemberRole.ACCOUNT
+        );
+        const isSystemManager = [UserRole.ADMIN, UserRole.BOD].includes(actor.role as UserRole);
+
+        if (!isSystemManager && !isTeamLead && !isProjectManager && !isAccountManager) {
+            throw this.httpError("Bạn không có quyền chấp nhận dự án này", 403);
+        }
 
         // Check if contract is already signed
         const contract = await this.contractRepository.findOneBy({ id: project.contract.id });
