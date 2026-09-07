@@ -1,10 +1,12 @@
 import { Request, Response } from "express";
 import { ProjectService } from "../services/Project.Service";
+import { ProjectProductDescriptionService } from "../services/ProjectProductDescription.Service";
 import { AuthRequest } from "../../../shared/middlewares/Auth.Middleware";
 
 
 export class ProjectController {
     private projectService = new ProjectService();
+    private productDescriptionService = new ProjectProductDescriptionService();
 
     getAll = async (req: Request, res: Response) => {
         try {
@@ -105,6 +107,78 @@ export class ProjectController {
             res.status(200).json(result);
         } catch (error: any) {
             res.status(500).json({ message: error.message });
+        }
+    }
+
+    getProductDescriptions = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.getByProject(req.params.id as string, req.user as any);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    createProductDescription = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.create(req.params.id as string, req.body, req.user as any);
+            res.status(201).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    updateProductDescription = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.update(
+                req.params.id as string,
+                req.params.submissionId as string,
+                req.body,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    submitProductDescription = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.submit(
+                req.params.id as string,
+                req.params.submissionId as string,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    approveProductDescription = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.approve(
+                req.params.id as string,
+                req.params.submissionId as string,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    rejectProductDescription = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.reject(
+                req.params.id as string,
+                req.params.submissionId as string,
+                req.body,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 

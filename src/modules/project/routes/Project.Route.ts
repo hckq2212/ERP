@@ -16,6 +16,20 @@ router.get("/:id/monthly-work-template", projectController.getMonthlyWorkTemplat
 router.post("/assign", validationMiddleware(AssignTeamDTO), projectController.assign);
 router.post("/:id/confirm", projectController.confirm);
 router.post("/:id/monthly-work-addendums", projectController.createMonthlyWorkAddendum);
+router.get("/:id/product-descriptions", projectController.getProductDescriptions);
+router.post("/:id/product-descriptions", projectController.createProductDescription);
+router.put("/:id/product-descriptions/:submissionId", projectController.updateProductDescription);
+router.post("/:id/product-descriptions/:submissionId/submit", projectController.submitProductDescription);
+router.post(
+    "/:id/product-descriptions/:submissionId/approve",
+    roleMiddleware(["PM"]),
+    projectController.approveProductDescription
+);
+router.post(
+    "/:id/product-descriptions/:submissionId/reject",
+    roleMiddleware(["PM"]),
+    projectController.rejectProductDescription
+);
 // Google Sheet integration is temporarily disabled.
 // router.post(
 //     "/:id/google-sheet/retry",
