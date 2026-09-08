@@ -17,11 +17,80 @@ import { ContractServices, ContractServiceStatus } from "../../contract/entities
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { VispellerService } from "../../../shared/services/Vispeller.Service";
+import { uploadBufferToCloudinary } from "../../../shared/helpers/cloudinary.helper";
 
 import { TaskBaseService } from "./Task.BaseService";
 
+type SpellCheckReport = Tasks["spellCheck"];
+
 export class TaskResultService extends TaskBaseService {
-    async submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string; role?: string }) {
+    /**
+     * Runs the submitted result through Vispeller when it's a spreadsheet
+     * (Google Sheets link or .xlsx). Returns the report to persist on the task.
+     *
+     * - Spelling errors found + not ignored -> throws a 422 with `error.spellCheck`
+     *   attached, so the controller can surface the report to the client.
+     * - Spelling errors found + ignored -> returns a HAS_ERRORS report (kept for
+     *   the reviewer to see later), submission proceeds.
+     * - Vispeller unreachable/erroring -> fail-open: don't block submission,
+     *   just record a FAILED report so it's visible something couldn't be checked.
+     */
+    private async runSpellCheck(url: string, ignoreSpellCheck?: boolean, task?: Tasks): Promise<SpellCheckReport> {
+        const checkedAt = new Date();
+        try {
+            // Ask Vispeller to check AND render a presentation-ready PDF in one
+            // call - the raw errors JSON stays inside Vispeller and is never
+            // persisted or sent to the client, only this report document.
+            const { pdf, status, errorCount } = await VispellerService.checkLinkReport(url, {
+                title: "Báo cáo kiểm tra chính tả",
+                taskCode: task?.code,
+                taskName: task?.job?.name,
+                checkedAt: checkedAt.toLocaleString("vi-VN"),
+            });
+
+            const uploaded = await uploadBufferToCloudinary(pdf, {
+                folder: "spell-check-reports",
+                filename: `spell-check-${task?.id || Date.now()}-${checkedAt.getTime()}.pdf`,
+            });
+
+            if (status === "HAS_ERRORS" && !ignoreSpellCheck) {
+                const blockError: any = this.httpError(
+                    `Phát hiện ${errorCount} lỗi chính tả trong kết quả nộp. Vui lòng xem báo cáo chi tiết (PDF), hoặc xác nhận nộp bỏ qua cảnh báo nếu đây là từ đúng.`,
+                    422
+                );
+                blockError.spellCheck = {
+                    status: "HAS_ERRORS",
+                    errorCount,
+                    reportUrl: uploaded.url,
+                    reportPublicId: uploaded.publicId,
+                    checkedAt,
+                };
+                throw blockError;
+            }
+
+            return {
+                status,
+                errorCount,
+                reportUrl: uploaded.url,
+                reportPublicId: uploaded.publicId,
+                ignored: status === "HAS_ERRORS" ? Boolean(ignoreSpellCheck) : undefined,
+                checkedAt,
+            };
+        } catch (err: any) {
+            if (err.statusCode === 422) throw err; // re-throw the blocking error above
+
+            console.error("[Vispeller] check-link/report failed:", err.message);
+            return {
+                status: "FAILED",
+                errorCount: 0,
+                message: "Không thể kiểm tra chính tả (dịch vụ Vispeller không phản hồi).",
+                checkedAt,
+            };
+        }
+    }
+
+    async submitResult(id: string, data: { result: any; ignoreSpellCheck?: boolean }, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
         const currentId = await this.resolveActorUserId(currentUser);
         if (!currentId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để nộp kết quả", 401);
@@ -31,6 +100,11 @@ export class TaskResultService extends TaskBaseService {
         if (!data.result || ((resultType === "FILE" || resultType === "LINK") && !data.result.url)) {
             throw this.httpError("Kết quả công việc không hợp lệ", 400);
         }
+
+        // Spell-check spreadsheet results (Google Sheets / .xlsx) via Vispeller.
+        task.spellCheck = (resultType === "FILE" || resultType === "LINK") && VispellerService.isSpreadsheetLink(data.result.url)
+            ? await this.runSpellCheck(data.result.url, data.ignoreSpellCheck, task)
+            : null;
 
         task.result = data.result;
         task.actualEndDate = new Date();

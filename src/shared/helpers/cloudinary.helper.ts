@@ -97,3 +97,48 @@ export const uploadToCloudinary = (file: Express.Multer.File, folder: string): P
         uploadStream.end(file.buffer);
     });
 };
+
+/**
+ * Upload a raw in-memory buffer (e.g. a generated PDF report) to Cloudinary.
+ * Unlike {@link uploadToCloudinary}, this doesn't require an Express.Multer.File
+ * (no original upload from the client) - useful for server-generated documents.
+ */
+export const uploadBufferToCloudinary = (
+    buffer: Buffer,
+    options: { folder: string; filename: string; resourceType?: "raw" | "image" | "video" | "auto" }
+): Promise<{ url: string; downloadUrl: string; publicId: string }> => {
+    return new Promise((resolve, reject) => {
+        const uploadFolder = getCloudinaryFolder(options.folder);
+        const fileExtension = options.filename.split('.').pop()?.toLowerCase() || '';
+        const nameWithoutExt = options.filename.substring(0, options.filename.lastIndexOf('.')) || options.filename;
+        const safeFileName = nameWithoutExt
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9_-]/g, '_');
+        const publicIdWithExtension = fileExtension ? `${safeFileName}.${fileExtension}` : safeFileName;
+
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: options.resourceType || "raw",
+                folder: uploadFolder,
+                public_id: publicIdWithExtension,
+                use_filename: true,
+                unique_filename: true,
+            },
+            (error, result) => {
+                if (error) return reject(error);
+                const downloadUrl = cloudinary.url(result!.public_id, {
+                    resource_type: result!.resource_type,
+                    flags: `attachment:${options.filename}`,
+                    secure: true,
+                });
+                resolve({
+                    url: result!.secure_url,
+                    downloadUrl,
+                    publicId: result!.public_id,
+                });
+            }
+        );
+        uploadStream.end(buffer);
+    });
+};

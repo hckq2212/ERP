@@ -82,6 +82,19 @@ export class Tasks extends BaseEntity {
         checklist?: { criteriaId?: string, label: string, description?: string, checked: boolean }[]
     }; // Store JSON of result (file, link, checklist, or confirmation)
 
+    @Column({ type: "json", nullable: true })
+    spellCheck: {
+        status: "CLEAN" | "HAS_ERRORS" | "SKIPPED" | "FAILED",
+        errorCount: number,
+        // Presentation-ready PDF report (Cloudinary) - the raw error JSON is
+        // never persisted or sent to clients, only this document.
+        reportUrl?: string,
+        reportPublicId?: string,
+        ignored?: boolean,
+        message?: string,
+        checkedAt: Date
+    } | null; // Vispeller spell-check report for the last submitted result (LINK/FILE spreadsheet only)
+
     @Column({ type: "timestamptz", nullable: true })
     plannedStartDate: Date;
 

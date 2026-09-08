@@ -59,7 +59,7 @@ export class TaskService {
         return this.assignmentService.reassign(id, data, currentUser);
     }
 
-    submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string; role?: string }) {
+    submitResult(id: string, data: { result: any; ignoreSpellCheck?: boolean }, currentUser?: { id: string, userId?: string; role?: string }) {
         return this.resultService.submitResult(id, data, currentUser);
     }
 

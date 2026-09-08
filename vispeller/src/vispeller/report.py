@@ -2,7 +2,7 @@
 Professional PDF report generator for Vispeller spell-check results.
 
 Turns the raw ``{"errors": {...}}`` dict produced by :func:`vispeller.sdk.check`
-into a nicely formatted, print-ready PDF report - no raw JSON is ever
+into a nicely formatted, print-ready PDF report — no raw JSON is ever
 surfaced to end users.
 
 Usage:
@@ -45,6 +45,10 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+# --------------------------------------------------------------------------
+# Fonts — DejaVu Sans covers Vietnamese diacritics; ReportLab's built-in
+# Helvetica does not, so we register bundled TTFs (see assets/fonts/).
+# --------------------------------------------------------------------------
 _FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "assets", "fonts")
 _FONT_DIR = os.path.normpath(_FONT_DIR)
 _REGULAR_FONT = "DejaVuSans"
@@ -116,6 +120,7 @@ def _styles() -> Dict[str, ParagraphStyle]:
         ),
     }
 
+
 def _format_positions(positions: list) -> str:
     parts = []
     for p in positions[:8]:
@@ -127,7 +132,8 @@ def _format_positions(positions: list) -> str:
     text = ", ".join(parts)
     if extra > 0:
         text += f" (+{extra} vị trí khác)"
-    return text or "-"
+    return text or "—"
+
 
 def _stat_card(value: str, label: str, styles: Dict[str, ParagraphStyle], color_hex: str, small: bool = False) -> Table:
     style = styles["statSmall"] if small else styles["statBig"]
@@ -144,13 +150,14 @@ def _stat_card(value: str, label: str, styles: Dict[str, ParagraphStyle], color_
     ]))
     return t
 
+
 def build_pdf_report(errors: Dict[str, Dict[str, Any]], meta: Optional[Dict[str, Any]] = None) -> bytes:
     """
     Render a professional PDF spell-check report.
 
     Args:
         errors: the ``errors`` dict as returned by ``vispeller.sdk.check()``.
-        meta: optional context to print in the header - any of
+        meta: optional context to print in the header — any of
             ``title``, ``source`` (link that was checked), ``lang``,
             ``checked_at``, ``task_code``, ``task_name``.
 
@@ -174,6 +181,7 @@ def build_pdf_report(errors: Dict[str, Dict[str, Any]], meta: Optional[Dict[str,
 
     story = []
 
+    # --- Header -----------------------------------------------------
     story.append(Paragraph(meta.get("title", "BÁO CÁO KIỂM TRA CHÍNH TẢ"), styles["title"]))
     story.append(Paragraph("Được tạo tự động bởi Vispeller", styles["subtitle"]))
     story.append(Spacer(1, 10))
@@ -198,7 +206,8 @@ def build_pdf_report(errors: Dict[str, Dict[str, Any]], meta: Optional[Dict[str,
     story.append(info_table)
     story.append(Spacer(1, 14))
 
-    status_text = "SẠCH - KHÔNG CÓ LỖI" if is_clean else "PHÁT HIỆN LỖI"
+    # --- Summary cards ------------------------------------------------
+    status_text = "SẠCH — KHÔNG CÓ LỖI" if is_clean else "PHÁT HIỆN LỖI"
     status_hex = "#16A34A" if is_clean else "#DC2626"
     proper_noun_count = sum(1 for e in errors.values() if e.get("suspected_proper_noun"))
 
@@ -211,6 +220,7 @@ def build_pdf_report(errors: Dict[str, Dict[str, Any]], meta: Optional[Dict[str,
     story.append(cards)
     story.append(Spacer(1, 16))
 
+    # --- Details --------------------------------------------------------
     if is_clean:
         story.append(Paragraph("Kết quả chi tiết", styles["h2"]))
         story.append(Paragraph(
@@ -230,7 +240,7 @@ def build_pdf_report(errors: Dict[str, Dict[str, Any]], meta: Optional[Dict[str,
 
         for idx, (word, info) in enumerate(errors.items(), start=1):
             suggestions = info.get("suggestions") or []
-            suggestion_text = ", ".join(suggestions[:5]) if suggestions else "-"
+            suggestion_text = ", ".join(suggestions[:5]) if suggestions else "—"
             note = "Có thể là danh từ riêng" if info.get("suspected_proper_noun") else ""
             table_data.append([
                 Paragraph(str(idx), styles["cell"]),
@@ -259,7 +269,7 @@ def build_pdf_report(errors: Dict[str, Dict[str, Any]], meta: Optional[Dict[str,
         story.append(Spacer(1, 12))
         story.append(Paragraph("Ghi chú", styles["h2"]))
         story.append(ListFlowable([
-            ListItem(Paragraph("Các từ được đánh dấu \u201cnghi ngờ danh từ riêng\u201d có thể là tên người, địa danh hoặc thuật ngữ hợp lệ - vui lòng đối chiếu ngữ cảnh trước khi sửa.", styles["body"])),
+            ListItem(Paragraph("Các từ được đánh dấu \u201cnghi ngờ danh từ riêng\u201d có thể là tên người, địa danh hoặc thuật ngữ hợp lệ — vui lòng đối chiếu ngữ cảnh trước khi sửa.", styles["body"])),
             ListItem(Paragraph("Nếu từ nghi sai là đúng (thuật ngữ chuyên ngành, tên riêng...), có thể xác nhận bỏ qua cảnh báo khi nộp kết quả.", styles["body"])),
         ], bulletType="bullet", start="•"))
 
