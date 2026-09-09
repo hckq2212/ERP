@@ -96,7 +96,7 @@ export class ProjectQueryService extends ProjectBaseService {
 
         const [items, total] = await this.projectRepository.findAndCount({
             where: where.length > 1 ? where : where[0],
-            relations: ["contract", "team", "team.teamLead"],
+            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user", "team.members.user.accounts"],
             order: { [sortBy]: sortDir },
             skip: (page - 1) * limit,
             take: limit
@@ -116,7 +116,7 @@ export class ProjectQueryService extends ProjectBaseService {
     async getByContractId(contractId: string) {
         const project = await this.projectRepository.findOne({
             where: { contract: { id: contractId } },
-            relations: ["contract", "team", "team.teamLead", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation"]
+            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user", "team.members.user.accounts", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation"]
         });
 
         if (!project) throw new Error("Không tìm thấy dự án liên kết với hợp đồng này");

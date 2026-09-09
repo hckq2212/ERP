@@ -20,7 +20,8 @@ export enum AddendumStatus {
 
 export enum AddendumType {
     MANUAL = "MANUAL",
-    MONTHLY_TASKS = "MONTHLY_TASKS"
+    MONTHLY_TASKS = "MONTHLY_TASKS",
+    ADD_SERVICES = "ADD_SERVICES"
 }
 
 @Entity()
@@ -47,13 +48,18 @@ export class ContractAddendums extends BaseEntity {
 
     @Column({ type: "jsonb", nullable: true, default: [] })
     selectedItems: {
-        sourceContractServiceId: string,
+        sourceContractServiceId?: string,
         serviceId: string,
         serviceName: string,
+        quantity?: number,
+        packageKey?: string,
         packageName?: string,
+        packageQuantity?: number,
         isPackageService?: boolean,
         sellingPrice?: number,
-        cost?: number
+        cost?: number,
+        unit?: string,
+        description?: string
     }[];
 
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })

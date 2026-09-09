@@ -21,10 +21,11 @@ import { isProjectManagementRole, UserRole } from "../../account/entities/Accoun
 import { TaskBaseService } from "./Task.BaseService";
 
 export class TaskResultService extends TaskBaseService {
-    async submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string }) {
+    async submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
-        const currentId = (currentUser as any)?.userId || currentUser?.id;
-        const isTeamLead = task.project?.team?.teamLead?.id === currentId;
+        const currentId = await this.resolveActorUserId(currentUser);
+        if (!currentId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để nộp kết quả", 401);
+        const isTeamLead = this.isProjectOperatorFromTeam(task.project?.team, currentUser);
 
         const resultType = data.result?.type;
         if (!data.result || ((resultType === "FILE" || resultType === "LINK") && !data.result.url)) {
@@ -52,7 +53,7 @@ export class TaskResultService extends TaskBaseService {
         if (isTeamLead) {
             // Auto-pass reviews and finalize (syncs to contract service, etc.)
             await this.reviewService.initializeReviews(task.id, true);
-            await this.reviewService.checkAndFinalize(task.id);
+            await this.reviewService.checkAndFinalize(task.id, undefined, undefined, currentUser);
         } else {
             // Standard review flow
             await this.reviewService.initializeReviews(task.id);
@@ -90,14 +91,21 @@ export class TaskResultService extends TaskBaseService {
         feedback: string,
         deadlineAt: Date,
         attachments?: any[]
-    }, currentUser?: { id: string, userId?: string }) {
+    }, currentUser?: { id: string, userId?: string; role?: string }) {
         return await AppDataSource.transaction(async (transactionalEntityManager) => {
             const task = await transactionalEntityManager.findOne(Tasks, {
                 where: { id },
-                relations: ["assignee", "contractService"]
+                relations: ["assignee", "contractService", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
             });
 
             if (!task) throw new Error("Không tìm thấy công việc");
+            const currentUserId = await this.resolveActorUserId(currentUser, transactionalEntityManager);
+            const canRequestRework = isProjectManagementRole(currentUser?.role) ||
+                this.isProjectOperatorFromTeam(task.project?.team, currentUser) ||
+                task.assignerId === currentUserId;
+            if (!canRequestRework) {
+                throw this.httpError("Bạn không có quyền yêu cầu làm lại công việc này", 403);
+            }
 
             // Status Guard: Only allow rework from review or completed states
             const allowedStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.INTERNAL_COMPLETED, TaskStatus.COMPLETED];
@@ -208,12 +216,12 @@ export class TaskResultService extends TaskBaseService {
 
             const task = await manager.getRepository(Tasks).findOne({
                 where: { id },
-                relations: ["assignee", "project", "project.team", "project.team.teamLead"]
+                relations: ["assignee", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
 
             const isAdminOrBod = isProjectManagementRole(currentUser.role);
-            const isProjectLead = task.project?.team?.teamLead?.id === currentUserId;
+            const isProjectLead = this.isProjectOperatorFromTeam(task.project?.team, currentUser);
             if (!isAdminOrBod && !isProjectLead) {
                 throw this.httpError("Bạn không có quyền xác nhận khách hàng duyệt công việc này", 403);
             }

@@ -204,6 +204,11 @@ export class SecurityService {
     static getTaskFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
         const userId = userInfo.userId;
+        const projectOperatorFilters = [
+            { project: { team: { teamLead: { id: userId } } } },
+            { project: { team: { members: { user: { id: userId }, role: "ACCOUNT" } } } },
+            { project: { team: { members: { user: { id: userId }, role: "PROJECT_MANAGER" } } } }
+        ];
 
         // Full access for management roles
         if (isProjectManagementRole(role)) {
@@ -214,7 +219,8 @@ export class SecurityService {
         if (role === UserRole.BD) {
             return SecurityService.withTenant([
                 { project: { contract: { createdBy: { id: userId } } } },
-                { project: { contract: { customer: { createdBy: { id: userId } } } } }
+                { project: { contract: { customer: { createdBy: { id: userId } } } } },
+                ...projectOperatorFilters
             ], userInfo);
         }
 
@@ -224,12 +230,15 @@ export class SecurityService {
                 { assignee: { id: userId } },
                 { supervisor: { id: userId } },
                 { helper: { id: userId } },
-                { project: { team: { teamLead: { id: userId } } } },
+                ...projectOperatorFilters,
                 { supportLeadId: userId }
             ], userInfo);
         }
 
         // Default: only see their own assigned tasks
-        return SecurityService.withTenant({ assignee: { id: userId } }, userInfo);
+        return SecurityService.withTenant([
+            { assignee: { id: userId } },
+            ...projectOperatorFilters
+        ], userInfo);
     }
 }

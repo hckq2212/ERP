@@ -16,6 +16,8 @@ import { OpportunityServices } from "./modules/opportunity-service/entities/Oppo
 import { Contracts } from "./modules/contract/entities/Contract.entity"
 import { ContractServices } from "./modules/contract/entities/ContractService.entity"
 import { Projects } from "./modules/project/entities/Project.entity"
+import { ProjectProductDescriptionSubmissions } from "./modules/project/entities/ProjectProductDescriptionSubmission.entity"
+import { ProjectProductDescriptionItems } from "./modules/project/entities/ProjectProductDescriptionItem.entity"
 import { Tasks } from "./modules/task/entities/Task.entity"
 import { PaymentMilestones } from "./modules/payment-milestone/entities/PaymentMilestone.entity"
 import { Debts } from "./modules/debt/entities/Debt.entity"
@@ -86,6 +88,8 @@ export const AppDataSource = new DataSource({
         Contracts,
         ContractServices,
         Projects,
+        ProjectProductDescriptionSubmissions,
+        ProjectProductDescriptionItems,
         Tasks,
         PaymentMilestones,
         Debts,

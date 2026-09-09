@@ -4,6 +4,7 @@ import { ProjectJobSyncService } from "./Project.JobSyncService";
 import { ProjectLifecycleService } from "./Project.LifecycleService";
 import { ProjectMonthlyWorkService } from "./Project.MonthlyWorkService";
 import { ProjectQueryService } from "./Project.QueryService";
+import { ProjectServiceAddendumService } from "./Project.ServiceAddendumService";
 
 export class ProjectService {
     private queryService = new ProjectQueryService();
@@ -11,6 +12,7 @@ export class ProjectService {
     private jobSyncService = new ProjectJobSyncService();
     private monthlyWorkService = new ProjectMonthlyWorkService();
     private lifecycleService = new ProjectLifecycleService();
+    private serviceAddendumService = new ProjectServiceAddendumService();
 
     getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
         return this.queryService.getAll(filters, userInfo);
@@ -48,11 +50,15 @@ export class ProjectService {
         return this.monthlyWorkService.createMonthlyWorkAddendum(id, data, userInfo);
     }
 
+    createServiceAddendum(id: string, data: Parameters<ProjectServiceAddendumService["createServiceAddendum"]>[1], userInfo?: { id: string, role: string, userId?: string }) {
+        return this.serviceAddendumService.createServiceAddendum(id, data, userInfo);
+    }
+
     createGoogleSheet(projectId: string) {
         return this.lifecycleService.createGoogleSheet(projectId);
     }
 
-    confirm(id: string, userId: string) {
-        return this.lifecycleService.confirm(id, userId);
+    confirm(id: string, actor: { id: string; userId?: string; role: string }) {
+        return this.lifecycleService.confirm(id, actor);
     }
 }

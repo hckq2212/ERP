@@ -8,6 +8,10 @@ import { ContractServices } from "../../contract/entities/ContractService.entity
 import { Users } from "../../user/entities/User.entity";
 import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../events/TaskReviewEmitter";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
+import { isProjectManagementRole } from "../../account/entities/Account.entity";
+import { MemberRole } from "../../project/entities/TeamMember.entity";
+
+type ReviewActor = { id?: string; userId?: string; role?: string };
 
 export class TaskReviewService {
     private reviewRepository = AppDataSource.getRepository(TaskReviews);
@@ -19,6 +23,30 @@ export class TaskReviewService {
         const error: any = new Error(message);
         error.statusCode = statusCode;
         return error;
+    }
+
+    private getActorUserId(actor?: ReviewActor) {
+        return actor?.userId || actor?.id;
+    }
+
+    private isProjectOperator(task?: Tasks | null, actor?: ReviewActor) {
+        if (isProjectManagementRole(actor?.role)) return true;
+        const actorUserId = this.getActorUserId(actor);
+        const team = task?.project?.team;
+        if (!actorUserId || !team) return false;
+        if (team.teamLead?.id === actorUserId) return true;
+        return team.members?.some(member =>
+            member.user?.id === actorUserId &&
+            [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].includes(member.role)
+        ) || false;
+    }
+
+    private assertCanReviewTask(task: Tasks, actor?: ReviewActor) {
+        const actorUserId = this.getActorUserId(actor);
+        const canReview = this.isProjectOperator(task, actor) || task.assignerId === actorUserId;
+        if (!canReview) {
+            throw this.httpError("Bạn không có quyền duyệt công việc trong dự án này", 403);
+        }
     }
 
     async getTaskReviews(taskId: string) {
@@ -73,13 +101,18 @@ export class TaskReviewService {
         return await this.reviewRepository.save(reviews);
     }
 
-    async toggleCriteria(reviewId: string, isPassed: boolean, note?: string) {
+    async toggleCriteria(reviewId: string, isPassed: boolean, note?: string, currentUser?: ReviewActor) {
         const review = await this.reviewRepository.findOne({
             where: { id: reviewId },
-            relations: ["task"]
+            relations: ["reviewer", "task", "task.project", "task.project.team", "task.project.team.teamLead", "task.project.team.members", "task.project.team.members.user"]
         });
 
         if (!review) throw new Error("Không tìm thấy mục đánh giá");
+        const actorUserId = this.getActorUserId(currentUser);
+        const isReviewer = review.reviewer?.id === actorUserId;
+        if (review.task && !isReviewer && !this.isProjectOperator(review.task, currentUser)) {
+            throw this.httpError("Bạn không có quyền cập nhật đánh giá công việc này", 403);
+        }
 
         // Status validation
         if (review.task) {
@@ -97,7 +130,7 @@ export class TaskReviewService {
         return review;
     }
 
-    async checkAndFinalize(taskId: string, passedCriteriaIds?: string[], reviewNote?: string) {
+    async checkAndFinalize(taskId: string, passedCriteriaIds?: string[], reviewNote?: string, currentUser?: ReviewActor) {
         const outcome = await AppDataSource.transaction(async (manager) => {
             const lockedTask = await manager.createQueryBuilder(Tasks, "task")
                 .select("task.id")
@@ -108,9 +141,10 @@ export class TaskReviewService {
 
             const task = await manager.getRepository(Tasks).findOne({
                 where: { id: taskId },
-                relations: ["assignee", "contractService", "job", "project"]
+                relations: ["assignee", "contractService", "job", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+            this.assertCanReviewTask(task, currentUser);
             if (task.status !== TaskStatus.AWAITING_REVIEW) {
                 throw this.httpError(`Công việc đang ở trạng thái ${task.status}, không thể thực hiện phê duyệt.`, 409);
             }
@@ -191,23 +225,14 @@ export class TaskReviewService {
         return outcome.result;
     }
 
-    async rejectTask(taskId: string, passedCriteriaIds: string[], reviewNote: string) {
-        // Update criteria status even on reject
-        const allReviews = await this.reviewRepository.find({
-            where: { task: { id: taskId } }
-        });
-
-        for (const review of allReviews) {
-            review.isPassed = passedCriteriaIds.includes(review.id);
-        }
-        await this.reviewRepository.save(allReviews);
-
+    async rejectTask(taskId: string, passedCriteriaIds: string[], reviewNote: string, currentUser?: ReviewActor) {
         const task = await this.taskRepository.findOne({
             where: { id: taskId },
-            relations: ["assignee"]
+            relations: ["assignee", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
+        this.assertCanReviewTask(task, currentUser);
 
         // Allowed statuses for rejection
         const rejectableStatuses = [TaskStatus.AWAITING_REVIEW, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE];
@@ -218,6 +243,16 @@ export class TaskReviewService {
         if (!reviewNote || reviewNote.trim() === "") {
             throw new Error("Vui lòng nhập lý do từ chối/yêu cầu sửa lại");
         }
+
+        // Update criteria status even on reject
+        const allReviews = await this.reviewRepository.find({
+            where: { task: { id: taskId } }
+        });
+
+        for (const review of allReviews) {
+            review.isPassed = passedCriteriaIds.includes(review.id);
+        }
+        await this.reviewRepository.save(allReviews);
 
         task.status = TaskStatus.REJECTED;
         task.reviewNote = reviewNote;

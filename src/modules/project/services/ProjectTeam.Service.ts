@@ -29,8 +29,46 @@ export class ProjectTeamService {
         });
         if (!team) throw this.httpError("Không tìm thấy team", 404);
 
-        if (actor.role !== UserRole.PM || team.teamLead?.id !== actorUserId) {
+        if (team.teamLead?.id === actorUserId) return;
+
+        const projectManagerMember = await this.memberRepository.findOne({
+            where: SecurityService.withTenant({
+                team: { id: teamId },
+                user: { id: actorUserId },
+                role: MemberRole.PROJECT_MANAGER
+            })
+        });
+        if (actor.role !== UserRole.PM || !projectManagerMember) {
             throw this.httpError("Bạn không có quyền quản lý team này", 403);
+        }
+    }
+
+    private async syncAccountRoleAsLead(member: TeamMembers) {
+        const team = await this.teamRepository.findOne({
+            where: SecurityService.withTenant({ id: member.team.id }),
+            relations: ["teamLead", "members", "members.user"]
+        });
+        if (!team) throw this.httpError("Không tìm thấy team", 404);
+
+        if (member.role === MemberRole.ACCOUNT) {
+            const previousAccountMembers = (team.members || []).filter(item =>
+                item.id !== member.id && item.role === MemberRole.ACCOUNT
+            );
+            for (const previousMember of previousAccountMembers) {
+                previousMember.role = MemberRole.CONTENT_CREATOR;
+            }
+            if (previousAccountMembers.length > 0) {
+                await this.memberRepository.save(previousAccountMembers);
+            }
+
+            team.teamLead = member.user;
+            await this.teamRepository.save(team);
+            return;
+        }
+
+        if (team.teamLead?.id === member.user?.id) {
+            team.teamLead = null as any;
+            await this.teamRepository.save(team);
         }
     }
 
@@ -82,12 +120,8 @@ export class ProjectTeamService {
 
         if (data.name) team.name = data.name;
         if (data.teamLeadId) {
-            if (!actor || ![UserRole.ADMIN, UserRole.BOD].includes(actor.role as UserRole)) {
-                throw this.httpError("Bạn không có quyền đổi lead của team", 403);
-            }
-            const newLead = await this.userRepository.findOneBy({ id: data.teamLeadId });
-            if (!newLead) throw new Error("Không tìm thấy người dùng làm team lead mới");
-            team.teamLead = newLead;
+            const updatedTeam = await this.changeLead(id, data.teamLeadId, actor);
+            team.teamLead = updatedTeam.teamLead;
         }
 
         return await this.teamRepository.save(team);
@@ -95,16 +129,27 @@ export class ProjectTeamService {
 
     async changeLead(teamId: string, newLeadId: string, actor?: ActorInfo) {
         if (!actor || ![UserRole.ADMIN, UserRole.BOD].includes(actor.role as UserRole)) {
-            throw this.httpError("Bạn không có quyền đổi lead của team", 403);
+            throw this.httpError("Bạn không có quyền đổi lead trực tiếp", 403);
         }
         const team = await this.teamRepository.findOne({
             where: SecurityService.withTenant({ id: teamId }),
-            relations: ["teamLead"]
+            relations: ["teamLead", "members", "members.user"]
         });
         if (!team) throw new Error("Không tìm thấy team");
 
         const newLead = await this.userRepository.findOneBy({ id: newLeadId });
         if (!newLead) throw new Error("Không tìm thấy người dùng làm team lead mới");
+
+        const existingMember = team.members?.find(member => member.user?.id === newLeadId);
+        if (!existingMember) {
+            const member = this.memberRepository.create({
+                team,
+                user: newLead,
+                role: MemberRole.CONTENT_CREATOR,
+                ...SecurityService.getTenantWhere()
+            } as Partial<TeamMembers>);
+            await this.memberRepository.save(member);
+        }
 
         team.teamLead = newLead;
         return await this.teamRepository.save(team);
@@ -123,6 +168,9 @@ export class ProjectTeamService {
 
     async addMember(teamId: string, userId: string, role?: MemberRole, actor?: ActorInfo) {
         await this.assertCanManageTeam(teamId, actor);
+        if (role === MemberRole.PROJECT_MANAGER && actor?.role !== UserRole.ADMIN && actor?.role !== UserRole.BOD) {
+            throw this.httpError("Chỉ ADMIN/BOD mới được thêm PM cho đội dự án", 403);
+        }
         const team = await this.getOne(teamId);
         const user = await this.userRepository.findOneBy({ id: userId });
         if (!user) throw new Error("Không tìm thấy người dùng");
@@ -138,22 +186,31 @@ export class ProjectTeamService {
             user,
             role: role || MemberRole.CONTENT_CREATOR,
             ...SecurityService.getTenantWhere()
-        } as any);
+        } as Partial<TeamMembers>);
 
-        return await this.memberRepository.save(member);
+        const savedMember = await this.memberRepository.save(member);
+        await this.syncAccountRoleAsLead(savedMember);
+        return savedMember;
     }
 
     async updateMember(memberId: string, data: { role?: MemberRole }, actor?: ActorInfo) {
         const member = await this.memberRepository.findOne({
             where: SecurityService.withTenant({ id: memberId }),
-            relations: ["team"]
+            relations: ["team", "user"]
         });
         if (!member) throw new Error("Không tìm thấy thành viên");
         await this.assertCanManageTeam(member.team.id, actor);
 
+        const touchesProjectManagerRole = member.role === MemberRole.PROJECT_MANAGER || data.role === MemberRole.PROJECT_MANAGER;
+        if (touchesProjectManagerRole && actor?.role !== UserRole.ADMIN && actor?.role !== UserRole.BOD) {
+            throw this.httpError("Chỉ ADMIN/BOD mới được thay đổi PM của đội dự án", 403);
+        }
+
         if (data.role) member.role = data.role;
 
-        return await this.memberRepository.save(member);
+        const savedMember = await this.memberRepository.save(member);
+        await this.syncAccountRoleAsLead(savedMember);
+        return savedMember;
     }
 
     async removeMember(memberId: string, actor?: ActorInfo) {
@@ -166,6 +223,9 @@ export class ProjectTeamService {
 
         if (member.team && member.team.teamLead && member.user.id === member.team.teamLead.id) {
             throw new Error("Không thể xóa thành viên đang là Team Lead. Vui lòng chỉ định Lead mới trước khi xóa.");
+        }
+        if (member.role === MemberRole.PROJECT_MANAGER && actor?.role !== UserRole.ADMIN && actor?.role !== UserRole.BOD) {
+            throw this.httpError("Chỉ ADMIN/BOD mới được xóa PM khỏi đội dự án", 403);
         }
 
         return await this.memberRepository.remove(member);

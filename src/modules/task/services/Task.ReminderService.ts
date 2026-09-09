@@ -21,13 +21,18 @@ import { isProjectManagementRole, UserRole } from "../../account/entities/Accoun
 import { TaskBaseService } from "./Task.BaseService";
 
 export class TaskReminderService extends TaskBaseService {
-    async sendReminder(id: string) {
+    async sendReminder(id: string, currentUser?: { id: string; userId?: string; role?: string }) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "assignee", "helper"]
+            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "assignee", "helper"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
+        const canSendReminder = isProjectManagementRole(currentUser?.role) ||
+            this.isProjectOperatorFromTeam(task.project?.team, currentUser);
+        if (!canSendReminder) {
+            throw this.httpError("Bạn không có quyền nhắc việc trong dự án này", 403);
+        }
 
         const performer = task.helper || task.assignee;
         if (!performer) {

@@ -17,10 +17,37 @@ import { ContractServices, ContractServiceStatus } from "../../contract/entities
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { MemberRole } from "../../project/entities/TeamMember.entity";
 
 import { TaskBaseService } from "./Task.BaseService";
 
 export class TaskQueryService extends TaskBaseService {
+    private applyProjectFilter(where: any, projectId: string) {
+        where.project = {
+            ...(where.project || {}),
+            id: projectId
+        };
+    }
+
+    private async canOperateProject(projectId: string, userInfo?: { id: string, userId?: string, role: string }) {
+        if (!userInfo) return false;
+        if (isProjectManagementRole(userInfo.role)) return true;
+
+        const userId = userInfo.userId || userInfo.id;
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["team", "team.teamLead", "team.members", "team.members.user"]
+        });
+
+        if (!project?.team || !userId) return false;
+        if (project.team.teamLead?.id === userId) return true;
+
+        return project.team.members?.some(member =>
+            member.user?.id === userId &&
+            [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].includes(member.role)
+        ) || false;
+    }
+
     async getAll(filters: any = {}, userInfo?: { id: string, userId?: string, role: string }) {
         const page = parseInt(filters.page) || 1;
         const limit = parseInt(filters.limit) || 10;
@@ -28,7 +55,13 @@ export class TaskQueryService extends TaskBaseService {
         const sortDir = (filters.sortDir || "DESC").toUpperCase() as "ASC" | "DESC";
 
         const where: any = [];
-        const baseWhere: any = SecurityService.getTaskFilters(userInfo as any);
+        const projectId = filters.projectId as string | undefined;
+        const canOperateRequestedProject = projectId
+            ? await this.canOperateProject(projectId, userInfo)
+            : false;
+        const baseWhere: any = canOperateRequestedProject
+            ? { project: { id: projectId } }
+            : SecurityService.getTaskFilters(userInfo as any);
 
         if (filters.status && filters.status !== 'ALL') {
             if (Array.isArray(baseWhere)) {
@@ -46,11 +79,11 @@ export class TaskQueryService extends TaskBaseService {
             }
         }
 
-        if (filters.projectId) {
+        if (projectId && !canOperateRequestedProject) {
             if (Array.isArray(baseWhere)) {
-                baseWhere.forEach((w: any) => w.project = { id: filters.projectId });
+                baseWhere.forEach((w: any) => this.applyProjectFilter(w, projectId));
             } else {
-                baseWhere.project = { id: filters.projectId };
+                this.applyProjectFilter(baseWhere, projectId);
             }
         }
 
@@ -78,7 +111,7 @@ export class TaskQueryService extends TaskBaseService {
 
         const [items, total] = await this.taskRepository.findAndCount({
             where: where.length > 1 ? where : where[0],
-            relations: ["project", "project.team", "project.team.teamLead", "job", "assignee", "supervisor", "helper"],
+            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job", "assignee", "supervisor", "helper"],
             order: { [sortBy]: sortDir },
             skip: (page - 1) * limit,
             take: limit

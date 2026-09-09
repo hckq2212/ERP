@@ -27,11 +27,11 @@ export class TaskService {
         return this.queryService.getOne(id);
     }
 
-    createInternalTask(data: Parameters<TaskCreationService["createInternalTask"]>[0], currentUser?: { id: string }) {
+    createInternalTask(data: Parameters<TaskCreationService["createInternalTask"]>[0], currentUser?: { id: string; userId?: string; role?: string }) {
         return this.creationService.createInternalTask(data, currentUser);
     }
 
-    create(data: Parameters<TaskCreationService["create"]>[0], currentUser?: { id: string }) {
+    create(data: Parameters<TaskCreationService["create"]>[0], currentUser?: { id: string; userId?: string; role?: string }) {
         return this.creationService.create(data, currentUser);
     }
 
@@ -39,15 +39,15 @@ export class TaskService {
         return this.assignmentService.updateNickname(id, nickname, currentUser);
     }
 
-    update(id: string, data: Partial<Tasks> & { assigneeId?: string }, currentUser?: { id: string, userId?: string }) {
+    update(id: string, data: Partial<Tasks> & { assigneeId?: string }, currentUser?: { id: string, userId?: string; role?: string }) {
         return this.assignmentService.update(id, data, currentUser);
     }
 
-    bulkAssign(taskIds: string[], data: Parameters<TaskAssignmentService["bulkAssign"]>[1], currentUser?: { id: string, userId?: string }) {
+    bulkAssign(taskIds: string[], data: Parameters<TaskAssignmentService["bulkAssign"]>[1], currentUser?: { id: string, userId?: string; role?: string }) {
         return this.assignmentService.bulkAssign(taskIds, data, currentUser);
     }
 
-    assign(id: string, data: Parameters<TaskAssignmentService["assign"]>[1], currentUser?: { id: string, userId?: string }) {
+    assign(id: string, data: Parameters<TaskAssignmentService["assign"]>[1], currentUser?: { id: string, userId?: string; role?: string }) {
         return this.assignmentService.assign(id, data, currentUser);
     }
 
@@ -55,15 +55,15 @@ export class TaskService {
         return this.assignmentService.bulkUnassign(projectId, taskIds, currentUser);
     }
 
-    reassign(id: string, data: { assigneeId: string; performerType: PerformerType; reason: string }, currentUser: { id: string }) {
+    reassign(id: string, data: { assigneeId: string; performerType: PerformerType; reason: string }, currentUser: { id: string; userId?: string; role?: string }) {
         return this.assignmentService.reassign(id, data, currentUser);
     }
 
-    submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string }) {
+    submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string; role?: string }) {
         return this.resultService.submitResult(id, data, currentUser);
     }
 
-    requestRework(id: string, data: Parameters<TaskResultService["requestRework"]>[1], currentUser?: { id: string, userId?: string }) {
+    requestRework(id: string, data: Parameters<TaskResultService["requestRework"]>[1], currentUser?: { id: string, userId?: string; role?: string }) {
         return this.resultService.requestRework(id, data, currentUser);
     }
 
@@ -99,7 +99,7 @@ export class TaskService {
         return this.deletionService.delete(id);
     }
 
-    sendReminder(id: string) {
-        return this.reminderService.sendReminder(id);
+    sendReminder(id: string, currentUser?: { id: string; userId?: string; role?: string }) {
+        return this.reminderService.sendReminder(id, currentUser);
     }
 }
