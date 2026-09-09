@@ -95,6 +95,19 @@ export class ProjectController {
         }
     }
 
+    createServiceAddendum = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.createServiceAddendum(
+                req.params.id as string,
+                req.body,
+                req.user as any
+            );
+            res.status(201).json(result);
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
     retryGoogleSheet = async (req: AuthRequest, res: Response) => {
         // Google Sheet integration is temporarily disabled.
         void req;

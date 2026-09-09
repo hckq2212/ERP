@@ -3,7 +3,7 @@ import { Like, ILike, In, IsNull, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { Contracts, ContractStatus } from "../../contract/entities/Contract.entity";
 import { ProjectTeams } from "../entities/ProjectTeam.entity";
-import { TeamMembers, MemberRole } from "../entities/TeamMember.entity";
+import { TeamMembers } from "../entities/TeamMember.entity";
 import { Users } from "../../user/entities/User.entity";
 import { OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
 import { ContractServices } from "../../contract/entities/ContractService.entity";
@@ -16,7 +16,7 @@ import { PerformerType } from "../../../shared/entities/Enums";
 import { NotificationService } from "../../notification/services/Notification.Service";
 
 import { SecurityService } from "../../../shared/services/Security.Service";
-import { Accounts, isProjectManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
+import { Accounts, UserRole } from "../../account/entities/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 // Google Sheet integration is temporarily disabled.
@@ -70,15 +70,9 @@ export class ProjectLifecycleService extends ProjectBaseService {
         }
 
         const isTeamLead = project.team?.teamLead?.id === userConfirming.id;
-        const isProjectManager = project.team?.members?.some(member =>
-            member.user?.id === userConfirming.id && member.role === MemberRole.PROJECT_MANAGER
-        );
-        const isAccountManager = project.team?.members?.some(member =>
-            member.user?.id === userConfirming.id && member.role === MemberRole.ACCOUNT
-        );
-        const isSystemManager = [UserRole.ADMIN, UserRole.BOD].includes(actor.role as UserRole);
+        const isSystemManager = actor.role === UserRole.ADMIN;
 
-        if (!isSystemManager && !isTeamLead && !isProjectManager && !isAccountManager) {
+        if (!isSystemManager && !isTeamLead) {
             throw this.httpError("Bạn không có quyền chấp nhận dự án này", 403);
         }
 

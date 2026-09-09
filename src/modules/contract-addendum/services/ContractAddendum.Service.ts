@@ -159,7 +159,7 @@ export class ContractAddendumService {
     async saleApprove(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {
         const addendum = await this.addendumRepository.findOne({ where: { id } });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
-        if (addendum.type !== AddendumType.MONTHLY_TASKS) throw new Error("Phụ lục này không thuộc luồng công việc tháng mới");
+        if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
         if (addendum.status !== AddendumStatus.PENDING_SALE) throw new Error("Phụ lục không ở trạng thái chờ Sale duyệt");
 
         addendum.status = AddendumStatus.PENDING_BOD;
@@ -172,7 +172,7 @@ export class ContractAddendumService {
     async saleReject(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {
         const addendum = await this.addendumRepository.findOne({ where: { id } });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
-        if (addendum.type !== AddendumType.MONTHLY_TASKS) throw new Error("Phụ lục này không thuộc luồng công việc tháng mới");
+        if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
         if (addendum.status !== AddendumStatus.PENDING_SALE) throw new Error("Phụ lục không ở trạng thái chờ Sale duyệt");
 
         addendum.status = AddendumStatus.SALE_REJECTED;
@@ -195,7 +195,7 @@ export class ContractAddendumService {
                 relations: ["contract", "project"]
             });
             if (!addendum) throw new Error("Không tìm thấy phụ lục");
-            if (addendum.type !== AddendumType.MONTHLY_TASKS) throw new Error("Phụ lục này không thuộc luồng công việc tháng mới");
+            if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
             if (addendum.status !== AddendumStatus.PENDING_BOD) throw new Error("Phụ lục không ở trạng thái chờ BOD duyệt");
             if (!addendum.contract || !addendum.project) throw new Error("Phụ lục thiếu thông tin hợp đồng hoặc dự án");
 
@@ -204,54 +204,59 @@ export class ContractAddendumService {
 
             let createdTasks = 0;
             for (const item of selectedItems) {
+                const serviceQuantity = Number(item.quantity || 1);
+                if (!Number.isInteger(serviceQuantity) || serviceQuantity <= 0) throw new Error("Số lượng dịch vụ không hợp lệ");
+
                 const service = await serviceRepository.findOne({
                     where: { id: item.serviceId },
                     relations: ["serviceJobs", "serviceJobs.job"]
                 });
                 if (!service) throw new Error(`Không tìm thấy dịch vụ ${item.serviceName || item.serviceId}`);
 
-                const contractService = contractServiceRepository.create({
-                    contract: addendum.contract,
-                    addendum,
-                    service,
-                    serviceId: service.id,
-                    sellingPrice: item.sellingPrice || 0,
-                    status: ContractServiceStatus.ACTIVE,
-                    name: item.serviceName || service.name,
-                    packageName: item.packageName,
-                    isPackageService: !!item.isPackageService
-                });
-                const savedContractService = await contractServiceRepository.save(contractService);
+                for (let serviceIndex = 0; serviceIndex < serviceQuantity; serviceIndex++) {
+                    const contractService = contractServiceRepository.create({
+                        contract: addendum.contract,
+                        addendum,
+                        service,
+                        serviceId: service.id,
+                        sellingPrice: item.sellingPrice || 0,
+                        status: ContractServiceStatus.ACTIVE,
+                        name: item.serviceName || service.name,
+                        packageName: item.packageName,
+                        isPackageService: !!item.isPackageService
+                    });
+                    const savedContractService = await contractServiceRepository.save(contractService);
 
-                for (const serviceJob of service.serviceJobs || []) {
-                    const job = serviceJob.job;
-                    if (!job) continue;
-                    const quantity = Number(serviceJob.quantity || 1);
-                    for (let i = 0; i < quantity; i++) {
-                        const totalCountForProject = await taskRepository.count({
-                            where: {
-                                project: { id: addendum.project.id },
-                                job: { id: job.id }
-                            }
-                        });
+                    for (const serviceJob of service.serviceJobs || []) {
+                        const job = serviceJob.job;
+                        if (!job) continue;
+                        const quantity = Number(serviceJob.quantity || 1);
+                        for (let i = 0; i < quantity; i++) {
+                            const totalCountForProject = await taskRepository.count({
+                                where: {
+                                    project: { id: addendum.project.id },
+                                    job: { id: job.id }
+                                }
+                            });
 
-                        const seq = (totalCountForProject + 1).toString().padStart(2, "0");
-                        const jobCode = job.code || `JOB${job.id}`;
-                        const taskCode = `${addendum.contract.contractCode}-${jobCode}-${seq}`;
+                            const seq = (totalCountForProject + 1).toString().padStart(2, "0");
+                            const jobCode = job.code || `JOB${job.id}`;
+                            const taskCode = `${addendum.contract.contractCode}-${jobCode}-${seq}`;
 
-                        const task = taskRepository.create({
-                            code: taskCode,
-                            name: job.name,
-                            project: addendum.project,
-                            job,
-                            contractService: savedContractService,
-                            status: TaskStatus.PENDING,
-                            performerType: job.defaultPerformerType,
-                            attachments: addendum.contract.attachments || [],
-                            isOutput: serviceJob.isOutput
-                        });
-                        await taskRepository.save(task);
-                        createdTasks += 1;
+                            const task = taskRepository.create({
+                                code: taskCode,
+                                name: job.name,
+                                project: addendum.project,
+                                job,
+                                contractService: savedContractService,
+                                status: TaskStatus.PENDING,
+                                performerType: job.defaultPerformerType,
+                                attachments: addendum.contract.attachments || [],
+                                isOutput: serviceJob.isOutput
+                            });
+                            await taskRepository.save(task);
+                            createdTasks += 1;
+                        }
                     }
                 }
             }
@@ -262,14 +267,17 @@ export class ContractAddendumService {
             addendum.bodReviewedAt = new Date();
             addendum.bodReviewNote = note;
             const saved = await addendumRepository.save(addendum);
-            return { message: "Đã duyệt phụ lục và sinh công việc tháng mới", addendum: saved, createdTasks };
+            const message = addendum.type === AddendumType.ADD_SERVICES
+                ? "Đã duyệt phụ lục và sinh công việc cho dịch vụ bổ sung"
+                : "Đã duyệt phụ lục và sinh công việc tháng mới";
+            return { message, addendum: saved, createdTasks };
         });
     }
 
     async bodReject(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {
         const addendum = await this.addendumRepository.findOne({ where: { id } });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
-        if (addendum.type !== AddendumType.MONTHLY_TASKS) throw new Error("Phụ lục này không thuộc luồng công việc tháng mới");
+        if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
         if (addendum.status !== AddendumStatus.PENDING_BOD) throw new Error("Phụ lục không ở trạng thái chờ BOD duyệt");
 
         addendum.status = AddendumStatus.BOD_REJECTED;
