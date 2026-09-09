@@ -1,3 +1,4 @@
+import fs from 'fs';
 import cloudinary from '../config/cloudinary';
 import { getCloudinaryFolder } from './CloudinaryFolder.Helper';
 
@@ -95,5 +96,50 @@ export const uploadToCloudinary = (file: Express.Multer.File, folder: string): P
             }
         );
         uploadStream.end(file.buffer);
+    });
+};
+
+export const streamUploadToCloudinary = (diskFile: Express.Multer.File, folder: string): Promise<any> => {
+    return new Promise((resolve, reject) => {
+        const uploadFolder = getCloudinaryFolder(folder);
+        const fileExtension = diskFile.originalname.split('.').pop()?.toLowerCase() || '';
+        const fileNameWithoutExt = diskFile.originalname.substring(0, diskFile.originalname.lastIndexOf('.')) || diskFile.originalname;
+
+        const safeFileName = fileNameWithoutExt
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        const publicIdWithExtension = fileExtension ? `${safeFileName}.${fileExtension}` : safeFileName;
+
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: "auto",
+                folder: uploadFolder,
+                public_id: publicIdWithExtension,
+                use_filename: true,
+                unique_filename: true,
+            },
+            (error, result) => {
+                fs.unlink(diskFile.path, () => {});
+                if (error) return reject(error);
+                const downloadUrl = cloudinary.url(result!.public_id, {
+                    resource_type: result!.resource_type,
+                    flags: `attachment:${diskFile.originalname}`,
+                    secure: true
+                });
+                resolve({
+                    type: "FILE",
+                    name: diskFile.originalname,
+                    extension: fileExtension,
+                    mimeType: diskFile.mimetype,
+                    url: result?.secure_url,
+                    downloadUrl,
+                    size: diskFile.size,
+                    publicId: result?.public_id
+                });
+            }
+        );
+        fs.createReadStream(diskFile.path).pipe(uploadStream);
     });
 };

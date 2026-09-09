@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { TaskService } from "../services/Task.Service";
-import { uploadToCloudinary } from "../../../shared/helpers/cloudinary.helper";
+import { uploadToCloudinary, streamUploadToCloudinary } from "../../../shared/helpers/cloudinary.helper";
 
 export class TaskController {
     private taskService = new TaskService();
@@ -142,6 +142,32 @@ export class TaskController {
         }
     }
 
+
+    submitResultFile = async (req: Request, res: Response) => {
+        try {
+            const taskId = req.params.id as string;
+            const file = (req as any).file;
+            if (!file) {
+                return res.status(400).json({ message: "Vui lòng chọn file kết quả" });
+            }
+
+            const uploaded = await streamUploadToCloudinary(file, `GETVINI/ERP/TASK/${taskId}`);
+
+            const resultData = {
+                type: "FILE",
+                name: uploaded.name,
+                url: uploaded.url,
+                size: uploaded.size,
+                publicId: uploaded.publicId
+            };
+
+            const user = (req as any).user;
+            const result = await this.taskService.submitResult(taskId, { result: resultData }, user);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
 
     delete = async (req: Request, res: Response) => {
         try {

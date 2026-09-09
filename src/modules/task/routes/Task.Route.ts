@@ -6,12 +6,15 @@ import multer from "multer";
 const router = Router();
 const taskController = new TaskController();
 
-const storage = multer.memoryStorage();
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, require("os").tmpdir()),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${file.originalname}`)
+});
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 25 * 1024 * 1024,
-        files: 5
+        fileSize: 500 * 1024 * 1024,
+        files: 1
     }
 });
 
@@ -28,6 +31,7 @@ router.patch("/:id/nickname", validationMiddleware(UpdateTaskNicknameDTO), taskC
 router.put("/:id", taskController.update);
 router.put("/:id/assign", validationMiddleware(TaskAssignmentDTO), taskController.assign);
 router.patch("/:id/submit-result", taskController.submitResult);
+router.patch("/:id/submit-result-file", upload.single("file"), taskController.submitResultFile);
 router.delete("/:id", taskController.delete);
 router.patch("/:id/reassign", taskController.reassign);
 router.post("/:id/pricing", taskController.assessExtraTask);

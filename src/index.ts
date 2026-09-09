@@ -34,6 +34,7 @@ import servicePackageRoute from "./modules/service-package/routes/ServicePackage
 import chatRoute from "./modules/chat/routes/Chat.Route"
 import accountRoute from "./modules/account/routes/Account.Route"
 import profileRoute from "./modules/profile/routes/Profile.Route"
+import spellingCheckRoute from "./modules/spelling-check/routes/SpellingCheck.Route"
 import { loggingMiddleware } from "./shared/middlewares/Logging.Middleware";
 import { authMiddleware } from "./shared/middlewares/Auth.Middleware";
 import { globalApiLimiter, writeRateLimitMiddleware } from "./shared/middlewares/RateLimit.Middleware";
@@ -108,6 +109,7 @@ app.use("/api/acceptance", authMiddleware, writeRateLimitMiddleware, acceptanceR
 app.use("/api/cloudinary", authMiddleware, writeRateLimitMiddleware, cloudinaryRoute)
 app.use("/api/service-packages", authMiddleware, writeRateLimitMiddleware, servicePackageRoute)
 app.use("/api/chat", authMiddleware, writeRateLimitMiddleware, chatRoute)
+app.use("/api/spelling-check", authMiddleware, writeRateLimitMiddleware, spellingCheckRoute)
 app.use("/api/accounts", authMiddleware, writeRateLimitMiddleware, accountRoute)
 app.use("/api/me", profileRoute)
 app.get("/health", (req, res) => {
