@@ -114,4 +114,17 @@ export class ProjectController {
     //         res.status(500).json({ message: error.message });
     //     }
     // }
+
+    getMyProjects = async (req: AuthRequest, res: Response) => {
+    try {
+        const result = await this.projectService.getMyProjects({
+            id: req.user!.id,
+            userId: req.user!.userId,
+            role: req.user!.role,
+        });
+        res.status(200).json(result);
+    } catch (error: any) {
+        res.status(500).json({ message: error.message });
+    }
+};
 }

@@ -122,4 +122,27 @@ export class ProjectQueryService extends ProjectBaseService {
         if (!project) throw new Error("Không tìm thấy dự án liên kết với hợp đồng này");
         return project;
     }
+
+    // Gọi dư án của tôi khi tạo chọn dự án khi tạo video
+    async getMyProjects(userInfo: { id: string; userId?: string; role: string }) {
+        const isUnrestricted = userInfo.role === UserRole.BOD || userInfo.role === UserRole.ADMIN;
+
+        const qb = this.projectRepository
+            .createQueryBuilder("project")
+            .select(["project.id", "project.name", "project.status", "project.createdAt"])
+            .where("project.status = :status", { status: ProjectStatus.IN_PROGRESS })
+            .orderBy("project.createdAt", "DESC");
+
+        if (!isUnrestricted) {
+            if (!userInfo.userId) return [];
+
+            qb.innerJoin("project.team", "team")
+            .innerJoin("team.members", "member")
+            .innerJoin("member.user", "teamUser")
+            .andWhere("teamUser.id = :userId", { userId: userInfo.userId })
+            .distinct(true);
+        }
+
+        return qb.getMany();
+    }
 }

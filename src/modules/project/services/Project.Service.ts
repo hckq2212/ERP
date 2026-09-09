@@ -24,6 +24,10 @@ export class ProjectService {
         return this.queryService.getByContractId(contractId);
     }
 
+    getMyProjects(userInfo: { id: string, role: string, userId?: string }) {
+        return this.queryService.getMyProjects(userInfo);
+    }
+
     assign(data: { contractId: string, pmId: string, name?: string }) {
         return this.assignmentService.assign(data);
     }

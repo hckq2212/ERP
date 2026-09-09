@@ -33,9 +33,14 @@ import { VinicoinTransactions } from "./modules/vinicoin/entities/VinicoinTransa
 import { Violations } from "./modules/task/entities/Violation.entity"
 import { RefreshSessions } from "./modules/auth/entities/RefreshSession.entity"
 
-
 import { VendorJobs } from "./modules/vendor/entities/VendorJob.entity"
 import { ServiceJob } from "./modules/service/entities/ServiceJob.entity"
+
+import { AiProviders } from "./modules/ai-provider/entities/AiProvider.entity"
+import { AiModels } from "./modules/ai-model/entities/AiModel.entity"
+import { Assets } from "./modules/asset/entities/Asset.entity"
+import { VideoGenerations } from "./modules/video-generation/entities/VideoGeneration.entity"
+import { MotionGenerations } from "./modules/video-generation/entities/MotionGeneration.entity"
 
 import * as dotenv from "dotenv"
 dotenv.config()
@@ -98,7 +103,12 @@ export const AppDataSource = new DataSource({
         VinicoinTransactions,
         ServiceJob,
         Violations,
-        RefreshSessions
+        RefreshSessions,
+        AiProviders,
+        AiModels,
+        Assets,
+        VideoGenerations,
+        MotionGenerations,
     ],
 
     migrations: [],
