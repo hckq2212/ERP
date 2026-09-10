@@ -131,7 +131,7 @@ export class TaskAssignmentService extends TaskBaseService {
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
     }, currentUser?: { id: string; userId?: string; role?: string }) {
-        return await AppDataSource.transaction(async (transactionalEntityManager) => {
+        const results = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const results = [];
             const contractCostUpdates = new Map<string, number>();
 
@@ -257,6 +257,9 @@ export class TaskAssignmentService extends TaskBaseService {
 
             return results;
         });
+
+        results.forEach(task => taskEmitter.emit(TASK_EVENTS.UPDATED, task));
+        return results;
     }
 
     async assign(id: string, data: {
@@ -534,6 +537,7 @@ export class TaskAssignmentService extends TaskBaseService {
             });
         }
 
+        taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
         return savedTask;
     }
 }

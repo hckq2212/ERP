@@ -31,7 +31,9 @@ export class TaskPricingService extends TaskBaseService {
 
         if (data.isRejected) {
             task.status = data.isBillable ? TaskStatus.REJECTED_BILLABLE : TaskStatus.REJECTED_SUPPORT;
-            return await this.taskRepository.save(task);
+            const savedTask = await this.taskRepository.save(task);
+            taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
+            return savedTask;
         }
 
         task.pricingStatus = data.isBillable ? PricingStatus.BILLABLE : PricingStatus.NON_BILLABLE;
@@ -54,6 +56,8 @@ export class TaskPricingService extends TaskBaseService {
             task.status = TaskStatus.PENDING;
         }
 
-        return await this.taskRepository.save(task);
+        const savedTask = await this.taskRepository.save(task);
+        taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
+        return savedTask;
     }
 }
