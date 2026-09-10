@@ -21,7 +21,13 @@ import { isProjectManagementRole, UserRole } from "../../account/entities/Accoun
 import { TaskBaseService } from "./Task.BaseService";
 
 export class TaskResultService extends TaskBaseService {
-    async submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string; role?: string }) {
+    private parseNullableInt(value: number | string | null | undefined): number | null {
+        if (value === undefined || value === null || value === "") return null;
+        const parsed = typeof value === "number" ? value : parseInt(value, 10);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    async submitResult(id: string, data: { result: any, spellCheckErrorCount?: number | string | null, qcMismatchCount?: number | string | null }, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
         const currentId = await this.resolveActorUserId(currentUser);
         if (!currentId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để nộp kết quả", 401);
@@ -35,6 +41,8 @@ export class TaskResultService extends TaskBaseService {
         task.result = data.result;
         task.actualEndDate = new Date();
         task.lastSubmittedById = currentId;
+        task.lastSpellCheckErrorCount = this.parseNullableInt(data.spellCheckErrorCount);
+        task.lastQcMismatchCount = this.parseNullableInt(data.qcMismatchCount);
 
         task.status = TaskStatus.AWAITING_REVIEW;
 
@@ -126,7 +134,9 @@ export class TaskResultService extends TaskBaseService {
                 leadFeedback: data.feedback,
                 feedbackAttachments: data.attachments,
                 deadlineAt: data.deadlineAt,
-                submittedById: task.lastSubmittedById
+                submittedById: task.lastSubmittedById,
+                spellCheckErrorCount: task.lastSpellCheckErrorCount,
+                qcMismatchCount: task.lastQcMismatchCount
             });
             await iterationRepository.save(iteration);
 
@@ -177,6 +187,8 @@ export class TaskResultService extends TaskBaseService {
             task.status = TaskStatus.REWORKING;
             task.plannedEndDate = data.deadlineAt;
             task.result = null as any;
+            task.lastSpellCheckErrorCount = null;
+            task.lastQcMismatchCount = null;
 
             const savedTask = await transactionalEntityManager.save(task);
 

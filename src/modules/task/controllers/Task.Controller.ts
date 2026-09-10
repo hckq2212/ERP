@@ -103,7 +103,7 @@ export class TaskController {
         try {
             const taskId = req.params.id as string;
             // result is now pre-uploaded and sent in body
-            const { result: bodyResult, link } = req.body;
+            const { result: bodyResult, link, spellCheckErrorCount, qcMismatchCount } = req.body;
             let resultData: any = null;
 
             if (bodyResult && (bodyResult.type === "CHECKLIST" || bodyResult.type === "CONFIRMATION")) {
@@ -135,7 +135,11 @@ export class TaskController {
             }
 
             const user = (req as any).user;
-            const result = await this.taskService.submitResult(taskId, { result: resultData }, user);
+            const result = await this.taskService.submitResult(taskId, {
+                result: resultData,
+                spellCheckErrorCount,
+                qcMismatchCount
+            }, user);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
@@ -150,6 +154,7 @@ export class TaskController {
             if (!file) {
                 return res.status(400).json({ message: "Vui lòng chọn file kết quả" });
             }
+            const { spellCheckErrorCount, qcMismatchCount } = req.body;
 
             const uploaded = await streamUploadToCloudinary(file, `GETVINI/ERP/TASK/${taskId}`);
 
@@ -162,7 +167,11 @@ export class TaskController {
             };
 
             const user = (req as any).user;
-            const result = await this.taskService.submitResult(taskId, { result: resultData }, user);
+            const result = await this.taskService.submitResult(taskId, {
+                result: resultData,
+                spellCheckErrorCount,
+                qcMismatchCount
+            }, user);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ message: error.message });

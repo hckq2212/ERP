@@ -34,4 +34,10 @@ export class TaskIterations extends BaseEntity {
     @ManyToOne(() => Users, { nullable: true })
     @JoinColumn({ name: "submittedById" })
     submittedBy: Users;
+
+    @Column({ type: "int", nullable: true, default: null })
+    spellCheckErrorCount: number | null;
+
+    @Column({ type: "int", nullable: true, default: null })
+    qcMismatchCount: number | null;
 }

@@ -174,4 +174,10 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => Users, { nullable: true })
     @JoinColumn({ name: "lastSubmittedById" })
     lastSubmittedBy: Users;
+
+    @Column({ type: "int", nullable: true, default: null })
+    lastSpellCheckErrorCount: number | null;
+
+    @Column({ type: "int", nullable: true, default: null })
+    lastQcMismatchCount: number | null;
 }
