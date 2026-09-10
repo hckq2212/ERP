@@ -132,4 +132,20 @@ export class QcService {
             mismatch_report: { mismatches },
         };
     }
+
+    async getReportPdfStream(params: { mismatches: any[]; sheets: string[]; fileName?: string }) {
+        const res = await axios.post(
+            `${AI_SERVICE_URL}/qc/report/pdf`,
+            {
+                mismatches: params.mismatches || [],
+                sheets: params.sheets || [],
+                file_name: params.fileName,
+            },
+            {
+                responseType: "stream",
+                timeout: REQUEST_TIMEOUT_MS,
+            }
+        );
+        return res.data;
+    }
 }
