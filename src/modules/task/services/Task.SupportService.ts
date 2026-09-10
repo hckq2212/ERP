@@ -46,6 +46,7 @@ export class TaskSupportService extends TaskBaseService {
             });
         }
 
+        taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
         return savedTask;
     }
 
@@ -77,6 +78,7 @@ export class TaskSupportService extends TaskBaseService {
             link: `/projects/${task.project?.id}`
         });
 
+        taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
         return savedTask;
     }
 
@@ -127,7 +129,9 @@ export class TaskSupportService extends TaskBaseService {
             }
         }
 
-        return await this.taskRepository.save(task);
+        const savedTask = await this.taskRepository.save(task);
+        taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
+        return savedTask;
     }
 
     async returnSupport(id: string) {
@@ -145,7 +149,9 @@ export class TaskSupportService extends TaskBaseService {
         task.isSupportReturnRequested = false; // Reset flag
         task.status = TaskStatus.AWAITING_SUPPORT;
 
-        return await this.taskRepository.save(task);
+        const savedTask = await this.taskRepository.save(task);
+        taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
+        return savedTask;
     }
 
     async requestReturnSupport(id: string, note: string) {
@@ -177,6 +183,7 @@ export class TaskSupportService extends TaskBaseService {
             }
         }
 
+        taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
         return savedTask;
     }
 }
