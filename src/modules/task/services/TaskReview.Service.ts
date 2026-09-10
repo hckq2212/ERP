@@ -10,6 +10,7 @@ import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../events/TaskReviewEmitt
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole } from "../../account/entities/Account.entity";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { TaskIterations } from "../entities/TaskIteration.entity";
 
 type ReviewActor = { id?: string; userId?: string; role?: string };
 
@@ -225,7 +226,7 @@ export class TaskReviewService {
         return outcome.result;
     }
 
-    async rejectTask(taskId: string, passedCriteriaIds: string[], reviewNote: string, currentUser?: ReviewActor) {
+    async rejectTask(taskId: string, passedCriteriaIds: string[] = [], reviewNote: string, currentUser?: ReviewActor) {
         const task = await this.taskRepository.findOne({
             where: { id: taskId },
             relations: ["assignee", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
@@ -253,6 +254,21 @@ export class TaskReviewService {
             review.isPassed = passedCriteriaIds.includes(review.id);
         }
         await this.reviewRepository.save(allReviews);
+
+        const iterationRepository = AppDataSource.getRepository(TaskIterations);
+        const iterationCount = await iterationRepository.count({
+            where: { taskId: task.id }
+        });
+        const iteration = iterationRepository.create({
+            task,
+            version: iterationCount + 1,
+            submittedResult: task.result,
+            leadFeedback: reviewNote,
+            feedbackAttachments: null as any,
+            deadlineAt: null as any,
+            submittedById: task.lastSubmittedById
+        });
+        await iterationRepository.save(iteration);
 
         task.status = TaskStatus.REJECTED;
         task.reviewNote = reviewNote;

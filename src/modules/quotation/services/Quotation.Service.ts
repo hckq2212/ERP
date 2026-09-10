@@ -13,6 +13,9 @@ import { UserRole } from "../../account/entities/Account.entity";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { quotationEmitter, QUOTATION_EVENTS } from "../events/QuotationEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
+import { ContractService } from "../../contract/services/Contract.Service";
+
+type QuotationActor = { id: string, role: string, userId?: string, companyId?: string };
 
 export class QuotationService {
     private quotationRepository = AppDataSource.getRepository(Quotations);
@@ -22,6 +25,7 @@ export class QuotationService {
     private opportunityPackageRepository = AppDataSource.getRepository(OpportunityPackages);
     private taskRepository = AppDataSource.getRepository(Tasks);
     private notificationService = new NotificationService();
+    private contractService = new ContractService();
 
     private async getManagementUsers() {
         return await AppDataSource.getRepository(Users).find({
@@ -56,7 +60,17 @@ export class QuotationService {
     async getOne(id: string) {
         const quotation = await this.quotationRepository.findOne({
             where: { id },
-            relations: ["opportunity", "opportunity.contracts", "details", "details.service"]
+            relations: [
+                "opportunity",
+                "opportunity.contracts",
+                "opportunity.createdBy",
+                "opportunity.customer",
+                "opportunity.referralPartner",
+                "opportunity.quotations",
+                "opportunity.services",
+                "details",
+                "details.service"
+            ]
         });
         if (!quotation) throw new Error("Không tìm thấy báo giá");
         return quotation;
@@ -356,7 +370,7 @@ export class QuotationService {
     }
 
     // 3. Approve Quotation: Sync BACK to Opportunity
-    async approve(id: string) {
+    async approve(id: string, actor?: QuotationActor) {
         const quotation = await this.getOne(id);
 
         if (quotation.status === QuotationStatus.APPROVED) {
@@ -451,16 +465,36 @@ export class QuotationService {
         await this.opportunityRepository.save(opportunity);
         opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, opportunity);
 
+        if (!opportunity.createdBy?.id) {
+            throw new Error("Không tìm thấy người tạo cơ hội để tạo hợp đồng");
+        }
+
+        const creatorUserInfo = {
+            ...actor,
+            userId: opportunity.createdBy.id
+        } as QuotationActor;
+
+        const contract = await this.contractService.create({
+            opportunityId: opportunity.id,
+            name: opportunity.name || `Hợp đồng ${opportunity.opportunityCode}`
+        }, creatorUserInfo);
+
         // Notify management
         await this.notifyManagement({
             title: "Báo giá đã duyệt",
-            content: `Báo giá lần ${quotation.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được duyệt.`,
+            content: `Báo giá lần ${quotation.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được duyệt và tạo hợp đồng.`,
             quotationId: quotation.id
         });
 
         quotationEmitter.emit(QUOTATION_EVENTS.APPROVED, quotation);
 
-        return { message: "Đã duyệt báo giá và cập nhật cơ hội kinh doanh", quotation };
+        return {
+            message: "Đã duyệt báo giá và tạo hợp đồng",
+            quotation,
+            contract,
+            opportunityId: opportunity.id,
+            contractId: contract.id
+        };
     }
 
     // 4. Reject Quotation
