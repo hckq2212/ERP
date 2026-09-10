@@ -4,6 +4,7 @@ import { UserRole } from "../../account/entities/Account.entity";
 import { Users } from "../../user/entities/User.entity";
 import { Projects } from "../entities/Project.entity";
 import { MemberRole } from "../entities/TeamMember.entity";
+import { ulid } from "ulid";
 import {
     ProjectProductDescriptionStatus,
     ProjectProductDescriptionSubmissions
@@ -149,13 +150,44 @@ export class ProjectProductDescriptionService {
     }
 
     private assertEditableSubmission(submission: ProjectProductDescriptionSubmissions, actor: Actor) {
-        const actorUserId = this.getActorUserId(actor);
-        if (submission.createdById !== actorUserId) {
-            throw this.httpError("Bạn chỉ được chỉnh sửa bản thông tin do mình tạo", 403);
-        }
+        this.getActorUserId(actor);
         if (![ProjectProductDescriptionStatus.DRAFT, ProjectProductDescriptionStatus.REJECTED].includes(submission.status)) {
             throw this.httpError("Chỉ có thể chỉnh sửa bản nháp hoặc bản không được duyệt", 400);
         }
+    }
+
+    private async replaceItems(submissionId: string, items: ReturnType<ProjectProductDescriptionService["validateItems"]>) {
+        await this.itemRepository.query(
+            `DELETE FROM "project_product_description_items" WHERE "submissionId" = $1`,
+            [submissionId]
+        );
+
+        for (const item of items) {
+            await this.itemRepository.query(
+                `INSERT INTO "project_product_description_items"
+                    ("id", "productName", "sourceType", "sourceName", "sourceUrl", "size", "publicId", "submissionId")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [
+                    ulid(),
+                    item.productName,
+                    item.sourceType,
+                    item.sourceName,
+                    item.sourceUrl,
+                    item.size || null,
+                    item.publicId || null,
+                    submissionId
+                ]
+            );
+        }
+    }
+
+    private async countItems(submissionId: string) {
+        const result = await this.itemRepository.query(
+            `SELECT COUNT(*)::int AS count FROM "project_product_description_items" WHERE "submissionId" = $1`,
+            [submissionId]
+        );
+
+        return Number(result?.[0]?.count || 0);
     }
 
     async getByProject(projectId: string, actor?: Actor) {
@@ -193,12 +225,7 @@ export class ProjectProductDescriptionService {
         });
 
         const saved = await this.submissionRepository.save(submission);
-        const itemEntities = items.map((item) => this.itemRepository.create({
-            ...item,
-            submission: saved,
-            submissionId: saved.id
-        }));
-        await this.itemRepository.save(itemEntities);
+        await this.replaceItems(saved.id, items);
 
         return this.findSubmissionForProject(projectId, saved.id);
     }
@@ -210,13 +237,7 @@ export class ProjectProductDescriptionService {
         this.assertEditableSubmission(submission, actor as Actor);
 
         const items = this.validateItems(payload.items);
-        await this.itemRepository.delete({ submissionId: submission.id });
-        const itemEntities = items.map((item) => this.itemRepository.create({
-            ...item,
-            submission,
-            submissionId: submission.id
-        }));
-        await this.itemRepository.save(itemEntities);
+        await this.replaceItems(submission.id, items);
 
         submission.status = ProjectProductDescriptionStatus.DRAFT;
         submission.reviewedBy = null as any;
@@ -228,13 +249,20 @@ export class ProjectProductDescriptionService {
         return this.findSubmissionForProject(projectId, submission.id);
     }
 
-    async submit(projectId: string, submissionId: string, actor?: Actor) {
+    async submit(projectId: string, submissionId: string, payload: ProductDescriptionPayload = {}, actor?: Actor) {
         const project = await this.assertProjectAccess(projectId, actor);
         this.assertCanEditProductDescription(project, actor);
         const submission = await this.findSubmissionForProject(projectId, submissionId);
         this.assertEditableSubmission(submission, actor as Actor);
 
-        if (!submission.items?.length) {
+        if (Array.isArray(payload.items)) {
+            const items = this.validateItems(payload.items);
+            await this.replaceItems(submission.id, items);
+        }
+
+        const itemCount = await this.countItems(submission.id);
+
+        if (itemCount === 0) {
             throw this.httpError("Vui lòng thêm ít nhất một sản phẩm trước khi gửi duyệt", 400);
         }
 

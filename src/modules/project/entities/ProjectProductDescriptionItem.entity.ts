@@ -13,9 +13,7 @@ export class ProjectProductDescriptionItems extends BaseEntity {
     @JoinColumn({ name: "submissionId" })
     submission: ProjectProductDescriptionSubmissions;
 
-    @Column({ type: "varchar", length: 26 })
     submissionId: string;
-
     @Column()
     productName: string;
 
