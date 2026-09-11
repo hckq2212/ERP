@@ -17,6 +17,7 @@ import {
 type Actor = { id: string; userId?: string; role: string; username?: string };
 
 type ProductDescriptionItemInput = {
+    id?: string | null;
     productName?: string;
     sourceType?: ProjectProductDescriptionSourceType | "FILE" | "LINK";
     sourceName?: string;
@@ -129,6 +130,7 @@ export class ProjectProductDescriptionService {
             }
 
             return {
+                id: item.id || null,
                 productName,
                 sourceType: sourceType as ProjectProductDescriptionSourceType,
                 sourceName,
@@ -156,19 +158,43 @@ export class ProjectProductDescriptionService {
         }
     }
 
-    private async replaceItems(submissionId: string, items: ReturnType<ProjectProductDescriptionService["validateItems"]>) {
-        await this.itemRepository.query(
-            `DELETE FROM "project_product_description_items" WHERE "submissionId" = $1`,
+    private async syncItems(submissionId: string, items: ReturnType<ProjectProductDescriptionService["validateItems"]>) {
+        const existingItems = await this.itemRepository.query(
+            `SELECT "id" FROM "project_product_description_items" WHERE "submissionId" = $1`,
             [submissionId]
         );
+        const existingIds = new Set<string>(existingItems.map((item: { id: string }) => item.id));
+        const keptIds = new Set<string>();
 
         for (const item of items) {
+            if (item.id && existingIds.has(item.id)) {
+                keptIds.add(item.id);
+                await this.itemRepository.query(
+                    `UPDATE "project_product_description_items"
+                     SET "productName" = $1, "sourceType" = $2, "sourceName" = $3, "sourceUrl" = $4, "size" = $5, "publicId" = $6, "updatedAt" = NOW()
+                     WHERE "id" = $7 AND "submissionId" = $8`,
+                    [
+                        item.productName,
+                        item.sourceType,
+                        item.sourceName,
+                        item.sourceUrl,
+                        item.size || null,
+                        item.publicId || null,
+                        item.id,
+                        submissionId
+                    ]
+                );
+                continue;
+            }
+
+            const newId = ulid();
+            keptIds.add(newId);
             await this.itemRepository.query(
                 `INSERT INTO "project_product_description_items"
                     ("id", "productName", "sourceType", "sourceName", "sourceUrl", "size", "publicId", "submissionId")
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                 [
-                    ulid(),
+                    newId,
                     item.productName,
                     item.sourceType,
                     item.sourceName,
@@ -177,6 +203,15 @@ export class ProjectProductDescriptionService {
                     item.publicId || null,
                     submissionId
                 ]
+            );
+        }
+
+        const deletedIds = [...existingIds].filter((id) => !keptIds.has(id));
+        if (deletedIds.length > 0) {
+            const placeholders = deletedIds.map((_, index) => `$${index + 2}`).join(", ");
+            await this.itemRepository.query(
+                `DELETE FROM "project_product_description_items" WHERE "submissionId" = $1 AND "id" IN (${placeholders})`,
+                [submissionId, ...deletedIds]
             );
         }
     }
@@ -225,7 +260,7 @@ export class ProjectProductDescriptionService {
         });
 
         const saved = await this.submissionRepository.save(submission);
-        await this.replaceItems(saved.id, items);
+        await this.syncItems(saved.id, items);
 
         return this.findSubmissionForProject(projectId, saved.id);
     }
@@ -237,7 +272,7 @@ export class ProjectProductDescriptionService {
         this.assertEditableSubmission(submission, actor as Actor);
 
         const items = this.validateItems(payload.items);
-        await this.replaceItems(submission.id, items);
+        await this.syncItems(submission.id, items);
 
         submission.status = ProjectProductDescriptionStatus.DRAFT;
         submission.reviewedBy = null as any;
@@ -257,7 +292,7 @@ export class ProjectProductDescriptionService {
 
         if (Array.isArray(payload.items)) {
             const items = this.validateItems(payload.items);
-            await this.replaceItems(submission.id, items);
+            await this.syncItems(submission.id, items);
         }
 
         const itemCount = await this.countItems(submission.id);
