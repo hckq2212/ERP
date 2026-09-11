@@ -28,6 +28,7 @@ import debtRoute from "./modules/debt/routes/Debt.Route"
 import contractAddendumRoute from "./modules/contract-addendum/routes/ContractAddendum.Route"
 import jobCriteriaRoute from "./modules/job-criteria/routes/JobCriteria.Route"
 import taskReviewRoute from "./modules/task/routes/TaskReview.Route"
+import taskResultCheckRoute from "./modules/task/routes/TaskResultCheck.Route"
 import acceptanceRoute from "./modules/acceptance/routes/Acceptance.Route"
 import cloudinaryRoute from "./modules/cloudinary/routes/Cloudinary.Route"
 import servicePackageRoute from "./modules/service-package/routes/ServicePackage.Route"
@@ -106,6 +107,7 @@ app.use("/api/debts", authMiddleware, writeRateLimitMiddleware, debtRoute)
 app.use("/api/contract-addendums", authMiddleware, writeRateLimitMiddleware, contractAddendumRoute)
 app.use("/api/job-criteria", authMiddleware, writeRateLimitMiddleware, jobCriteriaRoute)
 app.use("/api/task-reviews", authMiddleware, writeRateLimitMiddleware, taskReviewRoute)
+app.use("/api/task-result-checks", authMiddleware, writeRateLimitMiddleware, taskResultCheckRoute)
 app.use("/api/acceptance", authMiddleware, writeRateLimitMiddleware, acceptanceRoute)
 app.use("/api/cloudinary", authMiddleware, writeRateLimitMiddleware, cloudinaryRoute)
 app.use("/api/service-packages", authMiddleware, writeRateLimitMiddleware, servicePackageRoute)

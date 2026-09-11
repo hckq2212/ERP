@@ -14,6 +14,5 @@ router.post("/sheets", upload.single("file"), controller.sheets);
 router.post("/sheets-from-url", controller.sheetsFromUrl);
 router.get("/product-info/:projectId", controller.productInfo);
 router.post("/run", upload.single("file"), controller.run);
-router.post("/report-pdf", controller.reportPdf);
 
 export default router;

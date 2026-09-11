@@ -99,6 +99,45 @@ export const uploadToCloudinary = (file: Express.Multer.File, folder: string): P
     });
 };
 
+export const uploadBufferToCloudinary = (buffer: Buffer, fileName: string, folder: string): Promise<any> => {
+    return new Promise((resolve, reject) => {
+        const uploadFolder = getCloudinaryFolder(folder);
+        const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+        const fileNameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+
+        const safeFileName = fileNameWithoutExt
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        const publicIdWithExtension = fileExtension ? `${safeFileName}.${fileExtension}` : safeFileName;
+
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: "auto",
+                folder: uploadFolder,
+                public_id: publicIdWithExtension,
+                use_filename: true,
+                unique_filename: true,
+            },
+            (error, result) => {
+                if (error) return reject(error);
+                const downloadUrl = cloudinary.url(result!.public_id, {
+                    resource_type: result!.resource_type,
+                    flags: `attachment:${fileName}`,
+                    secure: true
+                });
+                resolve({
+                    url: result?.secure_url,
+                    downloadUrl,
+                    publicId: result?.public_id
+                });
+            }
+        );
+        uploadStream.end(buffer);
+    });
+};
+
 export const streamUploadToCloudinary = (diskFile: Express.Multer.File, folder: string): Promise<any> => {
     return new Promise((resolve, reject) => {
         const uploadFolder = getCloudinaryFolder(folder);

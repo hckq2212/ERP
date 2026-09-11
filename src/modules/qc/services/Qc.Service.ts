@@ -97,7 +97,6 @@ export class QcService {
             throw httpError("Vui lòng chọn ít nhất 1 sheet để chạy QC", 400);
         }
 
-        const multi = sheetNames.length > 1;
         const finalFileBuffer = fileBuffer;
         const finalFileName = fileName;
 
@@ -116,9 +115,7 @@ export class QcService {
         }));
 
         const mismatches = sheetResults.flatMap(({ sheetName, data }) =>
-            (data?.mismatch_report?.mismatches || []).map((m: any) => (
-                multi ? { ...m, sheet_name: sheetName } : m
-            ))
+            (data?.mismatch_report?.mismatches || []).map((m: any) => ({ ...m, sheet_name: sheetName }))
         );
 
         const contentBlocks: Record<string, any> = {};
@@ -131,21 +128,5 @@ export class QcService {
             content_blocks: contentBlocks,
             mismatch_report: { mismatches },
         };
-    }
-
-    async getReportPdfStream(params: { mismatches: any[]; sheets: string[]; fileName?: string }) {
-        const res = await axios.post(
-            `${AI_SERVICE_URL}/qc/report/pdf`,
-            {
-                mismatches: params.mismatches || [],
-                sheets: params.sheets || [],
-                file_name: params.fileName,
-            },
-            {
-                responseType: "stream",
-                timeout: REQUEST_TIMEOUT_MS,
-            }
-        );
-        return res.data;
     }
 }

@@ -34,6 +34,7 @@ import { TaskIterations } from "./modules/task/entities/TaskIteration.entity"
 import { VinicoinTransactions } from "./modules/vinicoin/entities/VinicoinTransaction.entity"
 import { Violations } from "./modules/task/entities/Violation.entity"
 import { RefreshSessions } from "./modules/auth/entities/RefreshSession.entity"
+import { TaskResultChecks } from "./modules/task/entities/TaskResultCheck.entity"
 
 
 import { VendorJobs } from "./modules/vendor/entities/VendorJob.entity"
@@ -102,7 +103,8 @@ export const AppDataSource = new DataSource({
         VinicoinTransactions,
         ServiceJob,
         Violations,
-        RefreshSessions
+        RefreshSessions,
+        TaskResultChecks
     ],
 
     migrations: [],

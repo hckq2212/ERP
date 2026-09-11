@@ -22,6 +22,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/build ./build
+COPY assets ./assets
 
 EXPOSE 3000
 

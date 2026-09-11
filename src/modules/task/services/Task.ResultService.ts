@@ -17,17 +17,23 @@ import { ContractServices, ContractServiceStatus } from "../../contract/entities
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { TaskResultCheckService } from "./TaskResultCheck.Service";
 
 import { TaskBaseService } from "./Task.BaseService";
 
-export class TaskResultService extends TaskBaseService {
-    private parseNullableInt(value: number | string | null | undefined): number | null {
-        if (value === undefined || value === null || value === "") return null;
-        const parsed = typeof value === "number" ? value : parseInt(value, 10);
-        return Number.isFinite(parsed) ? parsed : null;
-    }
+type SubmitResultData = {
+    result: any;
+    sheetNames?: string[];
+    whitelist?: string[];
+    fileBuffer?: Buffer;
+    checkFileUrl?: string;
+    checkFileName?: string;
+};
 
-    async submitResult(id: string, data: { result: any, spellCheckErrorCount?: number | string | null, qcMismatchCount?: number | string | null }, currentUser?: { id: string, userId?: string; role?: string }) {
+export class TaskResultService extends TaskBaseService {
+    private resultCheckService = new TaskResultCheckService();
+
+    async submitResult(id: string, data: SubmitResultData, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
         const currentId = await this.resolveActorUserId(currentUser);
         if (!currentId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để nộp kết quả", 401);
@@ -41,8 +47,6 @@ export class TaskResultService extends TaskBaseService {
         task.result = data.result;
         task.actualEndDate = new Date();
         task.lastSubmittedById = currentId;
-        task.lastSpellCheckErrorCount = this.parseNullableInt(data.spellCheckErrorCount);
-        task.lastQcMismatchCount = this.parseNullableInt(data.qcMismatchCount);
 
         task.status = TaskStatus.AWAITING_REVIEW;
 
@@ -92,6 +96,20 @@ export class TaskResultService extends TaskBaseService {
             ? await this.taskRepository.findOne({ where: { id: task.id } }) || savedTask
             : savedTask;
         taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, responseTask);
+
+        if (resultType === "FILE" || resultType === "LINK") {
+            void this.resultCheckService.startForSubmission({
+                taskId: task.id,
+                projectId: task.project?.id,
+                fileBuffer: data.fileBuffer,
+                fileUrl: data.fileBuffer ? undefined : (data.checkFileUrl || data.result?.url),
+                fileName: data.checkFileName || data.result?.name,
+                sheetNames: data.sheetNames || [],
+                whitelist: data.whitelist || [],
+                actor: currentUser
+            });
+        }
+
         return responseTask;
     }
 
@@ -134,9 +152,7 @@ export class TaskResultService extends TaskBaseService {
                 leadFeedback: data.feedback,
                 feedbackAttachments: data.attachments,
                 deadlineAt: data.deadlineAt,
-                submittedById: task.lastSubmittedById,
-                spellCheckErrorCount: task.lastSpellCheckErrorCount,
-                qcMismatchCount: task.lastQcMismatchCount
+                submittedById: task.lastSubmittedById
             });
             await iterationRepository.save(iteration);
 
@@ -187,8 +203,6 @@ export class TaskResultService extends TaskBaseService {
             task.status = TaskStatus.REWORKING;
             task.plannedEndDate = data.deadlineAt;
             task.result = null as any;
-            task.lastSpellCheckErrorCount = null;
-            task.lastQcMismatchCount = null;
 
             const savedTask = await transactionalEntityManager.save(task);
 

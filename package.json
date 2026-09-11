@@ -28,12 +28,15 @@
       "node-cron": "^4.2.1",
       "passport": "^0.7.0",
       "passport-jwt": "^4.0.1",
+      "exceljs": "^4.4.0",
+      "pdfkit": "^0.15.2",
       "pg": "^8.17.2",
       "redis": "^5.11.0",
       "ts-node": "^10.9.2",
       "typeorm": "^0.3.28",
       "typescript": "^5.9.3",
-      "ulid": "^3.0.2"
+      "ulid": "^3.0.2",
+      "xlsx": "^0.18.5"
    },
    "scripts": {
       "postinstall": "tsc",

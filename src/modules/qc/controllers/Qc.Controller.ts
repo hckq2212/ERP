@@ -54,18 +54,6 @@ export class QcController {
         }
     };
 
-    reportPdf = async (req: AuthRequest, res: Response) => {
-        try {
-            const { mismatches, sheets, fileName } = req.body;
-            const stream = await this.service.getReportPdfStream({ mismatches, sheets, fileName });
-            res.setHeader("Content-Type", "application/pdf");
-            res.setHeader("Content-Disposition", `attachment; filename="qc_report.pdf"`);
-            stream.pipe(res);
-        } catch (error: any) {
-            res.status(error.response?.status || error.statusCode || 500).json({ message: error.response?.data?.detail || error.message });
-        }
-    };
-
     run = async (req: AuthRequest, res: Response) => {
         try {
             const file = (req as any).file;

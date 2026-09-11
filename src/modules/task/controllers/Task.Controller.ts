@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import fs from "fs";
 import { TaskService } from "../services/Task.Service";
 import { uploadToCloudinary, streamUploadToCloudinary } from "../../../shared/helpers/cloudinary.helper";
 
@@ -103,7 +104,7 @@ export class TaskController {
         try {
             const taskId = req.params.id as string;
             // result is now pre-uploaded and sent in body
-            const { result: bodyResult, link, spellCheckErrorCount, qcMismatchCount } = req.body;
+            const { result: bodyResult, link, sheetNames, whitelist, checkFileUrl, checkFileName } = req.body;
             let resultData: any = null;
 
             if (bodyResult && (bodyResult.type === "CHECKLIST" || bodyResult.type === "CONFIRMATION")) {
@@ -137,8 +138,10 @@ export class TaskController {
             const user = (req as any).user;
             const result = await this.taskService.submitResult(taskId, {
                 result: resultData,
-                spellCheckErrorCount,
-                qcMismatchCount
+                sheetNames: Array.isArray(sheetNames) ? sheetNames : undefined,
+                whitelist: Array.isArray(whitelist) ? whitelist : undefined,
+                checkFileUrl,
+                checkFileName
             }, user);
             res.status(200).json(result);
         } catch (error) {
@@ -154,8 +157,8 @@ export class TaskController {
             if (!file) {
                 return res.status(400).json({ message: "Vui lòng chọn file kết quả" });
             }
-            const { spellCheckErrorCount, qcMismatchCount } = req.body;
 
+            const fileBuffer = await fs.promises.readFile(file.path);
             const uploaded = await streamUploadToCloudinary(file, `GETVINI/ERP/TASK/${taskId}`);
 
             const resultData = {
@@ -166,11 +169,15 @@ export class TaskController {
                 publicId: uploaded.publicId
             };
 
+            const sheetNames = String(req.body.sheetNames || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+            const whitelist = String(req.body.whitelist || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+
             const user = (req as any).user;
             const result = await this.taskService.submitResult(taskId, {
                 result: resultData,
-                spellCheckErrorCount,
-                qcMismatchCount
+                sheetNames,
+                whitelist,
+                fileBuffer
             }, user);
             res.status(200).json(result);
         } catch (error: any) {
