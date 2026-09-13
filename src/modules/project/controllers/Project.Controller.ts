@@ -160,6 +160,7 @@ export class ProjectController {
             const result = await this.productDescriptionService.submit(
                 req.params.id as string,
                 req.params.submissionId as string,
+                req.body,
                 req.user as any
             );
             res.status(200).json(result);

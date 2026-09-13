@@ -4,6 +4,7 @@ import { UserRole } from "../../account/entities/Account.entity";
 import { Users } from "../../user/entities/User.entity";
 import { Projects } from "../entities/Project.entity";
 import { MemberRole } from "../entities/TeamMember.entity";
+import { ulid } from "ulid";
 import {
     ProjectProductDescriptionStatus,
     ProjectProductDescriptionSubmissions
@@ -16,6 +17,7 @@ import {
 type Actor = { id: string; userId?: string; role: string; username?: string };
 
 type ProductDescriptionItemInput = {
+    id?: string | null;
     productName?: string;
     sourceType?: ProjectProductDescriptionSourceType | "FILE" | "LINK";
     sourceName?: string;
@@ -128,6 +130,7 @@ export class ProjectProductDescriptionService {
             }
 
             return {
+                id: item.id || null,
                 productName,
                 sourceType: sourceType as ProjectProductDescriptionSourceType,
                 sourceName,
@@ -149,13 +152,77 @@ export class ProjectProductDescriptionService {
     }
 
     private assertEditableSubmission(submission: ProjectProductDescriptionSubmissions, actor: Actor) {
-        const actorUserId = this.getActorUserId(actor);
-        if (submission.createdById !== actorUserId) {
-            throw this.httpError("Bạn chỉ được chỉnh sửa bản thông tin do mình tạo", 403);
-        }
+        this.getActorUserId(actor);
         if (![ProjectProductDescriptionStatus.DRAFT, ProjectProductDescriptionStatus.REJECTED].includes(submission.status)) {
             throw this.httpError("Chỉ có thể chỉnh sửa bản nháp hoặc bản không được duyệt", 400);
         }
+    }
+
+    private async syncItems(submissionId: string, items: ReturnType<ProjectProductDescriptionService["validateItems"]>) {
+        const existingItems = await this.itemRepository.query(
+            `SELECT "id" FROM "project_product_description_items" WHERE "submissionId" = $1`,
+            [submissionId]
+        );
+        const existingIds = new Set<string>(existingItems.map((item: { id: string }) => item.id));
+        const keptIds = new Set<string>();
+
+        for (const item of items) {
+            if (item.id && existingIds.has(item.id)) {
+                keptIds.add(item.id);
+                await this.itemRepository.query(
+                    `UPDATE "project_product_description_items"
+                     SET "productName" = $1, "sourceType" = $2, "sourceName" = $3, "sourceUrl" = $4, "size" = $5, "publicId" = $6, "updatedAt" = NOW()
+                     WHERE "id" = $7 AND "submissionId" = $8`,
+                    [
+                        item.productName,
+                        item.sourceType,
+                        item.sourceName,
+                        item.sourceUrl,
+                        item.size || null,
+                        item.publicId || null,
+                        item.id,
+                        submissionId
+                    ]
+                );
+                continue;
+            }
+
+            const newId = ulid();
+            keptIds.add(newId);
+            await this.itemRepository.query(
+                `INSERT INTO "project_product_description_items"
+                    ("id", "productName", "sourceType", "sourceName", "sourceUrl", "size", "publicId", "submissionId")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [
+                    newId,
+                    item.productName,
+                    item.sourceType,
+                    item.sourceName,
+                    item.sourceUrl,
+                    item.size || null,
+                    item.publicId || null,
+                    submissionId
+                ]
+            );
+        }
+
+        const deletedIds = [...existingIds].filter((id) => !keptIds.has(id));
+        if (deletedIds.length > 0) {
+            const placeholders = deletedIds.map((_, index) => `$${index + 2}`).join(", ");
+            await this.itemRepository.query(
+                `DELETE FROM "project_product_description_items" WHERE "submissionId" = $1 AND "id" IN (${placeholders})`,
+                [submissionId, ...deletedIds]
+            );
+        }
+    }
+
+    private async countItems(submissionId: string) {
+        const result = await this.itemRepository.query(
+            `SELECT COUNT(*)::int AS count FROM "project_product_description_items" WHERE "submissionId" = $1`,
+            [submissionId]
+        );
+
+        return Number(result?.[0]?.count || 0);
     }
 
     async getByProject(projectId: string, actor?: Actor) {
@@ -193,12 +260,7 @@ export class ProjectProductDescriptionService {
         });
 
         const saved = await this.submissionRepository.save(submission);
-        const itemEntities = items.map((item) => this.itemRepository.create({
-            ...item,
-            submission: saved,
-            submissionId: saved.id
-        }));
-        await this.itemRepository.save(itemEntities);
+        await this.syncItems(saved.id, items);
 
         return this.findSubmissionForProject(projectId, saved.id);
     }
@@ -210,13 +272,7 @@ export class ProjectProductDescriptionService {
         this.assertEditableSubmission(submission, actor as Actor);
 
         const items = this.validateItems(payload.items);
-        await this.itemRepository.delete({ submissionId: submission.id });
-        const itemEntities = items.map((item) => this.itemRepository.create({
-            ...item,
-            submission,
-            submissionId: submission.id
-        }));
-        await this.itemRepository.save(itemEntities);
+        await this.syncItems(submission.id, items);
 
         submission.status = ProjectProductDescriptionStatus.DRAFT;
         submission.reviewedBy = null as any;
@@ -228,13 +284,20 @@ export class ProjectProductDescriptionService {
         return this.findSubmissionForProject(projectId, submission.id);
     }
 
-    async submit(projectId: string, submissionId: string, actor?: Actor) {
+    async submit(projectId: string, submissionId: string, payload: ProductDescriptionPayload = {}, actor?: Actor) {
         const project = await this.assertProjectAccess(projectId, actor);
         this.assertCanEditProductDescription(project, actor);
         const submission = await this.findSubmissionForProject(projectId, submissionId);
         this.assertEditableSubmission(submission, actor as Actor);
 
-        if (!submission.items?.length) {
+        if (Array.isArray(payload.items)) {
+            const items = this.validateItems(payload.items);
+            await this.syncItems(submission.id, items);
+        }
+
+        const itemCount = await this.countItems(submission.id);
+
+        if (itemCount === 0) {
             throw this.httpError("Vui lòng thêm ít nhất một sản phẩm trước khi gửi duyệt", 400);
         }
 

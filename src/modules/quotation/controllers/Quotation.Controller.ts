@@ -51,7 +51,7 @@ export class QuotationController {
 
     approve = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.approve(req.params.id as string);
+            const result = await this.quotationService.approve(req.params.id as string, (req as any).user);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
