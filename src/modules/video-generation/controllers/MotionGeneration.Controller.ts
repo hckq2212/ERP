@@ -33,6 +33,7 @@ export class MotionGenerationController {
 
             const dto: CreateMotionControlVideoDto = {
                 projectId: body.projectId,
+                taskId: body.taskId,
                 modelId: body.modelId,
                 prompt: body.prompt,
                 negativePrompt: body.negativePrompt,

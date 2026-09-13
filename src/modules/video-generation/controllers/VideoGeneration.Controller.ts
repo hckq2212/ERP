@@ -47,6 +47,7 @@ export class VideoGenerationController {
 
             const dto: CreateVideoDto = {
                 projectId: body.projectId,
+                taskId: body.taskId,
                 modelId: body.modelId,
                 resolution: body.resolution || "720p",
                 prompt: body.prompt || "",

@@ -7,11 +7,13 @@ import { CloudinaryVideoAiService } from "../../cloudinary/services/CloudinaryVi
 import { KlingService } from "../../kling/services/Kling.Service";
 import { ByteplusService } from "../../byteplus/services/Byteplus.Service";
 import { CreateVideoDto } from "../dto/CreateVideo.dto";
+import { Tasks } from "../../task/entities/Task.entity";
 
 export class VideoGenerationService {
     private videoGenRepository = AppDataSource.getRepository(VideoGenerations);
     private modelRepository = AppDataSource.getRepository(AiModels);
     private projectRepository = AppDataSource.getRepository(Projects);
+    private taskRepository = AppDataSource.getRepository(Tasks);
 
     private assetService = new AssetService();
     private cloudinaryVideoAiService = new CloudinaryVideoAiService();
@@ -28,6 +30,16 @@ export class VideoGenerationService {
         if (!dto.projectId) throw new Error("projectId là bắt buộc");
         const project = await this.projectRepository.findOne({ where: { id: dto.projectId } });
         if (!project) throw new Error("Không tìm thấy project");
+
+        if (!dto.taskId) throw new Error("Vui lòng chọn công việc (task) của dự án");
+        const task = await this.taskRepository.findOne({
+            where: { id: dto.taskId },
+            relations: ["project"],
+        });
+        if (!task) throw new Error("Không tìm thấy công việc");
+        if (task.project?.id !== dto.projectId) {
+            throw new Error("Công việc không thuộc dự án đã chọn");
+        }
 
         // 2. Validate model
         const model = await this.modelRepository.findOne({
@@ -124,6 +136,7 @@ export class VideoGenerationService {
 
         const videoGen = this.videoGenRepository.create({
             projectId: dto.projectId,
+            taskId: dto.taskId,
             modelId: dto.modelId,
             userId,
             imageBeginAssetId: beginAsset.id,
@@ -176,7 +189,8 @@ export class VideoGenerationService {
             message: "Đang tạo video, vui lòng chờ...",
             videoGenerationId: saved.id,
             projectId: dto.projectId,
-            taskId: externalTaskId,
+            taskId: dto.taskId,
+            externalTaskId: externalTaskId,
             status: "queued",
             beginImageUrl: beginAsset.storedUrl,
             endImageUrl: endAsset?.storedUrl ?? null,

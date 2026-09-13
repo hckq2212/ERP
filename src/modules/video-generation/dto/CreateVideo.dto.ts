@@ -6,6 +6,7 @@ export interface MultiPromptItem {
 
 export interface CreateVideoDto {
     projectId: string;
+    taskId?: string;
     modelId: string;
     resolution?: string;
 
@@ -30,6 +31,7 @@ export interface CreateVideoDto {
 
 export interface CreateMotionControlVideoDto {
     projectId: string;
+    taskId?: string;
     modelId: string;
 
     prompt?: string;

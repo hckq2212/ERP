@@ -6,11 +6,13 @@ import { AssetService } from "../../asset/services/Asset.Service";
 import { CloudinaryVideoAiService } from "../../cloudinary/services/CloudinaryVideoAi.Service";
 import { KlingService } from "../../kling/services/Kling.Service";
 import { CreateMotionControlVideoDto } from "../dto/CreateVideo.dto";
+import { Tasks } from "../../task/entities/Task.entity";
 
 export class MotionGenerationService {
     private motionGenRepository = AppDataSource.getRepository(MotionGenerations);
     private modelRepository = AppDataSource.getRepository(AiModels);
     private projectRepository = AppDataSource.getRepository(Projects);
+    private taskRepository = AppDataSource.getRepository(Tasks);
 
     private assetService = new AssetService();
     private cloudinaryVideoAiService = new CloudinaryVideoAiService();
@@ -25,6 +27,16 @@ export class MotionGenerationService {
         if (!dto.projectId) throw new Error("projectId là bắt buộc");
         const project = await this.projectRepository.findOne({ where: { id: dto.projectId } });
         if (!project) throw new Error("Không tìm thấy project");
+
+        if (!dto.taskId) throw new Error("Vui lòng chọn công việc (task) của dự án");
+        const task = await this.taskRepository.findOne({
+            where: { id: dto.taskId },
+            relations: ["project"],
+        });
+        if (!task) throw new Error("Không tìm thấy công việc");
+        if (task.project?.id !== dto.projectId) {
+            throw new Error("Công việc không thuộc dự án đã chọn");
+        }
 
         const model = await this.modelRepository.findOne({ where: { id: dto.modelId } });
         if (!model) throw new Error("Model không tồn tại");
@@ -48,6 +60,7 @@ export class MotionGenerationService {
 
         const motionGen = this.motionGenRepository.create({
             projectId: dto.projectId,
+            taskId: dto.taskId,
             modelId: dto.modelId,
             userId,
             characterImageAssetId: characterAsset.id,
@@ -84,6 +97,7 @@ export class MotionGenerationService {
             message: "Đang xử lý, vui lòng chờ...",
             motionGenerationId: saved.id,
             projectId: dto.projectId,
+            taskId: dto.taskId,
             status: "queued",
             characterImageUrl: characterAsset.storedUrl,
             referenceVideoUrl: referenceVideoAsset.storedUrl || null,

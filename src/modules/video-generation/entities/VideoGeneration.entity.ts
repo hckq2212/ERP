@@ -6,6 +6,7 @@ import { AiModels } from "../../ai-model/entities/AiModel.entity";
 import { Assets } from "../../asset/entities/Asset.entity";
 import { Projects } from "../../project/entities/Project.entity";
 import { Accounts } from "../../account/entities/Account.entity";
+import { Tasks } from "../../task/entities/Task.entity";
 
 /**
  * Maps to: public.video_generations
@@ -21,6 +22,9 @@ export class VideoGenerations {
     // ── FK columns ──────────────────────────────────────────────────────────
     @Column({ name: "project_id", type: "varchar", length: 26 })
     projectId!: string;
+
+    @Column({ name: "task_id", type: "varchar", length: 26, nullable: true })
+    taskId?: string;
 
     @Column({ name: "model_id", type: "varchar", length: 26 })
     modelId!: string;
@@ -108,6 +112,10 @@ export class VideoGenerations {
     @ManyToOne(() => Projects)
     @JoinColumn({ name: "project_id" })
     project!: Projects;
+
+    @ManyToOne(() => Tasks, { nullable: true })
+    @JoinColumn({ name: "task_id" })
+    task?: Tasks;
 
     @ManyToOne(() => AiModels)
     @JoinColumn({ name: "model_id" })
