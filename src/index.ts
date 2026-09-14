@@ -28,12 +28,15 @@ import debtRoute from "./modules/debt/routes/Debt.Route"
 import contractAddendumRoute from "./modules/contract-addendum/routes/ContractAddendum.Route"
 import jobCriteriaRoute from "./modules/job-criteria/routes/JobCriteria.Route"
 import taskReviewRoute from "./modules/task/routes/TaskReview.Route"
+import taskResultCheckRoute from "./modules/task/routes/TaskResultCheck.Route"
 import acceptanceRoute from "./modules/acceptance/routes/Acceptance.Route"
 import cloudinaryRoute from "./modules/cloudinary/routes/Cloudinary.Route"
 import servicePackageRoute from "./modules/service-package/routes/ServicePackage.Route"
 import chatRoute from "./modules/chat/routes/Chat.Route"
 import accountRoute from "./modules/account/routes/Account.Route"
 import profileRoute from "./modules/profile/routes/Profile.Route"
+import spellingCheckRoute from "./modules/spelling-check/routes/SpellingCheck.Route"
+import qcRoute from "./modules/qc/routes/Qc.Route"
 import { loggingMiddleware } from "./shared/middlewares/Logging.Middleware";
 import { authMiddleware } from "./shared/middlewares/Auth.Middleware";
 import { globalApiLimiter, writeRateLimitMiddleware } from "./shared/middlewares/RateLimit.Middleware";
@@ -104,10 +107,13 @@ app.use("/api/debts", authMiddleware, writeRateLimitMiddleware, debtRoute)
 app.use("/api/contract-addendums", authMiddleware, writeRateLimitMiddleware, contractAddendumRoute)
 app.use("/api/job-criteria", authMiddleware, writeRateLimitMiddleware, jobCriteriaRoute)
 app.use("/api/task-reviews", authMiddleware, writeRateLimitMiddleware, taskReviewRoute)
+app.use("/api/task-result-checks", authMiddleware, writeRateLimitMiddleware, taskResultCheckRoute)
 app.use("/api/acceptance", authMiddleware, writeRateLimitMiddleware, acceptanceRoute)
 app.use("/api/cloudinary", authMiddleware, writeRateLimitMiddleware, cloudinaryRoute)
 app.use("/api/service-packages", authMiddleware, writeRateLimitMiddleware, servicePackageRoute)
 app.use("/api/chat", authMiddleware, writeRateLimitMiddleware, chatRoute)
+app.use("/api/spelling-check", authMiddleware, writeRateLimitMiddleware, spellingCheckRoute)
+app.use("/api/qc", authMiddleware, writeRateLimitMiddleware, qcRoute)
 app.use("/api/accounts", authMiddleware, writeRateLimitMiddleware, accountRoute)
 app.use("/api/me", profileRoute)
 app.get("/health", (req, res) => {

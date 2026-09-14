@@ -17,11 +17,23 @@ import { ContractServices, ContractServiceStatus } from "../../contract/entities
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { TaskResultCheckService } from "./TaskResultCheck.Service";
 
 import { TaskBaseService } from "./Task.BaseService";
 
+type SubmitResultData = {
+    result: any;
+    sheetNames?: string[];
+    whitelist?: string[];
+    fileBuffer?: Buffer;
+    checkFileUrl?: string;
+    checkFileName?: string;
+};
+
 export class TaskResultService extends TaskBaseService {
-    async submitResult(id: string, data: { result: any }, currentUser?: { id: string, userId?: string; role?: string }) {
+    private resultCheckService = new TaskResultCheckService();
+
+    async submitResult(id: string, data: SubmitResultData, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
         const currentId = await this.resolveActorUserId(currentUser);
         if (!currentId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để nộp kết quả", 401);
@@ -84,6 +96,20 @@ export class TaskResultService extends TaskBaseService {
             ? await this.taskRepository.findOne({ where: { id: task.id } }) || savedTask
             : savedTask;
         taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, responseTask);
+
+        if (resultType === "FILE" || resultType === "LINK") {
+            void this.resultCheckService.startForSubmission({
+                taskId: task.id,
+                projectId: task.project?.id,
+                fileBuffer: data.fileBuffer,
+                fileUrl: data.fileBuffer ? undefined : (data.checkFileUrl || data.result?.url),
+                fileName: data.checkFileName || data.result?.name,
+                sheetNames: data.sheetNames || [],
+                whitelist: data.whitelist || [],
+                actor: currentUser
+            });
+        }
+
         return responseTask;
     }
 
