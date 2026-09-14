@@ -31,6 +31,15 @@ type ProductDescriptionPayload = {
     reviewNote?: string;
 };
 
+const PRODUCT_DESCRIPTION_ALLOWED_EXTENSIONS = ["pdf", "docx", "xlsx"];
+const PRODUCT_DESCRIPTION_MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+const getFileExtension = (fileName = "") => {
+    const cleanName = fileName.split("?")[0].split("#")[0];
+    const parts = cleanName.split(".");
+    return parts.length > 1 ? parts.pop()?.toLowerCase() || "" : "";
+};
+
 export class ProjectProductDescriptionService {
     private projectRepository = AppDataSource.getRepository(Projects);
     private userRepository = AppDataSource.getRepository(Users);
@@ -127,6 +136,15 @@ export class ProjectProductDescriptionService {
             }
             if (!sourceName) {
                 throw this.httpError(`Vui lòng cung cấp tên tài liệu cho sản phẩm ${productName}`, 400);
+            }
+            if (sourceType === ProjectProductDescriptionSourceType.FILE) {
+                const extension = getFileExtension(sourceName) || getFileExtension(sourceUrl);
+                if (!PRODUCT_DESCRIPTION_ALLOWED_EXTENSIONS.includes(extension)) {
+                    throw this.httpError(`File mô tả sản phẩm ${productName} chỉ được dùng định dạng .pdf, .docx hoặc .xlsx`, 400);
+                }
+                if (typeof item.size === "number" && item.size >= PRODUCT_DESCRIPTION_MAX_FILE_SIZE) {
+                    throw this.httpError(`Dung lượng file mô tả sản phẩm ${productName} phải dưới 10MB`, 400);
+                }
             }
 
             return {
