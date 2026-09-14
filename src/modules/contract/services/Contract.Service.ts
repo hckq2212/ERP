@@ -8,7 +8,7 @@ import { PaymentMilestones, MilestoneStatus } from "../../payment-milestone/enti
 import { ContractStatus } from "../entities/Contract.entity";
 import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
 import { ContractServices } from "../entities/ContractService.entity";
-import { QuotationStatus } from "../../quotation/entities/Quotation.entity";
+import { Quotations, QuotationStatus } from "../../quotation/entities/Quotation.entity";
 import { ProjectService } from "../../project/services/Project.Service";
 import { DebtService } from "../../debt/services/Debt.Service";
 import { NotificationService } from "../../notification/services/Notification.Service";
@@ -29,6 +29,7 @@ export class ContractService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
     private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
     private contractServiceRepository = AppDataSource.getRepository(ContractServices);
+    private quotationRepository = AppDataSource.getRepository(Quotations);
     private userRepository = AppDataSource.getRepository(Users);
     private serviceRepository = AppDataSource.getRepository(Services);
     private packageRepository = AppDataSource.getRepository(ServicePackages);
@@ -204,7 +205,8 @@ export class ContractService {
     }
 
     async create(data: any, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
-        const { opportunityId, ...contractData } = data;
+        const { opportunityId, quotationId, quotationDetails, ...contractData } = data;
+        let approvedQuotationDetails = Array.isArray(quotationDetails) ? quotationDetails : [];
 
         // Auto-generate code
         if (!contractData.contractCode) {
@@ -286,6 +288,34 @@ export class ContractService {
             } else {
                 throw new Error("Cơ hội chưa có thông tin khách hàng hoặc Lead");
             }
+
+            if (approvedQuotationDetails.length === 0 && quotationId) {
+                const quotation = await this.quotationRepository.findOne({
+                    where: { id: quotationId },
+                    relations: ["opportunity", "details", "details.service"]
+                });
+
+                if (!quotation) {
+                    throw new Error("Không tìm thấy báo giá để tạo hợp đồng");
+                }
+                if (quotation.status !== QuotationStatus.APPROVED) {
+                    throw new Error("Báo giá chưa được duyệt, không thể tạo hợp đồng");
+                }
+                if (quotation.opportunity?.id !== opportunity.id) {
+                    throw new Error("Báo giá không thuộc cơ hội kinh doanh này");
+                }
+
+                approvedQuotationDetails = quotation.details || [];
+            }
+
+            if (quotationId && approvedQuotationDetails.length === 0) {
+                throw new Error("Báo giá chưa có dịch vụ, không thể tạo hợp đồng");
+            }
+
+            const invalidQuotationDetails = approvedQuotationDetails.filter(detail => !detail.service?.id && !detail.serviceId);
+            if (invalidQuotationDetails.length > 0) {
+                throw new Error("Một số dòng báo giá chưa liên kết dịch vụ, không thể tạo hợp đồng");
+            }
         } else if (data.customerData) {
             // Create customer on the fly
             customer = await this.customerService.create(data.customerData, userInfo);
@@ -302,22 +332,39 @@ export class ContractService {
         let finalCost = contractData.cost;
 
         if (opportunity) {
-            // Price Priority 1: Approved Quotation
-            const approvedQuote = opportunity.quotations?.find(q => q.status === QuotationStatus.APPROVED);
-            if (approvedQuote) {
-                finalSellingPrice = approvedQuote.totalAmount;
-            } else {
-                // Price Priority 2: Sum of Opportunity Services
-                const serviceSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.sellingPrice) * (os.quantity || 1)), 0);
-                if (serviceSum > 0) {
-                    finalSellingPrice = serviceSum;
+            if (approvedQuotationDetails.length > 0) {
+                const quotationSellingPrice = approvedQuotationDetails.reduce(
+                    (sum, detail) => sum + (Number(detail.sellingPrice || 0) * (detail.quantity || 1)),
+                    0
+                );
+                const quotationCost = approvedQuotationDetails.reduce(
+                    (sum, detail) => sum + (Number(detail.costAtSale || 0) * (detail.quantity || 1)),
+                    0
+                );
+                if (finalSellingPrice === undefined || finalSellingPrice === null || finalSellingPrice === 0) {
+                    finalSellingPrice = quotationSellingPrice;
                 }
-            }
+                if (finalCost === undefined || finalCost === null || finalCost === 0) {
+                    finalCost = quotationCost;
+                }
+            } else {
+                // Price Priority 1: Approved Quotation
+                const approvedQuote = opportunity.quotations?.find(q => q.status === QuotationStatus.APPROVED);
+                if (approvedQuote) {
+                    finalSellingPrice = approvedQuote.totalAmount;
+                } else {
+                    // Price Priority 2: Sum of Opportunity Services
+                    const serviceSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.sellingPrice) * (os.quantity || 1)), 0);
+                    if (serviceSum > 0) {
+                        finalSellingPrice = serviceSum;
+                    }
+                }
 
-            // Cost calculation: Always sum of Opportunity Services
-            const costSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.costAtSale) * (os.quantity || 1)), 0);
-            if (costSum > 0) {
-                finalCost = costSum;
+                // Cost calculation: Always sum of Opportunity Services
+                const costSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.costAtSale) * (os.quantity || 1)), 0);
+                if (costSum > 0) {
+                    finalCost = costSum;
+                }
             }
         } else {
             // Direct contract: calculate based on services and packages arrays
@@ -385,26 +432,45 @@ export class ContractService {
 
         // MAP Opportunity Services to Contract Services
         if (opportunity) {
-            const oppServices = await this.oppServiceRepository.find({
-                where: SecurityService.withTenant({ opportunity: { id: opportunity.id } }, userInfo),
-                relations: ["service", "opportunity"]
-            });
+            if (approvedQuotationDetails.length > 0) {
+                for (const detail of approvedQuotationDetails) {
+                    const qty = Number(detail.quantity || 1);
+                    for (let i = 0; i < qty; i++) {
+                        const cs = this.contractServiceRepository.create({
+                            contract: savedContract,
+                            service: detail.service,
+                            serviceId: detail.service?.id || detail.serviceId,
+                            sellingPrice: detail.sellingPrice,
+                            name: detail.name || detail.service?.name,
+                            packageName: detail.packageName,
+                            isPackageService: detail.isPackageService,
+                            ...SecurityService.getTenantWhere(userInfo)
+                        } as any);
+                        await this.contractServiceRepository.save(cs);
+                    }
+                }
+            } else {
+                const oppServices = await this.oppServiceRepository.find({
+                    where: SecurityService.withTenant({ opportunity: { id: opportunity.id } }, userInfo),
+                    relations: ["service", "opportunity"]
+                });
 
-            for (const os of oppServices) {
-                const qty = os.quantity || 1;
-                for (let i = 0; i < qty; i++) {
-                    const cs = this.contractServiceRepository.create({
-                        contract: savedContract,
-                        service: os.service,
-                        serviceId: os.service?.id,
-                        sellingPrice: os.sellingPrice,
-                        opportunityService: os,
-                        name: os.name,
-                        packageName: os.packageName,
-                        isPackageService: os.isPackageService,
-                        ...SecurityService.getTenantWhere(userInfo)
-                    } as any);
-                    await this.contractServiceRepository.save(cs);
+                for (const os of oppServices) {
+                    const qty = os.quantity || 1;
+                    for (let i = 0; i < qty; i++) {
+                        const cs = this.contractServiceRepository.create({
+                            contract: savedContract,
+                            service: os.service,
+                            serviceId: os.service?.id || os.serviceId,
+                            sellingPrice: os.sellingPrice,
+                            opportunityService: os,
+                            name: os.name || os.service?.name,
+                            packageName: os.packageName,
+                            isPackageService: os.isPackageService,
+                            ...SecurityService.getTenantWhere(userInfo)
+                        } as any);
+                        await this.contractServiceRepository.save(cs);
+                    }
                 }
             }
         } else {
@@ -486,8 +552,9 @@ export class ContractService {
         } as any);
         await this.milestoneRepository.save(defaultMilestone);
 
-        // Invalidate list cache
+        // Invalidate contract caches before returning the freshly loaded detail
         await RedisService.deleteCache('contracts:all*');
+        await RedisService.deleteCache(`contracts:detail:${savedContract.id}*`);
 
         const creatorName = await this.getUserFullName(userInfo?.userId);
 
@@ -500,7 +567,7 @@ export class ContractService {
 
         contractEmitter.emit(CONTRACT_EVENTS.CREATED, savedContract);
 
-        return savedContract;
+        return await this.getOne(savedContract.id, userInfo);
     }
 
     async uploadProposal(

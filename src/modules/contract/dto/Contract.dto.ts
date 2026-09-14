@@ -17,6 +17,10 @@ export class CreateContractDTO {
 
     @IsString()
     @IsOptional()
+    quotationId?: string;
+
+    @IsString()
+    @IsOptional()
     customerId?: string;
 
     @IsNumber()
@@ -49,6 +53,10 @@ export class CreateContractDTO {
     @IsOptional()
     @IsArray()
     packages?: any[];
+
+    @IsOptional()
+    @IsArray()
+    quotationDetails?: any[];
 }
 
 export class UpdateContractDTO {

@@ -2,8 +2,6 @@ import { AppDataSource } from "../../../data-source";
 import { Quotations, QuotationStatus, QuotationType } from "../entities/Quotation.entity";
 import { QuotationDetails } from "../entities/QuotationDetail.entity";
 import { Opportunities, OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
-import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
-import { OpportunityPackages } from "../../opportunity/entities/OpportunityPackage.entity";
 import { Services } from "../../service/entities/Service.entity";
 import { Tasks } from "../../task/entities/Task.entity";
 import { PricingStatus, TaskStatus } from "../../../shared/entities/Enums";
@@ -21,8 +19,6 @@ export class QuotationService {
     private quotationRepository = AppDataSource.getRepository(Quotations);
     private quotationDetailRepository = AppDataSource.getRepository(QuotationDetails);
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
-    private opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
-    private opportunityPackageRepository = AppDataSource.getRepository(OpportunityPackages);
     private taskRepository = AppDataSource.getRepository(Tasks);
     private notificationService = new NotificationService();
     private contractService = new ContractService();
@@ -377,13 +373,12 @@ export class QuotationService {
             throw new Error("Báo giá này đã được duyệt rồi");
         }
 
-        // 1. Mark this as APPROVED
-        quotation.status = QuotationStatus.APPROVED;
-        quotation.description = quotation.description;
-        await this.quotationRepository.save(quotation);
-
         // 3. IF ADDENDUM: Create Contract Addendum and SYNC
         if (quotation.type === QuotationType.ADDENDUM) {
+            quotation.status = QuotationStatus.APPROVED;
+            quotation.description = quotation.description;
+            await this.quotationRepository.save(quotation);
+
             const contract = quotation.opportunity.contracts?.[0];
             if (!contract) throw new Error("Không tìm thấy hợp đồng để tạo phụ lục");
 
@@ -412,51 +407,26 @@ export class QuotationService {
             return { message: "Đã duyệt báo giá phụ lục và tạo Phụ lục hợp đồng nháp. Các công việc liên quan đã được kích hoạt.", quotation, addendum };
         }
 
-        // 4. IF INITIAL: SYNC LOGIC: Update Opportunity Services
+        // 4. IF INITIAL: approve the opportunity and create contract from the approved quotation
         const opportunity = quotation.opportunity;
-        // ... (existing initial sync logic)
 
-        // Wipe old Opp Services & Packages
-        await this.opportunityServiceRepository.delete({ opportunity: { id: opportunity.id } });
-        await this.opportunityPackageRepository.delete({ opportunity: { id: opportunity.id } });
-
-        const packageMap = new Map<string, OpportunityPackages>();
-        let totalRevenue = 0;
-        let totalCost = 0;
-
-        for (const detail of quotation.details) {
-            let oppPkg = null;
-            if (detail.isPackageService && detail.packageName) {
-                const pkgKey = `${detail.packageName}_${detail.packageQuantity}`;
-                if (!packageMap.has(pkgKey)) {
-                    const newPkg = this.opportunityPackageRepository.create({
-                        opportunity,
-                        name: detail.packageName,
-                        quantity: detail.packageQuantity || 1,
-                        servicePackageId: detail.servicePackageId
-                    });
-                    const savedPkg = await this.opportunityPackageRepository.save(newPkg);
-                    packageMap.set(pkgKey, savedPkg);
-                }
-                oppPkg = packageMap.get(pkgKey);
-            }
-
-            const oppService = this.opportunityServiceRepository.create({
-                opportunity: opportunity,
-                service: detail.service,
-                quantity: detail.quantity,
-                sellingPrice: detail.sellingPrice,
-                costAtSale: detail.costAtSale,
-                opportunityPackage: oppPkg,
-                name: detail.name,
-                packageName: detail.packageName,
-                isPackageService: detail.isPackageService
-            });
-            await this.opportunityServiceRepository.save(oppService);
-
-            totalRevenue += Number(detail.sellingPrice) * detail.quantity;
-            totalCost += Number(detail.costAtSale) * detail.quantity;
+        if (!quotation.details?.length) {
+            throw new Error("Báo giá chưa có dịch vụ, không thể duyệt và tạo hợp đồng");
         }
+
+        const invalidDetails = quotation.details.filter(detail => !detail.service?.id && !detail.serviceId);
+        if (invalidDetails.length > 0) {
+            throw new Error("Một số dòng báo giá chưa liên kết dịch vụ, vui lòng kiểm tra lại báo giá trước khi duyệt");
+        }
+
+        quotation.status = QuotationStatus.APPROVED;
+        quotation.description = quotation.description;
+        await this.quotationRepository.save(quotation);
+
+        const totalRevenue = quotation.details.reduce(
+            (sum, detail) => sum + (Number(detail.sellingPrice || 0) * (detail.quantity || 1)),
+            0
+        );
 
         // 4. Update Opportunity Totals & Status
         opportunity.expectedRevenue = totalRevenue;
@@ -476,6 +446,13 @@ export class QuotationService {
 
         const contract = await this.contractService.create({
             opportunityId: opportunity.id,
+            quotationId: quotation.id,
+            quotationDetails: quotation.details,
+            sellingPrice: quotation.totalAmount || totalRevenue,
+            cost: quotation.details.reduce(
+                (sum, detail) => sum + (Number(detail.costAtSale || 0) * (detail.quantity || 1)),
+                0
+            ),
             name: opportunity.name || `Hợp đồng ${opportunity.opportunityCode}`
         }, creatorUserInfo);
 
