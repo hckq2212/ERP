@@ -43,6 +43,9 @@ import { AiModels } from "./modules/ai-model/entities/AiModel.entity"
 import { Assets } from "./modules/asset/entities/Asset.entity"
 import { VideoGenerations } from "./modules/video-generation/entities/VideoGeneration.entity"
 import { MotionGenerations } from "./modules/video-generation/entities/MotionGeneration.entity"
+import { AiElements } from "./modules/ai-element/entities/AiElement.entity"
+import { AiElementImages } from "./modules/ai-element/entities/AiElementImage.entity"
+import { AiElementVideos } from "./modules/ai-element/entities/AiElementVideo.entity"
 
 import * as dotenv from "dotenv"
 dotenv.config()
@@ -113,6 +116,9 @@ export const AppDataSource = new DataSource({
         Assets,
         VideoGenerations,
         MotionGenerations,
+        AiElements,
+        AiElementImages,
+        AiElementVideos,
     ],
 
     migrations: [],
