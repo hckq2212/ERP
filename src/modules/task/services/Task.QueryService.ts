@@ -1,7 +1,7 @@
 import { AppDataSource } from "../../../data-source";
 import { Tasks } from "../entities/Task.entity";
 import { TaskStatus, PerformerType, PricingStatus, ViolationType } from "../../../shared/entities/Enums";
-import { ILike, Like, Between, IsNull, In } from "typeorm";
+import { ILike, Like, Between, IsNull, In, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../../project/entities/Project.entity";
 import { Jobs } from "../../job/entities/Job.entity";
 import { Users } from "../../user/entities/User.entity";
@@ -68,6 +68,31 @@ export class TaskQueryService extends TaskBaseService {
                 baseWhere.forEach((w: any) => w.status = filters.status);
             } else {
                 baseWhere.status = filters.status;
+            }
+        }
+
+        // Lọc các task có status không nằm trong danh sách excludeStatus (['PENDING', 'ACCEPTED', 'COMPLETED'])
+        if (filters.excludeStatus) {
+            const excludeList = Array.isArray(filters.excludeStatus)
+                ? filters.excludeStatus
+                : String(filters.excludeStatus).split(',').map((s: string) => s.trim()).filter(Boolean);
+
+            if (excludeList.length > 0) {
+                if (Array.isArray(baseWhere)) {
+                    baseWhere.forEach((w: any) => w.status = Not(In(excludeList)));
+                } else {
+                    baseWhere.status = Not(In(excludeList));
+                }
+            }
+        }
+
+        // Lọc task theo tên (nameLike) Video Ai
+        if (filters.nameLike) {
+            const searchTerm = `%${String(filters.nameLike).trim()}%`;
+            if (Array.isArray(baseWhere)) {
+                baseWhere.forEach((w: any) => w.name = ILike(searchTerm));
+            } else {
+                baseWhere.name = ILike(searchTerm);
             }
         }
 

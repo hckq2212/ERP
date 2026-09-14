@@ -42,9 +42,11 @@ import { authMiddleware } from "./shared/middlewares/Auth.Middleware";
 import { globalApiLimiter, writeRateLimitMiddleware } from "./shared/middlewares/RateLimit.Middleware";
 import { CronHelper } from "./shared/helpers/Cron.Helper";
 import { initSubscribers } from "./shared/subscribers";
-
-
-
+import aiProviderRoute from "./modules/ai-provider/routes/AiProvider.Route"
+import aiModelRoute from "./modules/ai-model/routes/AiModel.Route"
+import assetRoute from "./modules/asset/routes/Asset.Route"
+import videoGenerationRoute from "./modules/video-generation/routes/VideoGeneration.Route"
+import aiElementRoute from "./modules/ai-element/routes/AiElement.Route"
 
 const app = express()
 app.set('trust proxy', 1)
@@ -115,7 +117,15 @@ app.use("/api/chat", authMiddleware, writeRateLimitMiddleware, chatRoute)
 app.use("/api/spelling-check", authMiddleware, writeRateLimitMiddleware, spellingCheckRoute)
 app.use("/api/qc", authMiddleware, writeRateLimitMiddleware, qcRoute)
 app.use("/api/accounts", authMiddleware, writeRateLimitMiddleware, accountRoute)
+
+app.use("/api/ai-providers", authMiddleware, writeRateLimitMiddleware, aiProviderRoute)
+app.use("/api/ai-models", authMiddleware, writeRateLimitMiddleware, aiModelRoute)
+app.use("/api/assets", authMiddleware, writeRateLimitMiddleware, assetRoute)
+app.use("/api/video-generations", authMiddleware, writeRateLimitMiddleware, videoGenerationRoute)
+app.use("/api/elements", authMiddleware, writeRateLimitMiddleware, aiElementRoute)
+
 app.use("/api/me", profileRoute)
+
 app.get("/health", (req, res) => {
     res.status(200).send("OK");
 });

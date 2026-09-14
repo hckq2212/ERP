@@ -10,6 +10,7 @@ const projectController = new ProjectController();
 
 router.get("/", projectController.getAll);
 router.get("/contract/:contractId", projectController.getByContract);
+router.get("/my-projects", projectController.getMyProjects);
 router.get("/:id/monthly-work-template", projectController.getMonthlyWorkTemplate);
 
 
