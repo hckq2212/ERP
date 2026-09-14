@@ -14,6 +14,7 @@ import { TaskStatus } from "../../../shared/entities/Enums";
 import { Jobs } from "../../job/entities/Job.entity";
 import { PerformerType } from "../../../shared/entities/Enums";
 import { NotificationService } from "../../notification/services/Notification.Service";
+import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
 
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { isProjectManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
@@ -160,13 +161,15 @@ export class ProjectBaseService {
                         }
                     });
 
-                    const seq = (totalCountForProject + 1).toString().padStart(2, '0');
+                    const sequenceNumber = totalCountForProject + 1;
+                    const seq = sequenceNumber.toString().padStart(2, '0');
                     const jobCode = job.code || `JOB${job.id}`;
                     const taskCode = `${contract.contractCode}-${jobCode}-${seq}`;
 
                     const task = this.taskRepository.create({
                         code: taskCode,
                         name: job.name,
+                        nickname: buildDefaultTaskNickname(job, sequenceNumber),
                         project,
                         job,
                         contractService: cs,
@@ -318,6 +321,7 @@ export class ProjectBaseService {
                     tasks: {
                         id: true,
                         name: true,
+                        nickname: true,
                         status: true,
                         result: true,
                         code: true,

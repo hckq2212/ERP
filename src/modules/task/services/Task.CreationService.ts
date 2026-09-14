@@ -17,6 +17,7 @@ import { ContractServices, ContractServiceStatus } from "../../contract/entities
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
 
 import { TaskBaseService } from "./Task.BaseService";
 
@@ -114,6 +115,7 @@ export class TaskCreationService extends TaskBaseService {
     }, currentUser?: { id: string; userId?: string; role?: string }) {
         let project = null;
         let taskCode = null;
+        let taskSequenceNumber: number | null = null;
 
         const job = await this.jobRepository.findOne({ where: { id: data.jobId } });
         if (!job) throw new Error("Không tìm thấy công việc (Job)");
@@ -139,14 +141,19 @@ export class TaskCreationService extends TaskBaseService {
                 }
             });
 
-            const sequence = (count + 1).toString().padStart(2, '0');
+            taskSequenceNumber = count + 1;
+            const sequence = taskSequenceNumber.toString().padStart(2, '0');
             taskCode = `${contractCode}-${jobCode}-${sequence}`;
         }
         const assignerId = await this.resolveActorUserId(currentUser);
+        const taskNickname = taskSequenceNumber
+            ? buildDefaultTaskNickname(job, taskSequenceNumber)
+            : null;
 
         const task = this.taskRepository.create({
             code: taskCode,
             name: job.name,
+            nickname: taskNickname,
             project: project,
             job: job,
             status: data.isExtra ? TaskStatus.AWAITING_PRICING : TaskStatus.PENDING,

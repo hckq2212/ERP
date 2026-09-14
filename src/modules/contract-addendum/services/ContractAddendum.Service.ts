@@ -8,6 +8,7 @@ import { Tasks } from "../../task/entities/Task.entity";
 import { TaskStatus } from "../../../shared/entities/Enums";
 import { Users } from "../../user/entities/User.entity";
 import { DebtService } from "../../debt/services/Debt.Service";
+import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
 
 export class ContractAddendumService {
     private addendumRepository = AppDataSource.getRepository(ContractAddendums);
@@ -239,13 +240,15 @@ export class ContractAddendumService {
                                 }
                             });
 
-                            const seq = (totalCountForProject + 1).toString().padStart(2, "0");
+                            const sequenceNumber = totalCountForProject + 1;
+                            const seq = sequenceNumber.toString().padStart(2, "0");
                             const jobCode = job.code || `JOB${job.id}`;
                             const taskCode = `${addendum.contract.contractCode}-${jobCode}-${seq}`;
 
                             const task = taskRepository.create({
                                 code: taskCode,
                                 name: job.name,
+                                nickname: buildDefaultTaskNickname(job, sequenceNumber),
                                 project: addendum.project,
                                 job,
                                 contractService: savedContractService,

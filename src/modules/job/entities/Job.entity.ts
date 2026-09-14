@@ -15,6 +15,9 @@ export class Jobs extends BaseEntity {
     @Column()
     name: string;
 
+    @Column({ type: "varchar", length: 120, nullable: true })
+    nickname: string | null;
+
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     costPrice: number;
 

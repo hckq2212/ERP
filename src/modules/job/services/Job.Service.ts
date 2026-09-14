@@ -5,9 +5,17 @@ import { ServiceService } from "../../service/services/Service.Service";
 import { ServiceJob } from "../../service/entities/ServiceJob.entity";
 import { In, ILike, Raw } from "typeorm";
 import { SecurityService } from "../../../shared/services/Security.Service";
+import { normalizeNickname } from "../../../shared/helpers/TaskNickname.helper";
 
 export class JobService {
     private jobRepository = AppDataSource.getRepository(Jobs);
+
+    private normalizeJobPayload(data: any = {}) {
+        if (Object.prototype.hasOwnProperty.call(data, "nickname")) {
+            data.nickname = normalizeNickname(data.nickname);
+        }
+        return data;
+    }
 
     async getAll(filters: { name?: string } = {}) {
         const query: any = {
@@ -33,6 +41,7 @@ export class JobService {
 
     async create(data: any = {}) {
         const { serviceIds, vendorId, ...jobData } = data;
+        this.normalizeJobPayload(jobData);
         const normalizedCode = typeof jobData.code === "string" ? jobData.code.trim() : jobData.code;
 
         if (normalizedCode) {
@@ -70,6 +79,7 @@ export class JobService {
 
     async update(id: string, data: any = {}) {
         const { serviceIds, vendorId, ...jobData } = data;
+        this.normalizeJobPayload(jobData);
         const job = await this.getOne(id);
 
         const oldCost = job.costPrice;
