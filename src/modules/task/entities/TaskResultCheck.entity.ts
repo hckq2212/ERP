@@ -32,11 +32,17 @@ export class TaskResultChecks extends BaseEntity {
     @Column({ type: "varchar", nullable: true })
     filteredFileUrl: string | null;
 
+    @Column({ type: "varchar", nullable: true })
+    fileName: string | null;
+
     @Column({ type: "simple-json", nullable: true })
     spellErrors: { id: string; location: string; token: string }[];
 
     @Column({ type: "simple-json", nullable: true })
     qcMismatches: Record<string, any>[];
+
+    @Column({ type: "simple-json", nullable: true })
+    qcModels: { extract: string; verify: string } | null;
 
     @Column({ type: "simple-json", nullable: true })
     reviewedSpellErrors: { id: string; location: string; token: string; confirmed: boolean }[];

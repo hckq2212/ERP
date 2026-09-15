@@ -103,6 +103,7 @@ export class TaskResultCheckService extends TaskBaseService {
         await this.repository.update(recordId, {
             status: TaskResultCheckStatus.DONE,
             filteredFileUrl: uploaded.url,
+            fileName: params.fileName,
             ...checked
         });
     }
@@ -140,6 +141,7 @@ export class TaskResultCheckService extends TaskBaseService {
         actor?: Actor
     ) {
         let qcMismatches: Record<string, any>[] = [];
+        let qcModels: { extract: string; verify: string } | null = null;
         if (projectId) {
             try {
                 const qcResult = await this.qcService.run({
@@ -150,18 +152,23 @@ export class TaskResultCheckService extends TaskBaseService {
                     actor: actor as any
                 });
                 qcMismatches = qcResult?.mismatch_report?.mismatches || [];
-            } catch {
-                qcMismatches = [];
+                qcModels = qcResult?.models || null;
+            } catch (err: any) {
+                if (err?.statusCode === 400) {
+                    qcMismatches = [];
+                } else {
+                    throw new Error(err?.response?.data?.detail || err?.message || "Không thể chạy QC do lỗi máy chủ AI service");
+                }
             }
         }
 
         const reviewedQcMismatches = qcMismatches.map((m: any, idx: number) => ({
             ...m,
             id: `qc-${idx}`,
-            confirmed: true
+            confirmed: m.status !== "unresolved"
         }));
 
-        return { qcMismatches, reviewedQcMismatches };
+        return { qcMismatches, reviewedQcMismatches, qcModels };
     }
 
     private async executeChecks(
@@ -249,7 +256,7 @@ export class TaskResultCheckService extends TaskBaseService {
 
     private async runRerun(recordId: string, task: Tasks, record: TaskResultChecks, kind: "SPELL" | "QC", whitelist: string[], actor?: Actor) {
         const buffer = await fetchRemoteFile(record.filteredFileUrl as string);
-        const fileName = (task.result as any)?.name || `${task.id}.xlsx`;
+        const fileName = record.fileName || (task.result as any)?.name || `${task.id}.xlsx`;
         const sheetNames = record.sheetNames || [];
 
         const checked = kind === "SPELL"

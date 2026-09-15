@@ -57,7 +57,7 @@ export class QcController {
     run = async (req: AuthRequest, res: Response) => {
         try {
             const file = (req as any).file;
-            const { fileUrl, fileName, sheetNames, projectId } = req.body;
+            const { fileUrl, fileName, sheetNames, projectId, extractModel, verifyModel } = req.body;
 
             const sheetList = String(sheetNames || "")
                 .split(",")
@@ -80,6 +80,8 @@ export class QcController {
                 fileUrl,
                 sheetNames: sheetList,
                 projectId,
+                extractModel,
+                verifyModel,
                 actor: req.user as unknown as { id: string; userId?: string; role: string },
             });
             res.status(200).json(result);

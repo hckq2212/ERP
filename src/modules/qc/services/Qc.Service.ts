@@ -78,6 +78,8 @@ export class QcService {
         fileUrl?: string;
         sheetNames: string[];
         projectId: string;
+        extractModel?: string;
+        verifyModel?: string;
         actor?: Actor;
     }) {
         const productInfo = await this.getApprovedProductInfo(params.projectId, params.actor);
@@ -105,6 +107,8 @@ export class QcService {
             formData.append("file", new Blob([new Uint8Array(finalFileBuffer)]), finalFileName || "result");
             formData.append("sheet_name", sheetName);
             formData.append("product_info", JSON.stringify(productInfo));
+            if (params.extractModel) formData.append("extract_model", params.extractModel);
+            if (params.verifyModel) formData.append("verify_model", params.verifyModel);
 
             const res = await axios.post(`${AI_SERVICE_URL}/qc/run`, formData, {
                 timeout: REQUEST_TIMEOUT_MS,
@@ -127,6 +131,7 @@ export class QcService {
             sheets: sheetNames,
             content_blocks: contentBlocks,
             mismatch_report: { mismatches },
+            models: sheetResults[0]?.data?.models,
         };
     }
 }
