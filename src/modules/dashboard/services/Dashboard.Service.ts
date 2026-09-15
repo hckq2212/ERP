@@ -21,7 +21,7 @@ export class DashboardService {
     private opportunityRepo = AppDataSource.getRepository(Opportunities);
     private quotationRepo = AppDataSource.getRepository(Quotations);
 
-    async getDashboardData(userId: string, role: UserRole, month?: number, year?: number) {
+    async getDashboardData(userId: string, role: UserRole, month?: number, year?: number, projectId?: string) {
         const data: any = {};
         const dateFilter = this.getDateFilter(month, year);
 
@@ -34,7 +34,8 @@ export class DashboardService {
         const ledProjects = await this.projectRepo.find({
             where: {
                 team: { teamLead: { id: userId } },
-                status: Not(In([ProjectStatus.CANCELLED, ProjectStatus.COMPLETED]))
+                status: Not(In([ProjectStatus.CANCELLED, ProjectStatus.COMPLETED])),
+                ...(projectId && { id: projectId })
                 // ...(dateFilter && { createdAt: dateFilter })
             },
             relations: ["contract", "contract.services"]
@@ -51,7 +52,8 @@ export class DashboardService {
                     status: p.status,
                     serviceCount: totalServices,
                     completedServiceCount: completedServices,
-                    progress: totalServices > 0 ? Math.round((completedServices / totalServices) * 100) : 0
+                    progress: totalServices > 0 ? Math.round((completedServices / totalServices) * 100) : 0,
+                    role: "ACCOUNT"
                 };
             });
         }
@@ -114,7 +116,8 @@ export class DashboardService {
                         id: contract.project.id,
                         name: contract.project.name,
                         status: contract.project.status,
-                        customerName: contract.customer?.name
+                        customerName: contract.customer?.name,
+                        role: "BD"
                     });
                 }
             });
@@ -137,8 +140,8 @@ export class DashboardService {
         // 4. Member Data
         const myTasks = await this.taskRepo.find({
             where: [
-                { assignee: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }) },
-                { helper: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }) }
+                { assignee: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }), ...(projectId && { project: { id: projectId } }) },
+                { helper: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }), ...(projectId && { project: { id: projectId } }) }
             ],
             relations: ["project", "project.contract", "project.contract.customer", "project.contract.services", "assignee", "helper"],
             select: {
@@ -200,7 +203,7 @@ export class DashboardService {
                 { team: { teamLead: { id: userId } } },
                 { team: { members: { user: { id: userId } } } }
             ],
-            relations: ["contract", "contract.customer", "contract.services"]
+            relations: ["contract", "contract.customer", "contract.services", "team", "team.teamLead", "team.members", "team.members.user"]
         });
 
         const projectMap = new Map();
@@ -211,6 +214,16 @@ export class DashboardService {
                 const totalServices = services.length;
                 const completedServices = services.filter(s => s.status === ContractServiceStatus.COMPLETED).length;
                 
+                let userRole: string | null = null;
+                if (project.team) {
+                    if (project.team.teamLead?.id === userId) {
+                        userRole = "ACCOUNT";
+                    } else if (project.team.members?.length) {
+                        const m = project.team.members.find((mem: any) => mem.user?.id === userId);
+                        if (m) userRole = m.role;
+                    }
+                }
+
                 projectMap.set(project.id, {
                     id: project.id,
                     name: project.name,
@@ -218,7 +231,8 @@ export class DashboardService {
                     clientName: project.contract?.customer?.name,
                     serviceCount: totalServices,
                     completedServiceCount: completedServices,
-                    progress: totalServices > 0 ? Math.round((completedServices / totalServices) * 100) : 0
+                    progress: totalServices > 0 ? Math.round((completedServices / totalServices) * 100) : 0,
+                    role: userRole
                 });
             }
         };
@@ -257,6 +271,44 @@ export class DashboardService {
             return acc;
         }, {});
 
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        // 1. Task quá hạn (Chưa hoàn thành & Deadline < Hôm nay)
+        const overdueTasks = activeTasks
+            .filter(t => {
+                if (!t.plannedEndDate) return false;
+                const end = new Date(t.plannedEndDate);
+                const isUnfinished = ![TaskStatus.COMPLETED, TaskStatus.ACCEPTED, TaskStatus.INTERNAL_COMPLETED].includes(t.status as any);
+                return isUnfinished && end < startOfToday;
+            })
+            .map(t => ({
+                id: t.id,
+                name: t.name,
+                nickname: t.nickname,
+                deadline: t.plannedEndDate,
+                status: t.status,
+                projectName: t.project?.name,
+                clientName: t.project?.contract?.customer?.name,
+                code: t.code,
+                projectId: t.project?.id
+            }));
+
+        // 2. Rework Tasks (Làm sai / Bị từ chối do chưa đạt yêu cầu)
+        const reworkTasks = activeTasks
+            .filter(t => [TaskStatus.REWORKING, TaskStatus.REJECTED, TaskStatus.REJECTED_BILLABLE, TaskStatus.REJECTED_SUPPORT].includes(t.status as any))
+            .map(t => ({
+                id: t.id,
+                name: t.name,
+                nickname: t.nickname,
+                projectName: t.project?.name,
+                clientName: t.project?.contract?.customer?.name,
+                code: t.code,
+                deadline: t.plannedEndDate,
+                status: t.status,
+                projectId: t.project?.id
+            }));
+
         data.member = {
             vinicoin,
             vinicoinTotal,
@@ -264,19 +316,11 @@ export class DashboardService {
             totalTasks: activeTasks.length,
             statusCounts,
             doingCount: (statusCounts[TaskStatus.DOING] || 0) + (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),
-            reworkCount: (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),
-            reworkTasks: activeTasks
-                .filter(t => t.status === TaskStatus.REWORKING || t.status === TaskStatus.REJECTED)
-                .map(t => ({
-                    id: t.id,
-                    name: t.name,
-                    nickname: t.nickname,
-                    projectName: t.project?.name,
-                    clientName: t.project?.contract?.customer?.name,
-                    code: t.code,
-                    deadline: t.plannedEndDate
-                })),
-            completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0),
+            reworkCount: reworkTasks.length,
+            reworkTasks,
+            overdueCount: overdueTasks.length,
+            overdueTasks,
+            completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0) + (statusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
             participatingProjects,
             upcomingDeadlines: activeTasks
                 .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.INTERNAL_COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
@@ -288,7 +332,8 @@ export class DashboardService {
                     deadline: t.plannedEndDate,
                     status: t.status,
                     projectName: t.project?.name,
-                    code: t.code
+                    code: t.code,
+                    projectId: t.project?.id
                 })),
             calendarTasks: activeTasks
                 .filter(t => t.plannedStartDate || t.plannedEndDate)
@@ -300,7 +345,8 @@ export class DashboardService {
                     end: t.plannedEndDate,
                     status: t.status,
                     code: t.code,
-                    project: t.project
+                    project: t.project,
+                    projectId: t.project?.id
                 })),
             completionStats: completionStats.map((count, index) => ({
                 month: index + 1,
