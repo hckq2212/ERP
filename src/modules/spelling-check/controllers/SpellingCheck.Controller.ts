@@ -15,7 +15,8 @@ export class SpellingCheckController {
             const result = await this.service.listSheets(file.buffer, file.originalname);
             res.status(200).json(result);
         } catch (error: any) {
-            res.status(error.response?.status || 500).json({ message: error.response?.data?.detail || error.message });
+            console.error("[SpellingCheck] listSheets error:", error.response?.data || error.message || error);
+            res.status(error.response?.status || 500).json({ message: error.response?.data?.detail || error.message || "Lỗi không xác định khi kiểm tra sheet" });
         }
     };
 

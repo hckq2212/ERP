@@ -1,4 +1,5 @@
 import axios from "axios";
+import FormData from "form-data";
 
 const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || process.env.SPELLING_CHECKER_URL || "http://localhost:8000").replace(/\/$/, "");
 const MAX_FETCH_BYTES = 500 * 1024 * 1024;
@@ -34,8 +35,9 @@ async function fetchRemoteFile(fileUrl: string): Promise<Buffer> {
 export class SpellingCheckService {
     async listSheets(fileBuffer: Buffer, fileName: string) {
         const formData = new FormData();
-        formData.append("file", new Blob([new Uint8Array(fileBuffer)]), fileName);
+        formData.append("file", fileBuffer, { filename: fileName });
         const res = await axios.post(`${AI_SERVICE_URL}/check/sheets`, formData, {
+            headers: formData.getHeaders(),
             timeout: REQUEST_TIMEOUT_MS,
             maxBodyLength: MAX_FETCH_BYTES,
             maxContentLength: MAX_FETCH_BYTES,
@@ -50,12 +52,13 @@ export class SpellingCheckService {
 
     async start(fileBuffer: Buffer, fileName: string, lang: string, sheetNames?: string, whitelist?: string) {
         const formData = new FormData();
-        formData.append("file", new Blob([new Uint8Array(fileBuffer)]), fileName);
+        formData.append("file", fileBuffer, { filename: fileName });
         formData.append("lang", lang || "both");
         if (sheetNames) formData.append("sheet_names", sheetNames);
         if (whitelist) formData.append("whitelist", whitelist);
 
         const res = await axios.post(`${AI_SERVICE_URL}/check/start`, formData, {
+            headers: formData.getHeaders(),
             timeout: REQUEST_TIMEOUT_MS,
             maxBodyLength: MAX_FETCH_BYTES,
             maxContentLength: MAX_FETCH_BYTES,
