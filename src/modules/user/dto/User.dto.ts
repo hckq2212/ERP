@@ -22,6 +22,10 @@ export class CreateUserDTO {
     @IsOptional()
     phoneNumber?: string;
 
+    @IsBoolean()
+    @IsOptional()
+    isLocked?: boolean;
+
     @IsEnum(UserRole)
     @IsNotEmpty({ message: "Role không được để trống" })
     role: UserRole;
@@ -47,4 +51,8 @@ export class UpdateUserDTO {
     @IsBoolean()
     @IsOptional()
     isActive?: boolean;
+
+    @IsBoolean()
+    @IsOptional()
+    isLocked?: boolean;
 }

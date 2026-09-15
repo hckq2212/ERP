@@ -15,6 +15,9 @@ export class Users extends BaseEntity {
     @Column()
     phoneNumber: string
 
+    @Column({ default: false })
+    isLocked: boolean
+
     @OneToMany(() => Accounts, (account) => account.user)
     accounts: Accounts[]
 

@@ -14,15 +14,31 @@ export class UserService {
         return key;
     }
 
+    private async getUserForMutation(id: string) {
+        const user = await this.userRepository.findOne({
+            where: { id },
+            relations: ["accounts"]
+        });
+
+        if (!user) throw new Error("Không tìm thấy người dùng");
+        return {
+            ...(user as any),
+            account: (user as any).accounts?.[0]
+        };
+    }
+
     async getAll(filters: { role?: string } = {}) {
         return await RedisService.fetchWithCache(this.getCacheKey('users:all'), 3600, async () => {
             const users = await this.userRepository.find({
-                where: filters.role ? { accounts: { role: filters.role as any } } : undefined,
+                where: filters.role
+                    ? { isLocked: false, accounts: { role: filters.role as any } }
+                    : { isLocked: false },
                 relations: ["tasks", "accounts"],
                 select: {
                     id: true,
                     fullName: true,
                     phoneNumber: true,
+                    isLocked: true,
                     laborContract: true,
                     accounts: {
                         id: true,
@@ -49,12 +65,13 @@ export class UserService {
     async getOne(id: string) {
         const user = await RedisService.fetchWithCache(this.getCacheKey(`users:detail:${id}`), 3600, async () => {
             return await this.userRepository.findOne({
-                where: { id },
+                where: { id, isLocked: false },
                 relations: ["tasks", "accounts"],
                 select: {
                     id: true,
                     fullName: true,
                     phoneNumber: true,
+                    isLocked: true,
                     laborContract: true,
                     accounts: {
                         id: true,
@@ -82,7 +99,7 @@ export class UserService {
 
     async create(data: any) {
         validateUserData(data);
-        const { username, password, email, fullName, phoneNumber, role, userId } = data;
+        const { username, password, email, fullName, phoneNumber, role, userId, isLocked } = data;
 
         const existingAccount = await this.accountRepository.findOne({
             where: [
@@ -109,6 +126,7 @@ export class UserService {
             user.fullName = fullName;
             user.phoneNumber = phoneNumber;
         }
+        if (isLocked !== undefined) user.isLocked = isLocked;
 
         await AppDataSource.transaction(async (transactionalEntityManager) => {
             const savedUser = await transactionalEntityManager.save(user);
@@ -125,11 +143,12 @@ export class UserService {
 
     async update(id: string, data: any) {
         validateUserData(data);
-        const user = await this.getOne(id);
-        const { fullName, phoneNumber, email, role, isActive, username } = data;
+        const user = await this.getUserForMutation(id);
+        const { fullName, phoneNumber, email, role, isActive, username, isLocked } = data;
 
         if (fullName !== undefined) user.fullName = fullName;
         if (phoneNumber !== undefined) user.phoneNumber = phoneNumber;
+        if (isLocked !== undefined) user.isLocked = isLocked;
         if (data.laborContract !== undefined) user.laborContract = data.laborContract;
 
         const account = (user as any).account;
@@ -152,7 +171,7 @@ export class UserService {
     }
 
     async updateLaborContracts(id: string, laborContract: any[]) {
-        const user = await this.getOne(id);
+        const user = await this.getUserForMutation(id);
         user.laborContract = laborContract || [];
         const savedUser = await this.userRepository.save(user);
 
@@ -164,7 +183,7 @@ export class UserService {
     }
 
     async delete(id: string) {
-        const user = await this.getOne(id);
+        const user = await this.getUserForMutation(id);
 
         await AppDataSource.transaction(async (transactionalEntityManager) => {
             const account = (user as any).account;

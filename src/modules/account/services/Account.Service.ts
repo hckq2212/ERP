@@ -9,6 +9,7 @@ export class AccountService {
 
     async getAllAccounts() {
         return await this.accountRepository.find({
+            where: { isActive: true },
             relations: ["user"],
             order: { createdAt: "DESC" }
         });
