@@ -137,8 +137,8 @@ export class DashboardService {
             };
         }
 
-        // 4. Member Data
-        const myTasks = await this.taskRepo.find({
+        // 4. Personal Tasks (strictly assigned to or helped by user)
+        const rawPersonalTasks = await this.taskRepo.find({
             where: [
                 { assignee: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }), ...(projectId && { project: { id: projectId } }) },
                 { helper: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }), ...(projectId && { project: { id: projectId } }) }
@@ -172,7 +172,103 @@ export class DashboardService {
             order: { plannedEndDate: "DESC" }
         });
 
-        const activeTasks = myTasks.filter(t => !t.project || (t.project.status !== ProjectStatus.COMPLETED && t.project.status !== ProjectStatus.CANCELLED));
+        const activeTasks = rawPersonalTasks.filter(t => !t.project || (t.project.status !== ProjectStatus.COMPLETED && t.project.status !== ProjectStatus.CANCELLED));
+
+        // 5. Role-based Tasks (for MetricCardsGrid / roleStats)
+        const taskWhereConditions: any[] = [];
+        if (projectId) {
+            taskWhereConditions.push({
+                project: { id: projectId },
+                ...(dateFilter && { plannedEndDate: dateFilter })
+            });
+        } else if (role === UserRole.BOD || role === UserRole.ADMIN) {
+            taskWhereConditions.push({
+                ...(dateFilter && { plannedEndDate: dateFilter })
+            });
+        } else {
+            taskWhereConditions.push({
+                project: { team: { teamLead: { id: userId } } },
+                ...(dateFilter && { plannedEndDate: dateFilter })
+            });
+            taskWhereConditions.push({
+                project: { team: { members: { user: { id: userId } } } },
+                ...(dateFilter && { plannedEndDate: dateFilter })
+            });
+            taskWhereConditions.push({
+                assignee: { id: userId },
+                ...(dateFilter && { plannedEndDate: dateFilter })
+            });
+            taskWhereConditions.push({
+                helper: { id: userId },
+                ...(dateFilter && { plannedEndDate: dateFilter })
+            });
+        }
+
+        const rawRoleTasks = await this.taskRepo.find({
+            where: taskWhereConditions,
+            relations: ["project", "project.contract", "project.contract.customer", "project.contract.services", "assignee", "helper"],
+            select: {
+                id: true,
+                name: true,
+                nickname: true,
+                status: true,
+                code: true,
+                plannedStartDate: true,
+                plannedEndDate: true,
+                project: {
+                    id: true,
+                    name: true,
+                    status: true,
+                    contract: {
+                        id: true,
+                        customer: {
+                            id: true,
+                            name: true
+                        },
+                        services: {
+                            id: true,
+                            status: true
+                        }
+                    }
+                }
+            },
+            order: { plannedEndDate: "DESC" }
+        });
+
+        const roleTaskMap = new Map();
+        rawRoleTasks.forEach(t => {
+            if (t && t.id && !roleTaskMap.has(t.id)) roleTaskMap.set(t.id, t);
+        });
+        const activeRoleTasks = Array.from(roleTaskMap.values()).filter(t => !t.project || (t.project.status !== ProjectStatus.COMPLETED && t.project.status !== ProjectStatus.CANCELLED));
+
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+
+        // Role-based stats calculation
+        const roleStatusCounts = activeRoleTasks.reduce((acc: any, t) => {
+            acc[t.status] = (acc[t.status] || 0) + 1;
+            return acc;
+        }, {});
+
+        const roleOverdueCount = activeRoleTasks.filter(t => {
+            if (!t.plannedEndDate) return false;
+            const end = new Date(t.plannedEndDate);
+            const isUnfinished = ![TaskStatus.COMPLETED, TaskStatus.ACCEPTED, TaskStatus.INTERNAL_COMPLETED].includes(t.status as any);
+            return isUnfinished && end < startOfToday;
+        }).length;
+
+        const roleReworkCount = activeRoleTasks.filter(t =>
+            [TaskStatus.REWORKING, TaskStatus.REJECTED, TaskStatus.REJECTED_BILLABLE, TaskStatus.REJECTED_SUPPORT].includes(t.status as any)
+        ).length;
+
+        const roleStats = {
+            doingCount: (roleStatusCounts[TaskStatus.DOING] || 0) + (roleStatusCounts[TaskStatus.REWORKING] || 0) + (roleStatusCounts[TaskStatus.REJECTED] || 0),
+            completedCount: (roleStatusCounts[TaskStatus.COMPLETED] || 0) + (roleStatusCounts[TaskStatus.ACCEPTED] || 0) + (roleStatusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
+            overdueCount: roleOverdueCount,
+            reworkCount: roleReworkCount,
+            pendingCount: (roleStatusCounts[TaskStatus.AWAITING_REVIEW] || 0) + (roleStatusCounts.WAITING_APPROVAL || 0),
+            totalTasks: activeRoleTasks.length
+        };
 
         const userWithAccount = await AppDataSource.getRepository("Users").findOne({
             where: { id: userId },
@@ -271,9 +367,6 @@ export class DashboardService {
             return acc;
         }, {});
 
-        const now = new Date();
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
         // 1. Task quá hạn (Chưa hoàn thành & Deadline < Hôm nay)
         const overdueTasks = activeTasks
             .filter(t => {
@@ -322,6 +415,7 @@ export class DashboardService {
             overdueTasks,
             completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0) + (statusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
             participatingProjects,
+            roleStats,
             upcomingDeadlines: activeTasks
                 .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.INTERNAL_COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
                 .slice(0, 10)
