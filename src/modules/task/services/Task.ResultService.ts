@@ -18,6 +18,8 @@ import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { TaskResultCheckService } from "./TaskResultCheck.Service";
+import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
+import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
 
 import { TaskBaseService } from "./Task.BaseService";
 
@@ -35,6 +37,8 @@ export class TaskResultService extends TaskBaseService {
 
     async submitResult(id: string, data: SubmitResultData, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
+        await assertSubtaskPlanApproved(this.taskRepository, task, "nộp kết quả");
+        await assertSubtasksCompleted(this.taskRepository, task, "nộp kết quả");
         const currentId = await this.resolveActorUserId(currentUser);
         if (!currentId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để nộp kết quả", 401);
         const isTeamLead = this.isProjectOperatorFromTeam(task.project?.team, currentUser);
@@ -254,6 +258,7 @@ export class TaskResultService extends TaskBaseService {
             if (task.status !== TaskStatus.INTERNAL_COMPLETED) {
                 throw this.httpError(`Công việc chưa ở trạng thái Hoàn thành nội bộ (Hiện tại: ${task.status})`, 409);
             }
+            await assertSubtasksCompleted(manager.getRepository(Tasks), task, "hoàn thành");
 
             task.status = TaskStatus.COMPLETED;
             const saved = await manager.save(task);

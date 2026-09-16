@@ -1,6 +1,6 @@
 import { AppDataSource } from "../../../data-source";
 import { Tasks } from "../entities/Task.entity";
-import { TaskStatus, PerformerType, PricingStatus, ViolationType } from "../../../shared/entities/Enums";
+import { TaskStatus, PerformerType, PricingStatus, SubtaskPlanStatus, ViolationType } from "../../../shared/entities/Enums";
 import { ILike, Like, Between, IsNull, In } from "typeorm";
 import { Projects, ProjectStatus } from "../../project/entities/Project.entity";
 import { Jobs } from "../../job/entities/Job.entity";
@@ -26,6 +26,14 @@ export class TaskDeletionService extends TaskBaseService {
         if (task.subtasks?.length) {
             throw this.httpError("Không thể xóa task gốc khi vẫn còn subtask", 409);
         }
+        if (
+            task.parentTaskId &&
+            [SubtaskPlanStatus.PENDING_APPROVAL, SubtaskPlanStatus.APPROVED].includes(
+                task.parentTask?.subtaskPlanStatus as SubtaskPlanStatus
+            )
+        ) {
+            throw this.httpError("Không thể xóa subtask khi phương án đang chờ duyệt hoặc đã được duyệt", 409);
+        }
 
         await AppDataSource.transaction(async manager => {
             await manager.getRepository(Tasks).remove(task);
@@ -37,7 +45,24 @@ export class TaskDeletionService extends TaskBaseService {
                 if (remainingSubtasks === 0) {
                     await manager.getRepository(Tasks).update(
                         { id: task.parentTaskId },
-                        { isRewardable: true, vinicoinBudget: null }
+                        {
+                            isRewardable: true,
+                            vinicoinBudget: null,
+                            subtaskPlanStatus: null,
+                            subtaskPlanReviewerId: null,
+                            subtaskPlanRequesterId: null,
+                            subtaskPlanReviewNote: null
+                        }
+                    );
+                } else {
+                    await manager.getRepository(Tasks).update(
+                        { id: task.parentTaskId },
+                        {
+                            subtaskPlanStatus: SubtaskPlanStatus.DRAFT,
+                            subtaskPlanReviewerId: null,
+                            subtaskPlanRequesterId: null,
+                            subtaskPlanReviewNote: null
+                        }
                     );
                 }
             }

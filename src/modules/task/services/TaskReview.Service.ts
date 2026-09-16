@@ -11,6 +11,7 @@ import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole } from "../../account/entities/Account.entity";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
 import { TaskIterations } from "../entities/TaskIteration.entity";
+import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 
 type ReviewActor = { id?: string; userId?: string; role?: string };
 
@@ -180,6 +181,12 @@ export class TaskReviewService {
                     task: null as Tasks | null
                 };
             }
+
+            await assertSubtasksCompleted(
+                manager.getRepository(Tasks),
+                task,
+                "duyệt hoàn thành"
+            );
 
             task.status = TaskStatus.INTERNAL_COMPLETED;
             task.actualEndDate = new Date();

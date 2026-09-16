@@ -119,9 +119,33 @@ export class TaskService {
 
     createSubtask(
         id: string,
-        data: { name: string; assigneeId: string; vinicoinAllocation: number; description?: string },
+        data: { name: string; assigneeId: string; allocationPercent: number; description?: string },
         currentUser: { id: string; userId?: string; role?: string }
     ) {
         return this.delegationService.createSubtask(id, data, currentUser);
+    }
+
+    updateSubtask(
+        id: string,
+        data: { name: string; assigneeId: string; allocationPercent: number; description?: string },
+        currentUser: { id: string; userId?: string; role?: string }
+    ) {
+        return this.delegationService.updateSubtask(id, data, currentUser);
+    }
+
+    submitSubtaskPlan(
+        id: string,
+        currentUser: { id: string; userId?: string; role?: string }
+    ) {
+        return this.delegationService.submitSubtaskPlan(id, currentUser);
+    }
+
+    respondSubtaskPlan(
+        id: string,
+        action: "APPROVE" | "REJECT",
+        note: string | undefined,
+        currentUser: { id: string; userId?: string; role?: string }
+    ) {
+        return this.delegationService.respondSubtaskPlan(id, action, note, currentUser);
     }
 }

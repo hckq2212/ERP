@@ -13,8 +13,8 @@ import {
 } from "../../contract/entities/ContractService.entity";
 import { Users } from "../../user/entities/User.entity";
 import { Tasks } from "../../task/entities/Task.entity";
-import { TaskStatus, PerformerType } from "../../../shared/entities/Enums";
-import { calculateTaskReward } from "../helpers/TaskReward.helper";
+import { TaskStatus, PerformerType, SubtaskPlanStatus } from "../../../shared/entities/Enums";
+import { calculatePercentageRewards, calculateTaskReward } from "../helpers/TaskReward.helper";
 import { Projects, ProjectStatus } from "../../project/entities/Project.entity";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { VinicoinService } from "../../../shared/services/Vinicoin.Service";
@@ -55,6 +55,23 @@ export class AcceptanceService {
       throw this.httpError("Bạn không có quyền thực hiện nghiệm thu", 403);
     }
     return actor.userId;
+  }
+
+  private assertSubtaskPlansApproved(tasks: Tasks[] = []) {
+    const parentTaskIds = new Set(
+      tasks.map(task => task.parentTaskId).filter(Boolean) as string[],
+    );
+    const blockedParent = tasks.find(task =>
+      parentTaskIds.has(task.id) &&
+      task.subtaskPlanStatus &&
+      task.subtaskPlanStatus !== SubtaskPlanStatus.APPROVED
+    );
+    if (blockedParent) {
+      throw this.httpError(
+        `Phương án chia subtask của công việc ${blockedParent.nickname || blockedParent.name} chưa được PM duyệt`,
+        409,
+      );
+    }
   }
 
   private async getLockedRequest(
@@ -233,6 +250,7 @@ export class AcceptanceService {
       await manager.save(request);
 
       for (const service of request.services) {
+        this.assertSubtaskPlansApproved(service.tasks || []);
         if (service.results)
           service.results = service.results.map((result) => ({
             ...result,
@@ -460,6 +478,7 @@ export class AcceptanceService {
         const anyRejected = latestResults.some((r) => r.status === "REJECTED");
 
         if (allApproved) {
+          this.assertSubtaskPlansApproved(service.tasks || []);
           service.status = ContractServiceStatus.COMPLETED;
           service.feedback = null;
           anyApproved = true;
@@ -592,26 +611,49 @@ export class AcceptanceService {
   ) {
     if (!service.tasks) return;
 
+    const percentageRewards = new Map<string, number>();
+    const subtasksByParent = new Map<string, Tasks[]>();
+    for (const task of service.tasks) {
+      if (!task.parentTaskId) continue;
+      const group = subtasksByParent.get(task.parentTaskId) || [];
+      group.push(task);
+      subtasksByParent.set(task.parentTaskId, group);
+    }
+
+    for (const [parentTaskId, subtasks] of subtasksByParent.entries()) {
+      const parent = service.tasks.find(candidate => candidate.id === parentTaskId);
+      const percentageSubtasks = subtasks.filter(task => Number(task.allocationPercent || 0) > 0);
+      if (!parent || percentageSubtasks.length === 0) continue;
+
+      const rewards = calculatePercentageRewards(
+        Number(parent.vinicoinBudget ?? parent.job?.vinicoin ?? 0),
+        percentageSubtasks.map(task => ({
+          id: task.id,
+          allocationPercent: Number(task.allocationPercent || 0),
+        })),
+      );
+      rewards.forEach((amount, taskId) => percentageRewards.set(taskId, amount));
+    }
+
     for (const task of service.tasks) {
       const isSubtask = Boolean(task.parentTaskId);
-      const childAllocations = isSubtask
-        ? []
-        : service.tasks
-            .filter((candidate) => candidate.parentTaskId === task.id)
-            .map((candidate) => Number(candidate.vinicoinAllocation || 0));
-      const hasSubtasks = childAllocations.length > 0;
+      const childSubtasks = isSubtask ? [] : subtasksByParent.get(task.id) || [];
+      const hasSubtasks = childSubtasks.length > 0;
+      const hasPercentagePlan = childSubtasks.some(
+        child => Number(child.allocationPercent || 0) > 0,
+      );
 
-      // Older split parents were persisted with isRewardable=false. They still
-      // receive their remaining pool under the current reward policy.
       if (task.isRewardable === false && !hasSubtasks) continue;
 
       const rewardAmount = isSubtask
-        ? Number(task.vinicoinAllocation || 0)
+        ? percentageRewards.get(task.id) ?? Number(task.vinicoinAllocation || 0)
         : hasSubtasks
-          ? calculateTaskReward(
-              Number(task.vinicoinBudget ?? task.job?.vinicoin ?? 0),
-              childAllocations,
-            )
+          ? hasPercentagePlan
+            ? 0
+            : calculateTaskReward(
+                Number(task.vinicoinBudget ?? task.job?.vinicoin ?? 0),
+                childSubtasks.map(child => Number(child.vinicoinAllocation || 0)),
+              )
           : Number(task.job?.vinicoin || 0);
       if (!rewardAmount || rewardAmount <= 0) continue;
 
@@ -636,6 +678,13 @@ export class AcceptanceService {
           task.id,
           service.id,
           manager,
+        );
+      }
+      if (rewardedAccountIds.size > 0) {
+        task.rewardVinicoin = rewardAmount;
+        await manager.getRepository(Tasks).update(
+          { id: task.id },
+          { rewardVinicoin: rewardAmount },
         );
       }
     }

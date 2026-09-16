@@ -144,8 +144,8 @@ export class TaskController {
                 checkFileName
             }, user);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -370,6 +370,45 @@ export class TaskController {
                 (req as any).user
             );
             res.status(201).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    updateSubtask = async (req: Request, res: Response) => {
+        try {
+            const result = await this.taskService.updateSubtask(
+                req.params.id as string,
+                req.body,
+                (req as any).user
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    submitSubtaskPlan = async (req: Request, res: Response) => {
+        try {
+            const result = await this.taskService.submitSubtaskPlan(
+                req.params.id as string,
+                (req as any).user
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    respondSubtaskPlan = async (req: Request, res: Response) => {
+        try {
+            const result = await this.taskService.respondSubtaskPlan(
+                req.params.id as string,
+                req.body.action,
+                req.body.note,
+                (req as any).user
+            );
+            res.status(200).json(result);
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ message: error.message });
         }
