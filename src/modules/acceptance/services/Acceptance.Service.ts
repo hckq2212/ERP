@@ -14,6 +14,7 @@ import {
 import { Users } from "../../user/entities/User.entity";
 import { Tasks } from "../../task/entities/Task.entity";
 import { TaskStatus, PerformerType } from "../../../shared/entities/Enums";
+import { calculateTaskReward } from "../helpers/TaskReward.helper";
 import { Projects, ProjectStatus } from "../../project/entities/Project.entity";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { VinicoinService } from "../../../shared/services/Vinicoin.Service";
@@ -592,7 +593,26 @@ export class AcceptanceService {
     if (!service.tasks) return;
 
     for (const task of service.tasks) {
-      const rewardAmount = task.job?.vinicoin;
+      const isSubtask = Boolean(task.parentTaskId);
+      const childAllocations = isSubtask
+        ? []
+        : service.tasks
+            .filter((candidate) => candidate.parentTaskId === task.id)
+            .map((candidate) => Number(candidate.vinicoinAllocation || 0));
+      const hasSubtasks = childAllocations.length > 0;
+
+      // Older split parents were persisted with isRewardable=false. They still
+      // receive their remaining pool under the current reward policy.
+      if (task.isRewardable === false && !hasSubtasks) continue;
+
+      const rewardAmount = isSubtask
+        ? Number(task.vinicoinAllocation || 0)
+        : hasSubtasks
+          ? calculateTaskReward(
+              Number(task.vinicoinBudget ?? task.job?.vinicoin ?? 0),
+              childAllocations,
+            )
+          : Number(task.job?.vinicoin || 0);
       if (!rewardAmount || rewardAmount <= 0) continue;
 
       const rewardedAccountIds = new Set<string>();
@@ -604,7 +624,9 @@ export class AcceptanceService {
       ) {
         rewardedAccountIds.add(assigneeAccount.id);
       }
-      if (helperAccount?.id && task.performerType === PerformerType.INTERNAL) {
+      // Subtasks receive exactly their explicit allocation. Legacy unsplit tasks
+      // keep the existing helper reward behavior for backward compatibility.
+      if (!isSubtask && helperAccount?.id && task.performerType === PerformerType.INTERNAL) {
         rewardedAccountIds.add(helperAccount.id);
       }
       for (const accountId of rewardedAccountIds) {

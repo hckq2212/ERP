@@ -23,7 +23,25 @@ import { TaskBaseService } from "./Task.BaseService";
 export class TaskDeletionService extends TaskBaseService {
     async delete(id: string) {
         const task = await this.getOne(id);
-        await this.taskRepository.remove(task);
+        if (task.subtasks?.length) {
+            throw this.httpError("Không thể xóa task gốc khi vẫn còn subtask", 409);
+        }
+
+        await AppDataSource.transaction(async manager => {
+            await manager.getRepository(Tasks).remove(task);
+
+            if (task.parentTaskId) {
+                const remainingSubtasks = await manager.getRepository(Tasks).count({
+                    where: { parentTaskId: task.parentTaskId }
+                });
+                if (remainingSubtasks === 0) {
+                    await manager.getRepository(Tasks).update(
+                        { id: task.parentTaskId },
+                        { isRewardable: true, vinicoinBudget: null }
+                    );
+                }
+            }
+        });
         taskEmitter.emit(TASK_EVENTS.DELETED, { id });
         return { message: "Xóa công việc thành công" };
     }

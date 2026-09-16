@@ -29,7 +29,7 @@ export class ProjectMonthlyWorkService extends ProjectBaseService {
         const normalizedMonthKey = this.assertMonthKey(monthKey);
         const project = await this.projectRepository.findOne({
             where: { id },
-            relations: ["contract", "team", "team.teamLead"]
+            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user"]
         });
         if (!project) throw new Error("Không tìm thấy dự án");
         if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");
@@ -119,7 +119,7 @@ export class ProjectMonthlyWorkService extends ProjectBaseService {
         const monthKey = this.assertMonthKey(data.monthKey);
         const project = await this.projectRepository.findOne({
             where: { id },
-            relations: ["contract", "team", "team.teamLead"]
+            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user"]
         });
         if (!project) throw new Error("Không tìm thấy dự án");
         if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");

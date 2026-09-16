@@ -19,7 +19,7 @@ const upload = multer({
 });
 
 import { validationMiddleware } from "../../../shared/middlewares/Validation.Middleware";
-import { BulkUnassignTasksDTO, CreateTaskDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
+import { BulkUnassignTasksDTO, CreateSubtaskDTO, CreateTaskDTO, RequestTaskStaffingDTO, RespondTaskStaffingDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
 
 router.get("/", taskController.getAll);
 router.get("/:id", taskController.getOne);
@@ -43,5 +43,8 @@ router.post('/:id/assign-support-team', taskController.assignSupportTeam);
 router.patch("/:id/rework", taskController.rework);
 router.patch("/:id/customer-approve", taskController.approveByCustomer);
 router.post("/:id/remind", taskController.sendReminder);
+router.post("/:id/request-staffing", validationMiddleware(RequestTaskStaffingDTO), taskController.requestStaffing);
+router.patch("/:id/respond-staffing", validationMiddleware(RespondTaskStaffingDTO), taskController.respondStaffingRequest);
+router.post("/:id/subtasks", validationMiddleware(CreateSubtaskDTO), taskController.createSubtask);
 
 export default router;

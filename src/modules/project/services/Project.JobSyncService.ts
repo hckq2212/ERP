@@ -25,10 +25,20 @@ import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events
 import { ProjectBaseService } from "./Project.BaseService";
 
 export class ProjectJobSyncService extends ProjectBaseService {
-    async syncServiceJobs(id: string) {
+    async syncServiceJobs(id: string, actor?: { id: string; role: string; userId?: string }) {
+        const project = await this.projectRepository.findOne({
+            where: { id },
+            relations: ["team", "team.teamLead", "team.members", "team.members.user"]
+        });
+        if (!project) throw new Error("Không tìm thấy dự án");
+        if (!this.canManageMonthlyWork(project, actor)) {
+            const error: any = new Error("Bạn không có quyền đồng bộ công việc của dự án này");
+            error.statusCode = 403;
+            throw error;
+        }
+
         const result = await this.syncContractServiceJobs(id);
-        const project = await this.projectRepository.findOneBy({ id });
-        if (project) projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
+        projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
         return result;
     }
 }

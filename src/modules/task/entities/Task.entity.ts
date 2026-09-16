@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany, Index } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { Projects } from "../../project/entities/Project.entity";
 import { Jobs } from "../../job/entities/Job.entity";
@@ -26,6 +26,17 @@ export class Tasks extends BaseEntity {
 
     @ManyToOne(() => Projects, (project) => project.tasks, { nullable: true })
     project: Projects;
+
+    @Index()
+    @Column({ type: "varchar", length: 26, nullable: true })
+    parentTaskId: string | null;
+
+    @ManyToOne(() => Tasks, (task) => task.subtasks, { nullable: true, onDelete: "RESTRICT" })
+    @JoinColumn({ name: "parentTaskId" })
+    parentTask: Tasks | null;
+
+    @OneToMany(() => Tasks, (task) => task.parentTask)
+    subtasks: Tasks[];
 
     @ManyToOne(() => Jobs, (job) => job.tasks, { nullable: true })
     job: Jobs;
@@ -128,6 +139,18 @@ export class Tasks extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     cost: number;
 
+    /** Fixed reward pool captured from the job when this task is first split. */
+    @Column({ type: "decimal", precision: 15, scale: 3, nullable: true })
+    vinicoinBudget: number | null;
+
+    /** Reward assigned to this subtask from its parent task's fixed pool. */
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
+    vinicoinAllocation: number;
+
+    /** Allows reward processing. Split parent tasks receive the unallocated budget remainder. */
+    @Column({ default: true })
+    isRewardable: boolean;
+
     @ManyToOne(() => Services)
     mappedService: Services;
 
@@ -165,6 +188,9 @@ export class Tasks extends BaseEntity {
     @Column({ type: "text", nullable: true })
     supportRequestNote: string;
 
+    @Column({ type: "varchar", length: 30, nullable: true })
+    supportRequestType: "EXECUTION" | "STAFFING" | null;
+
     @Column({ type: "text", nullable: true })
     supportReturnNote: string;
 
@@ -174,4 +200,5 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => Users, { nullable: true })
     @JoinColumn({ name: "lastSubmittedById" })
     lastSubmittedBy: Users;
+
 }

@@ -20,7 +20,7 @@ export class TaskController {
 
     getOne = async (req: Request, res: Response) => {
         try {
-            const task = await this.taskService.getOne(req.params.id as string);
+            const task = await this.taskService.getOne(req.params.id as string, (req as any).user);
             res.status(200).json(task);
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ message: error.message });
@@ -95,8 +95,8 @@ export class TaskController {
                 attachments
             }, user);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -189,8 +189,8 @@ export class TaskController {
         try {
             const result = await this.taskService.delete(req.params.id as string);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -331,6 +331,45 @@ export class TaskController {
             const user = (req as any).user;
             const result = await this.taskService.sendReminder(req.params.id as string, user);
             res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    requestStaffing = async (req: Request, res: Response) => {
+        try {
+            const result = await this.taskService.requestStaffing(
+                req.params.id as string,
+                req.body.note,
+                (req as any).user
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    respondStaffingRequest = async (req: Request, res: Response) => {
+        try {
+            const result = await this.taskService.respondStaffingRequest(
+                req.params.id as string,
+                req.body.action,
+                (req as any).user
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    createSubtask = async (req: Request, res: Response) => {
+        try {
+            const result = await this.taskService.createSubtask(
+                req.params.id as string,
+                req.body,
+                (req as any).user
+            );
+            res.status(201).json(result);
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ message: error.message });
         }

@@ -1,4 +1,4 @@
-import { isProjectManagementRole, isStaffRole, UserRole } from "../../modules/account/entities/Account.entity";
+import { isManagementRole, isStaffRole, UserRole } from "../../modules/account/entities/Account.entity";
 
 type ActorInfo = { id: string, role: string, userId?: string, companyId?: string };
 
@@ -114,8 +114,20 @@ export class SecurityService {
         const { id, role } = userInfo;
 
         // Full access for internal management roles
-        if (isProjectManagementRole(role)) {
+        if (isManagementRole(role)) {
             return SecurityService.getTenantWhere(userInfo);
+        }
+
+        // PM only sees projects where they are explicitly assigned as PROJECT_MANAGER.
+        if (role === UserRole.PM) {
+            return SecurityService.withTenant({
+                team: {
+                    members: {
+                        user: { id: userInfo.userId || "__UNLINKED_PM__" },
+                        role: "PROJECT_MANAGER"
+                    }
+                }
+            }, userInfo);
         }
 
         // Business Development (BD) can see projects related to their contracts or customers
@@ -211,8 +223,22 @@ export class SecurityService {
         ];
 
         // Full access for management roles
-        if (isProjectManagementRole(role)) {
+        if (isManagementRole(role)) {
             return SecurityService.getTenantWhere(userInfo);
+        }
+
+        // PM only sees tasks that belong to projects they explicitly manage.
+        if (role === UserRole.PM) {
+            return SecurityService.withTenant({
+                project: {
+                    team: {
+                        members: {
+                            user: { id: userId || "__UNLINKED_PM__" },
+                            role: "PROJECT_MANAGER"
+                        }
+                    }
+                }
+            }, userInfo);
         }
 
         // Business Development (BD) can see tasks related to their contracts or customers

@@ -16,7 +16,7 @@ import { PerformerType } from "../../../shared/entities/Enums";
 import { NotificationService } from "../../notification/services/Notification.Service";
 
 import { SecurityService } from "../../../shared/services/Security.Service";
-import { isProjectManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
+import { isManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 // Google Sheet integration is temporarily disabled.
@@ -25,7 +25,12 @@ import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events
 import { ProjectBaseService } from "./Project.BaseService";
 
 export class ProjectAssignmentService extends ProjectBaseService {
-    async assign(data: { contractId: string, pmId: string, name?: string }) {
+    async assign(data: { contractId: string, pmId: string, name?: string }, actor?: { id: string; role: string; userId?: string }) {
+        if (!actor || !isManagementRole(actor.role)) {
+            const error: any = new Error("Chỉ ADMIN/BOD mới được phân công PM cho dự án");
+            error.statusCode = 403;
+            throw error;
+        }
         const contract = await this.contractRepository.findOne({
             where: { id: data.contractId },
             relations: ["opportunity"]

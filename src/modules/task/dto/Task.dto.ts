@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber, MaxLength, IsArray, ArrayMinSize } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDate, IsBoolean, IsNumber, MaxLength, IsArray, ArrayMinSize, IsIn, Min } from "class-validator";
 import { Type } from "class-transformer";
 import { TaskStatus, PerformerType } from "../../../shared/entities/Enums";
 
@@ -106,4 +106,35 @@ export class TaskAssignmentDTO {
     @IsString()
     @IsOptional()
     projectId?: string;
+}
+
+export class RequestTaskStaffingDTO {
+    @IsString()
+    @IsOptional()
+    @MaxLength(1000, { message: "Ghi chú không được vượt quá 1.000 ký tự" })
+    note?: string;
+}
+
+export class RespondTaskStaffingDTO {
+    @IsIn(["RESOLVE", "REJECT"])
+    action: "RESOLVE" | "REJECT";
+}
+
+export class CreateSubtaskDTO {
+    @IsString()
+    @IsNotEmpty({ message: "Tên subtask không được để trống" })
+    @MaxLength(255, { message: "Tên subtask không được vượt quá 255 ký tự" })
+    name: string;
+
+    @IsString()
+    @IsNotEmpty({ message: "Vui lòng chọn người thực hiện" })
+    assigneeId: string;
+
+    @IsNumber({}, { message: "Vinicoin phân bổ không hợp lệ" })
+    @Min(0, { message: "Vinicoin phân bổ không được âm" })
+    vinicoinAllocation: number;
+
+    @IsString()
+    @IsOptional()
+    description?: string;
 }

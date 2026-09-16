@@ -145,7 +145,7 @@ export class TaskAssignmentService extends TaskBaseService {
                 const oldCost = Number(task.cost || 0);
                 let newCost = 0;
 
-                const isSupportAssign = task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
+                const isSupportAssign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
                     (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
 
                 if (isSupportAssign) {
@@ -181,6 +181,7 @@ export class TaskAssignmentService extends TaskBaseService {
                     task.isSupportReturnRequested = false;
                     task.supportRequestNote = null as any;
                     task.supportReturnNote = null as any;
+                    task.supportRequestType = null;
 
                     if (data.performerType === PerformerType.VENDOR) {
                         const vendor = await transactionalEntityManager.findOneBy(Vendors, { id: data.assigneeId });
@@ -428,7 +429,7 @@ export class TaskAssignmentService extends TaskBaseService {
         let newPerformerName = "";
         let newRecipient: Users | null = null;
 
-        const isSupportReassign = task.isSupportRequested && task.isSupportAccepted && currentUser &&
+        const isSupportReassign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.isSupportAccepted && currentUser &&
             (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
 
         if (isSupportReassign) {
@@ -455,6 +456,7 @@ export class TaskAssignmentService extends TaskBaseService {
             task.isSupportReturnRequested = false;
             task.supportRequestNote = null as any;
             task.supportReturnNote = null as any;
+            task.supportRequestType = null;
 
             if (data.performerType === PerformerType.VENDOR) {
                 const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
