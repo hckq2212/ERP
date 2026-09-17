@@ -118,7 +118,7 @@ export class TaskBaseService {
     async getOne(id: string) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job", "job.criteria", "assignee", "quotation", "supervisor", "iterations", "lastSubmittedBy", "iterations.submittedBy"]
+            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job", "job.criteria", "assignee", "assigner", "quotation", "supervisor", "iterations", "lastSubmittedBy", "iterations.submittedBy"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");

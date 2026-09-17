@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 export function filterWorkbookSheets(buffer: Buffer, sheetNames: string[]): Buffer {
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const keep = workbook.SheetNames.filter(name => sheetNames.includes(name));
+    console.log(`[RESULT_CHECK_DEBUG] filterWorkbookSheets requested=${JSON.stringify(sheetNames)} workbookSheetNames=${JSON.stringify(workbook.SheetNames)} keep=${JSON.stringify(keep)}`);
     if (keep.length === 0) throw new Error("Không tìm thấy sheet nào khớp để lọc");
 
     const filtered = XLSX.utils.book_new();

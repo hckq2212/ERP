@@ -35,6 +35,7 @@ import { VinicoinTransactions } from "./modules/vinicoin/entities/VinicoinTransa
 import { Violations } from "./modules/task/entities/Violation.entity"
 import { RefreshSessions } from "./modules/auth/entities/RefreshSession.entity"
 import { TaskResultChecks } from "./modules/task/entities/TaskResultCheck.entity"
+import { ProjectSpellCheckWhitelists } from "./modules/spelling-whitelist/entities/ProjectSpellCheckWhitelist.entity"
 
 import { VendorJobs } from "./modules/vendor/entities/VendorJob.entity"
 import { ServiceJob } from "./modules/service/entities/ServiceJob.entity"
@@ -113,6 +114,7 @@ export const AppDataSource = new DataSource({
         Violations,
         RefreshSessions,
         TaskResultChecks,
+        ProjectSpellCheckWhitelists,
         AiProviders,
         AiModels,
         Assets,
