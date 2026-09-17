@@ -11,6 +11,11 @@ import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole } from "../../account/entities/Account.entity";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
 import { TaskIterations } from "../entities/TaskIteration.entity";
+import { VideoGenerations } from "../../video-generation/entities/VideoGeneration.entity";
+import { MotionGenerations } from "../../video-generation/entities/MotionGeneration.entity";
+import { OpportunityServiceJobs } from "../../opportunity-service/entities/OpportunityServiceJob.entity";
+import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
+import { RedisService } from "../../../shared/services/Redis.Service";
 
 type ReviewActor = { id?: string; userId?: string; role?: string };
 
@@ -142,7 +147,7 @@ export class TaskReviewService {
 
             const task = await manager.getRepository(Tasks).findOne({
                 where: { id: taskId },
-                relations: ["assignee", "contractService", "job", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
+                relations: ["assignee", "contractService", "job", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunityServiceJob", "opportunityServiceJob.opportunityService", "opportunityServiceJob.opportunityService.opportunity", "opportunityServiceJob.opportunityService.opportunity.createdBy"]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
             this.assertCanReviewTask(task, currentUser);
@@ -184,6 +189,45 @@ export class TaskReviewService {
             task.status = TaskStatus.INTERNAL_COMPLETED;
             task.actualEndDate = new Date();
             if (reviewNote) task.reviewNote = reviewNote;
+
+            if (task.opportunityServiceJobId) {
+                const currentTaskVideoCost = await this.sumSucceededGenerationCost(manager, task.id);
+                if (currentTaskVideoCost.generationCount > 0) task.cost = currentTaskVideoCost.total;
+
+                const opportunityServiceJobRepository = manager.getRepository(OpportunityServiceJobs);
+                const opportunityServiceJob = await opportunityServiceJobRepository.findOne({
+                    where: { id: task.opportunityServiceJobId },
+                    relations: ["opportunityService", "opportunityService.opportunity", "opportunityService.opportunity.createdBy"]
+                });
+
+                if (opportunityServiceJob) {
+                    const generatedCost = await this.sumSucceededGenerationCostForOpportunityJob(
+                        manager,
+                        opportunityServiceJob.id
+                    );
+                    if (generatedCost.generationCount > 0) {
+                        opportunityServiceJob.costAtSale = generatedCost.total;
+                        if (!opportunityServiceJob.isQuotationItem) {
+                            opportunityServiceJob.sellingPrice = 0;
+                        }
+                    }
+                    await opportunityServiceJobRepository.save(opportunityServiceJob);
+                    await this.recalculateOpportunityServicePrices(manager, opportunityServiceJob.opportunityServiceId);
+
+                    const businessDeveloper = opportunityServiceJob.opportunityService?.opportunity?.createdBy;
+                    if (generatedCost.generationCount > 0 && businessDeveloper) {
+                        await this.notificationService.createNotification({
+                            title: `${opportunityServiceJob.name} đã hoàn thành`,
+                            content: `PM đã xác nhận kết quả. Giá vốn từ các lần tạo video thành công là ${Number(opportunityServiceJob.costAtSale).toLocaleString("vi-VN")} VNĐ.`,
+                            type: "TASK_COMPLETED",
+                            recipient: businessDeveloper,
+                            relatedEntityId: task.id,
+                            relatedEntityType: "Task",
+                            link: `/opportunities/${opportunityServiceJob.opportunityService.opportunity.id}`
+                        }, manager);
+                    }
+                }
+            }
             await manager.save(task);
 
             if (task.isOutput && task.contractService) {
@@ -222,8 +266,76 @@ export class TaskReviewService {
         });
 
         if (outcome.task) taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, outcome.task);
+        if (outcome.task?.opportunityServiceJob?.opportunityService?.opportunity?.id) {
+            await RedisService.deleteCache(`opportunities:detail:${outcome.task.opportunityServiceJob.opportunityService.opportunity.id}*`);
+        }
         taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
         return outcome.result;
+    }
+
+    private async sumSucceededGenerationCost(manager: any, taskId: string): Promise<{ total: number; generationCount: number }> {
+        const videoResult = await manager.getRepository(VideoGenerations)
+            .createQueryBuilder("generation")
+            .select("COALESCE(SUM(CASE WHEN generation.status = 'succeeded' THEN generation.cost ELSE 0 END), 0)", "total")
+            .addSelect("COUNT(generation.id)", "count")
+            .where("generation.task_id = :taskId", { taskId })
+            .getRawOne();
+        const motionResult = await manager.getRepository(MotionGenerations)
+            .createQueryBuilder("generation")
+            .select("COALESCE(SUM(CASE WHEN generation.status = 'succeeded' THEN generation.cost ELSE 0 END), 0)", "total")
+            .addSelect("COUNT(generation.id)", "count")
+            .where("generation.task_id = :taskId", { taskId })
+            .getRawOne();
+
+        return {
+            total: Number(videoResult?.total || 0) + Number(motionResult?.total || 0),
+            generationCount: Number(videoResult?.count || 0) + Number(motionResult?.count || 0)
+        };
+    }
+
+    private async sumSucceededGenerationCostForOpportunityJob(
+        manager: any,
+        opportunityServiceJobId: string
+    ): Promise<{ total: number; generationCount: number }> {
+        const videoResult = await manager.getRepository(VideoGenerations)
+            .createQueryBuilder("generation")
+            .innerJoin(Tasks, "task", "task.id = generation.task_id")
+            .select("COALESCE(SUM(CASE WHEN generation.status = 'succeeded' THEN generation.cost ELSE 0 END), 0)", "total")
+            .addSelect("COUNT(generation.id)", "count")
+            .where("task.\"opportunityServiceJobId\" = :opportunityServiceJobId", { opportunityServiceJobId })
+            .getRawOne();
+        const motionResult = await manager.getRepository(MotionGenerations)
+            .createQueryBuilder("generation")
+            .innerJoin(Tasks, "task", "task.id = generation.task_id")
+            .select("COALESCE(SUM(CASE WHEN generation.status = 'succeeded' THEN generation.cost ELSE 0 END), 0)", "total")
+            .addSelect("COUNT(generation.id)", "count")
+            .where("task.\"opportunityServiceJobId\" = :opportunityServiceJobId", { opportunityServiceJobId })
+            .getRawOne();
+
+        return {
+            total: Number(videoResult?.total || 0) + Number(motionResult?.total || 0),
+            generationCount: Number(videoResult?.count || 0) + Number(motionResult?.count || 0)
+        };
+    }
+
+    private async recalculateOpportunityServicePrices(manager: any, opportunityServiceId: string) {
+        const jobs = await manager.getRepository(OpportunityServiceJobs).find({
+            where: { opportunityServiceId, isQuotationItem: true }
+        });
+        const opportunityService = await manager.getRepository(OpportunityServices).findOneBy({
+            id: opportunityServiceId
+        });
+        if (!opportunityService) return;
+
+        opportunityService.costAtSale = jobs.reduce(
+            (sum: number, job: OpportunityServiceJobs) => sum + Number(job.costAtSale || 0) * Number(job.quantity || 1),
+            0
+        );
+        opportunityService.sellingPrice = jobs.reduce(
+            (sum: number, job: OpportunityServiceJobs) => sum + Number(job.sellingPrice || 0) * Number(job.quantity || 1),
+            0
+        );
+        await manager.getRepository(OpportunityServices).save(opportunityService);
     }
 
     async rejectTask(taskId: string, passedCriteriaIds: string[] = [], reviewNote: string, currentUser?: ReviewActor) {

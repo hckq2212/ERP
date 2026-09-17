@@ -56,6 +56,7 @@ export class TaskQueryService extends TaskBaseService {
 
         const where: any = [];
         const projectId = filters.projectId as string | undefined;
+        const opportunityId = filters.opportunityId as string | undefined;
         const canOperateRequestedProject = projectId
             ? await this.canOperateProject(projectId, userInfo)
             : false;
@@ -104,6 +105,14 @@ export class TaskQueryService extends TaskBaseService {
             }
         }
 
+        if (opportunityId) {
+            if (Array.isArray(baseWhere)) {
+                baseWhere.forEach((w: any) => w.opportunityId = opportunityId);
+            } else {
+                baseWhere.opportunityId = opportunityId;
+            }
+        }
+
         if (projectId && !canOperateRequestedProject) {
             if (Array.isArray(baseWhere)) {
                 baseWhere.forEach((w: any) => this.applyProjectFilter(w, projectId));
@@ -136,7 +145,7 @@ export class TaskQueryService extends TaskBaseService {
 
         const [items, total] = await this.taskRepository.findAndCount({
             where: where.length > 1 ? where : where[0],
-            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job", "assignee", "supervisor", "helper"],
+            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunity", "opportunityServiceJob", "opportunityServiceJob.opportunityService", "job", "assignee", "supervisor", "helper"],
             order: { [sortBy]: sortDir },
             skip: (page - 1) * limit,
             take: limit

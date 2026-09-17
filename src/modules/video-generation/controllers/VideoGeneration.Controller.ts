@@ -17,9 +17,10 @@ export class VideoGenerationController {
             const startImageAssetId = body.startImageAssetId ? Number(body.startImageAssetId) : undefined;
             const endImageAssetId = body.endImageAssetId ? Number(body.endImageAssetId) : undefined;
 
-            if (!body.projectId) {
-                return res.status(400).json({ message: "projectId là bắt buộc" });
+            if (!body.projectId && !body.opportunityId) {
+                return res.status(400).json({ message: "projectId hoặc opportunityId là bắt buộc" });
             }
+            if (!body.taskId) return res.status(400).json({ message: "taskId là bắt buộc" });
             if (!body.modelId) {
                 return res.status(400).json({ message: "modelId là bắt buộc" });
             }
@@ -47,6 +48,7 @@ export class VideoGenerationController {
 
             const dto: CreateVideoDto = {
                 projectId: body.projectId,
+                opportunityId: body.opportunityId,
                 taskId: body.taskId,
                 modelId: body.modelId,
                 resolution: body.resolution || "720p",

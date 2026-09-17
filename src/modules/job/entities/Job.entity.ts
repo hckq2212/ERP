@@ -21,6 +21,12 @@ export class Jobs extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     costPrice: number;
 
+    @Column({ default: false })
+    isBriefVideo: boolean;
+
+    @Column({ default: true })
+    isQuotationItem: boolean;
+
     @Column({ nullable: true })
     unit: string;
 

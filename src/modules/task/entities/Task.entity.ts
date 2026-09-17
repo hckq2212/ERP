@@ -10,6 +10,8 @@ import { Services } from "../../service/entities/Service.entity";
 import { TaskIterations } from "./TaskIteration.entity";
 import { TaskStatus, PerformerType, PricingStatus } from "../../../shared/entities/Enums";
 import { Violations } from "./Violation.entity";
+import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
+import { OpportunityServiceJobs } from "../../opportunity-service/entities/OpportunityServiceJob.entity";
 
 
 @Entity()
@@ -26,6 +28,20 @@ export class Tasks extends BaseEntity {
 
     @ManyToOne(() => Projects, (project) => project.tasks, { nullable: true })
     project: Projects;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    opportunityId: string | null;
+
+    @ManyToOne(() => Opportunities, { nullable: true })
+    @JoinColumn({ name: "opportunityId" })
+    opportunity: Opportunities | null;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    opportunityServiceJobId: string | null;
+
+    @ManyToOne(() => OpportunityServiceJobs, (item) => item.tasks, { nullable: true, onDelete: "SET NULL" })
+    @JoinColumn({ name: "opportunityServiceJobId" })
+    opportunityServiceJob: OpportunityServiceJobs | null;
 
     @ManyToOne(() => Jobs, (job) => job.tasks, { nullable: true })
     job: Jobs;

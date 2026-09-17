@@ -22,6 +22,9 @@ export class Services extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     overheadCost: number;
 
+    @Column({ default: false })
+    isAI: boolean;
+
     @OneToMany(() => ServiceJob, (serviceJob) => serviceJob.service, { cascade: true })
     serviceJobs: ServiceJob[];
 
