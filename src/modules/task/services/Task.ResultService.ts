@@ -20,6 +20,9 @@ import { isProjectManagementRole, UserRole } from "../../account/entities/Accoun
 import { TaskResultCheckService } from "./TaskResultCheck.Service";
 import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
+import { TaskResultChecks } from "../entities/TaskResultCheck.entity";
+import { buildCheckSummary } from "./TaskResultCheck.Service";
+import { MemberRole } from "../../project/entities/TeamMember.entity";
 
 import { TaskBaseService } from "./Task.BaseService";
 
@@ -27,10 +30,19 @@ type SubmitResultData = {
     result: any;
     sheetNames?: string[];
     whitelist?: string[];
+    scenarioIds?: string[];
+    scenarioLabels?: string[];
     fileBuffer?: Buffer;
     checkFileUrl?: string;
     checkFileName?: string;
 };
+
+function buildSubmissionDetails(sheetNames?: string[], scenarioLabels?: string[]): string {
+    const parts: string[] = [];
+    if (sheetNames && sheetNames.length > 0) parts.push(`Sheet: ${sheetNames.join(", ")}`);
+    if (scenarioLabels && scenarioLabels.length > 0) parts.push(`Kịch bản: ${scenarioLabels.join(", ")}`);
+    return parts.length > 0 ? ` (${parts.join(". ")})` : "";
+}
 
 export class TaskResultService extends TaskBaseService {
     private resultCheckService = new TaskResultCheckService();
@@ -73,26 +85,31 @@ export class TaskResultService extends TaskBaseService {
         } else {
             // Standard review flow
             await this.reviewService.initializeReviews(task.id);
+        }
 
-            // Notify Lead/Supervisor/Assigner
-            const recipients = new Set<string>();
-            if (task.project?.team?.teamLead?.id) recipients.add(task.project.team.teamLead.id);
-            if (task.supervisor?.id) recipients.add(task.supervisor.id);
-            if (task.assigner?.id) recipients.add(task.assigner.id);
+        // Notify Lead/Supervisor/Assigner/PM (skip the submitter themself)
+        const recipients = new Set<string>();
+        if (task.project?.team?.teamLead?.id) recipients.add(task.project.team.teamLead.id);
+        if (task.supervisor?.id) recipients.add(task.supervisor.id);
+        if (task.assigner?.id) recipients.add(task.assigner.id);
+        for (const member of task.project?.team?.members || []) {
+            if (member.role === MemberRole.PROJECT_MANAGER && member.user?.id) recipients.add(member.user.id);
+        }
+        recipients.delete(currentId);
 
-            for (const recipientId of recipients) {
-                const recipient = await this.userRepository.findOneBy({ id: recipientId });
-                if (recipient) {
-                    await this.notificationService.createNotification({
-                        title: "Kết quả công việc đã nộp",
-                        content: `${task.assignee?.fullName || 'Nhân viên'} đã nộp 1 task ${task.job?.name || ''}`,
-                        type: "TASK_REVIEW",
-                        recipient: recipient,
-                        relatedEntityId: task.id.toString(),
-                        relatedEntityType: "Task",
-                        link: `/tasks/${task.id}`
-                    });
-                }
+        const submissionDetails = buildSubmissionDetails(data.sheetNames, data.scenarioLabels);
+        for (const recipientId of recipients) {
+            const recipient = await this.userRepository.findOneBy({ id: recipientId });
+            if (recipient) {
+                await this.notificationService.createNotification({
+                    title: "Kết quả công việc đã nộp",
+                    content: `${task.assignee?.fullName || 'Nhân viên'} đã nộp 1 task ${task.job?.name || ''}${submissionDetails}`,
+                    type: "TASK_REVIEW",
+                    recipient: recipient,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                });
             }
         }
 
@@ -110,6 +127,7 @@ export class TaskResultService extends TaskBaseService {
                 fileName: data.checkFileName || data.result?.name,
                 sheetNames: data.sheetNames || [],
                 whitelist: data.whitelist || [],
+                scenarioIds: data.scenarioIds || [],
                 actor: currentUser
             });
         }
@@ -148,6 +166,15 @@ export class TaskResultService extends TaskBaseService {
                 where: { taskId: task.id }
             } as any);
 
+            const resultCheckRepository = transactionalEntityManager.getRepository(TaskResultChecks);
+            const resultCheck = await resultCheckRepository.findOne({ where: { taskId: task.id } });
+            const confirmedSpellErrors = resultCheck?.finalizedAt
+                ? (resultCheck.reviewedSpellErrors || []).filter(e => e.confirmed)
+                : [];
+            const confirmedQcMismatches = resultCheck?.finalizedAt
+                ? (resultCheck.reviewedQcMismatches || []).filter(m => m.status !== "unresolved" && m.confirmed)
+                : [];
+
             const iterationRepository = transactionalEntityManager.getRepository("TaskIterations");
             const iteration = iterationRepository.create({
                 task: task,
@@ -156,7 +183,9 @@ export class TaskResultService extends TaskBaseService {
                 leadFeedback: data.feedback,
                 feedbackAttachments: data.attachments,
                 deadlineAt: data.deadlineAt,
-                submittedById: task.lastSubmittedById
+                submittedById: task.lastSubmittedById,
+                confirmedSpellErrors,
+                confirmedQcMismatches
             });
             await iterationRepository.save(iteration);
 
@@ -212,9 +241,11 @@ export class TaskResultService extends TaskBaseService {
 
             // 3. Notify Assignee
             if (task.assignee) {
+                const checkSummary = buildCheckSummary(confirmedSpellErrors, confirmedQcMismatches);
+                const feedbackContent = `Bạn có yêu cầu làm lại cho: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}). Feedback: ${data.feedback}`;
                 await this.notificationService.createNotification({
                     title: "Yêu cầu làm lại công việc",
-                    content: `Bạn có yêu cầu làm lại cho: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}). Feedback: ${data.feedback}`,
+                    content: checkSummary ? `${feedbackContent}\nLỗi đã chốt ở bản nộp trước:\n${checkSummary}` : feedbackContent,
                     type: "TASK_ASSIGNED",
                     recipient: task.assignee,
                     relatedEntityId: task.id.toString(),

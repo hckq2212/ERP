@@ -104,7 +104,7 @@ export class TaskController {
         try {
             const taskId = req.params.id as string;
             // result is now pre-uploaded and sent in body
-            const { result: bodyResult, link, sheetNames, whitelist, checkFileUrl, checkFileName } = req.body;
+            const { result: bodyResult, link, sheetNames, whitelist, scenarioIds, scenarioLabels, checkFileUrl, checkFileName } = req.body;
             let resultData: any = null;
 
             if (bodyResult && (bodyResult.type === "CHECKLIST" || bodyResult.type === "CONFIRMATION")) {
@@ -140,6 +140,8 @@ export class TaskController {
                 result: resultData,
                 sheetNames: Array.isArray(sheetNames) ? sheetNames : undefined,
                 whitelist: Array.isArray(whitelist) ? whitelist : undefined,
+                scenarioIds: Array.isArray(scenarioIds) ? scenarioIds : undefined,
+                scenarioLabels: Array.isArray(scenarioLabels) ? scenarioLabels : undefined,
                 checkFileUrl,
                 checkFileName
             }, user);
@@ -171,12 +173,22 @@ export class TaskController {
 
             const sheetNames = String(req.body.sheetNames || "").split(",").map((s: string) => s.trim()).filter(Boolean);
             const whitelist = String(req.body.whitelist || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+            const scenarioIds = String(req.body.scenarioIds || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+            let scenarioLabels: string[] = [];
+            try {
+                const parsed = JSON.parse(req.body.scenarioLabels || "[]");
+                if (Array.isArray(parsed)) scenarioLabels = parsed;
+            } catch {
+                scenarioLabels = [];
+            }
 
             const user = (req as any).user;
             const result = await this.taskService.submitResult(taskId, {
                 result: resultData,
                 sheetNames,
                 whitelist,
+                scenarioIds,
+                scenarioLabels,
                 fileBuffer
             }, user);
             res.status(200).json(result);
