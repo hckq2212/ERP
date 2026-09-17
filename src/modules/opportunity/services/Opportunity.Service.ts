@@ -652,7 +652,7 @@ export class OpportunityService {
             for (const serviceJob of service.serviceJobs || []) {
                 if (serviceJob.job?.isBriefVideo) {
                     const input: any = inputByJobId.get(String(serviceJob.job.id));
-                    if (!input?.briefVideo?.trim()) {
+                    if (input?.included === true && !input?.briefVideo?.trim()) {
                         throw new Error(`Vui lòng nhập brief cho hạng mục ${serviceJob.job.name}`);
                     }
                 }
@@ -663,13 +663,17 @@ export class OpportunityService {
     private async createOpportunityServiceJobs(
         opportunityService: OpportunityServices,
         service: Services,
-        inputJobs?: { jobId?: string; briefVideo?: string }[]
+        inputJobs?: { jobId?: string; included?: boolean; briefVideo?: string }[]
     ) {
         const inputByJobId = new Map(
             (inputJobs || []).map((item) => [String(item.jobId), item])
         );
 
-        const snapshots = (service.serviceJobs || []).map((serviceJob) => {
+        const snapshots = (service.serviceJobs || []).filter((serviceJob) => {
+            if (!serviceJob.job.isBriefVideo) return true;
+            const input = inputByJobId.get(String(serviceJob.job.id));
+            return input?.included === true;
+        }).map((serviceJob) => {
             const job = serviceJob.job;
             const input = inputByJobId.get(String(job.id));
             const briefVideo = input?.briefVideo?.trim() || null;
