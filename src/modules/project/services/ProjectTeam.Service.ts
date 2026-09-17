@@ -4,6 +4,7 @@ import { TeamMembers, MemberRole } from "../entities/TeamMember.entity";
 import { Users } from "../../user/entities/User.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { UserRole } from "../../account/entities/Account.entity";
+import { WorkloadService } from "../../../shared/services/Workload.Service";
 
 type ActorInfo = { id: string; userId?: string; role: string };
 
@@ -11,6 +12,7 @@ export class ProjectTeamService {
     private teamRepository = AppDataSource.getRepository(ProjectTeams);
     private memberRepository = AppDataSource.getRepository(TeamMembers);
     private userRepository = AppDataSource.getRepository(Users);
+    private workloadService = new WorkloadService();
 
     private httpError(message: string, statusCode: number) {
         const error: any = new Error(message);
@@ -88,13 +90,22 @@ export class ProjectTeamService {
         return team;
     }
 
-    async getMembers(teamId: string) {
+    async getMembers(teamId: string, month?: number, year?: number) {
         const team = await this.teamRepository.findOne({
             where: SecurityService.withTenant({ id: teamId }),
             relations: ["members", "members.user", "members.user.accounts"]
         });
         if (!team) throw new Error("Không tìm thấy team");
-        return team.members;
+        const userIds = (team.members || []).map(member => member.user?.id).filter(Boolean);
+        const workloads = await this.workloadService.getWorkloadsForUsers(userIds, month, year);
+
+        return (team.members || []).map(member => ({
+            ...member,
+            user: member.user ? {
+                ...member.user,
+                workload: workloads.get(member.user.id) || null
+            } : member.user
+        }));
     }
 
 

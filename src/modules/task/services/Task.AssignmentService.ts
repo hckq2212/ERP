@@ -131,6 +131,11 @@ export class TaskAssignmentService extends TaskBaseService {
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
     }, currentUser?: { id: string; userId?: string; role?: string }) {
+        const plannedEndDate = data.plannedEndDate ? new Date(data.plannedEndDate) : null;
+        if (!plannedEndDate || Number.isNaN(plannedEndDate.getTime())) {
+            throw this.httpError("Vui lòng nhập deadline", 400);
+        }
+
         const results = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const results = [];
             const contractCostUpdates = new Map<string, number>();
@@ -224,7 +229,7 @@ export class TaskAssignmentService extends TaskBaseService {
                     }
                 }
 
-                task.plannedEndDate = data.plannedEndDate;
+                task.plannedEndDate = plannedEndDate;
                 task.plannedStartDate = data.plannedStartDate;
                 if (data.description) task.description = data.description;
                 if (data.attachments) task.attachments = data.attachments;

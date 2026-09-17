@@ -11,6 +11,7 @@ import { Opportunities, OpportunityStatus } from "../../opportunity/entities/Opp
 import { UserRole } from "../../account/entities/Account.entity";
 import { Between, In, LessThanOrEqual, Not } from "typeorm";
 import { Violations } from "../../task/entities/Violation.entity";
+import { WorkloadService } from "../../../shared/services/Workload.Service";
 
 export class DashboardService {
     private contractRepo = AppDataSource.getRepository(Contracts);
@@ -20,6 +21,7 @@ export class DashboardService {
     private taskRepo = AppDataSource.getRepository(Tasks);
     private opportunityRepo = AppDataSource.getRepository(Opportunities);
     private quotationRepo = AppDataSource.getRepository(Quotations);
+    private workloadService = new WorkloadService();
 
     async getDashboardData(userId: string, role: UserRole, month?: number, year?: number, projectId?: string) {
         const data: any = {};
@@ -28,6 +30,7 @@ export class DashboardService {
         // 1. BOD/ADMIN Data
         if (role === UserRole.BOD || role === UserRole.ADMIN) {
             data.admin = await this.getAdminMetrics(dateFilter);
+            data.admin.staffWorkloads = await this.workloadService.getAllStaffWorkloads(month, year);
         }
 
         // 2. Team Lead Data
@@ -406,6 +409,7 @@ export class DashboardService {
             vinicoin,
             vinicoinTotal,
             vinicoinWithdrawn,
+            workload: await this.workloadService.getWorkloadForUser(userId, month, year),
             totalTasks: activeTasks.length,
             statusCounts,
             doingCount: (statusCounts[TaskStatus.DOING] || 0) + (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),

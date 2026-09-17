@@ -1,0 +1,130 @@
+import { In } from "typeorm";
+import { AppDataSource } from "../../data-source";
+import { Accounts, STAFF_ROLES, UserRole } from "../../modules/account/entities/Account.entity";
+import { Tasks } from "../../modules/task/entities/Task.entity";
+import { Users } from "../../modules/user/entities/User.entity";
+import { PerformerType, TaskStatus } from "../entities/Enums";
+
+export type WorkloadSummary = {
+    userId: string;
+    kpi: number;
+    pendingVinicoin: number;
+    rawRatio: number;
+    displayRatio: number;
+    percent: number;
+    displayPercent: number;
+    taskCount: number;
+};
+
+export type StaffWorkloadSummary = WorkloadSummary & {
+    fullName: string;
+    role: UserRole;
+};
+
+export class WorkloadService {
+    static readonly MONTHLY_KPI_VINICOIN = 2500;
+    static readonly MAX_DISPLAY_RATIO = 2;
+
+    private taskRepository = AppDataSource.getRepository(Tasks);
+    private userRepository = AppDataSource.getRepository(Users);
+
+    private getMonthRange(month?: number, year?: number) {
+        const now = new Date();
+        const targetYear = year || now.getFullYear();
+        const targetMonth = month || now.getMonth() + 1;
+        const start = new Date(targetYear, targetMonth - 1, 1);
+        const end = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+        return { start, end };
+    }
+
+    private buildSummary(userId: string, pendingVinicoin = 0, taskCount = 0): WorkloadSummary {
+        const rawRatio = pendingVinicoin / WorkloadService.MONTHLY_KPI_VINICOIN;
+        const displayRatio = Math.min(rawRatio, WorkloadService.MAX_DISPLAY_RATIO);
+
+        return {
+            userId,
+            kpi: WorkloadService.MONTHLY_KPI_VINICOIN,
+            pendingVinicoin,
+            rawRatio,
+            displayRatio,
+            percent: Math.round(rawRatio * 100),
+            displayPercent: Math.round(displayRatio * 100),
+            taskCount
+        };
+    }
+
+    private getStaffRole(accounts?: Accounts[]) {
+        return accounts?.find(account => STAFF_ROLES.includes(account.role))?.role;
+    }
+
+    async getWorkloadsForUsers(userIds: string[], month?: number, year?: number) {
+        const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+        const workloads = new Map<string, WorkloadSummary>();
+        if (uniqueUserIds.length === 0) return workloads;
+
+        const users = await this.userRepository.find({
+            where: {
+                id: In(uniqueUserIds),
+                isLocked: false,
+                accounts: { role: In(STAFF_ROLES) }
+            },
+            relations: ["accounts"]
+        });
+        const staffUserIds = users
+            .filter(user => this.getStaffRole(user.accounts))
+            .map(user => user.id);
+
+        staffUserIds.forEach(userId => workloads.set(userId, this.buildSummary(userId)));
+        if (staffUserIds.length === 0) return workloads;
+
+        const { start, end } = this.getMonthRange(month, year);
+        const rows = await this.taskRepository
+            .createQueryBuilder("task")
+            .leftJoin("task.job", "job")
+            .select("task.assigneeId", "userId")
+            .addSelect("COUNT(task.id)", "taskCount")
+            .addSelect("COALESCE(SUM(COALESCE(job.vinicoin, 0)), 0)", "pendingVinicoin")
+            .where("task.assigneeId IN (:...staffUserIds)", { staffUserIds })
+            .andWhere("task.plannedEndDate BETWEEN :start AND :end", { start, end })
+            .andWhere("task.performerType = :performerType", { performerType: PerformerType.INTERNAL })
+            .andWhere("task.status != :acceptedStatus", { acceptedStatus: TaskStatus.ACCEPTED })
+            .groupBy("task.assigneeId")
+            .getRawMany();
+
+        rows.forEach(row => {
+            const userId = row.userId;
+            const pendingVinicoin = Number(row.pendingVinicoin || 0);
+            const taskCount = Number(row.taskCount || 0);
+            workloads.set(userId, this.buildSummary(userId, pendingVinicoin, taskCount));
+        });
+
+        return workloads;
+    }
+
+    async getWorkloadForUser(userId: string, month?: number, year?: number) {
+        const workloads = await this.getWorkloadsForUsers([userId], month, year);
+        return workloads.get(userId) || null;
+    }
+
+    async getAllStaffWorkloads(month?: number, year?: number): Promise<StaffWorkloadSummary[]> {
+        const users = await this.userRepository.find({
+            where: {
+                isLocked: false,
+                accounts: { role: In(STAFF_ROLES) }
+            },
+            relations: ["accounts"],
+            order: { fullName: "ASC" }
+        });
+
+        const staffUsers = users
+            .map(user => ({ user, role: this.getStaffRole(user.accounts) }))
+            .filter((item): item is { user: Users; role: UserRole } => Boolean(item.role));
+        const workloads = await this.getWorkloadsForUsers(staffUsers.map(item => item.user.id), month, year);
+
+        return staffUsers.map(({ user, role }) => ({
+            fullName: user.fullName,
+            role,
+            ...(workloads.get(user.id) || this.buildSummary(user.id))
+        }));
+    }
+}
