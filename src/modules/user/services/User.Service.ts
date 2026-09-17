@@ -4,11 +4,13 @@ import { encrypt } from "../../../shared/helpers/helpers";
 import { validateUserData } from "../validations/User.Validation";
 import { AppDataSource } from "../../../data-source";
 import { RedisService } from "../../../shared/services/Redis.Service";
+import { WorkloadService } from "../../../shared/services/Workload.Service";
 
 
 export class UserService {
     private userRepository = AppDataSource.getRepository(Users);
     private accountRepository = AppDataSource.getRepository(Accounts);
+    private workloadService = new WorkloadService();
 
     private getCacheKey(key: string) {
         return key;
@@ -27,8 +29,9 @@ export class UserService {
         };
     }
 
-    async getAll(filters: { role?: string } = {}) {
-        return await RedisService.fetchWithCache(this.getCacheKey('users:all'), 3600, async () => {
+    async getAll(filters: { role?: string, month?: number, year?: number } = {}) {
+        const cacheKey = this.getCacheKey(`users:all:${filters.role || 'all'}:${filters.month || 'current'}:${filters.year || 'current'}`);
+        return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             const users = await this.userRepository.find({
                 where: filters.role
                     ? { isLocked: false, accounts: { role: filters.role as any } }
@@ -55,9 +58,11 @@ export class UserService {
                     }
                 }
             });
+            const workloads = await this.workloadService.getWorkloadsForUsers(users.map(user => user.id), filters.month, filters.year);
             return users.map((user: any) => ({
                 ...user,
-                account: user.accounts?.[0]
+                account: user.accounts?.[0],
+                workload: workloads.get(user.id) || null
             }));
         });
     }

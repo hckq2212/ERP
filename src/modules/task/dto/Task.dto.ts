@@ -92,9 +92,9 @@ export class TaskAssignmentDTO {
     plannedStartDate?: Date;
 
     @IsDate({ message: "Ngày kết thúc không hợp lệ" })
-    @IsOptional()
+    @IsNotEmpty({ message: "Vui lòng nhập deadline" })
     @Type(() => Date)
-    plannedEndDate?: Date;
+    plannedEndDate: Date;
 
     @IsString()
     @IsOptional()

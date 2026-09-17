@@ -28,7 +28,12 @@ export class ProjectTeamController {
 
     getMembers = async (req: Request, res: Response) => {
         try {
-            const members = await this.teamService.getMembers(req.params.id as string);
+            const { month, year } = req.query;
+            const members = await this.teamService.getMembers(
+                req.params.id as string,
+                month ? Number(month) : undefined,
+                year ? Number(year) : undefined
+            );
             res.status(200).json(members);
         } catch (error) {
             res.status(500).json({ message: error.message });
