@@ -13,7 +13,8 @@ import {
 } from "../../contract/entities/ContractService.entity";
 import { Users } from "../../user/entities/User.entity";
 import { Tasks } from "../../task/entities/Task.entity";
-import { TaskStatus, PerformerType } from "../../../shared/entities/Enums";
+import { TaskStatus, PerformerType, SubtaskPlanStatus } from "../../../shared/entities/Enums";
+import { calculatePercentageRewardPlan } from "../helpers/TaskReward.helper";
 import { Projects, ProjectStatus } from "../../project/entities/Project.entity";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { VinicoinService } from "../../../shared/services/Vinicoin.Service";
@@ -54,6 +55,23 @@ export class AcceptanceService {
       throw this.httpError("Bạn không có quyền thực hiện nghiệm thu", 403);
     }
     return actor.userId;
+  }
+
+  private assertSubtaskPlansApproved(tasks: Tasks[] = []) {
+    const parentTaskIds = new Set(
+      tasks.map(task => task.parentTaskId).filter(Boolean) as string[],
+    );
+    const blockedParent = tasks.find(task =>
+      parentTaskIds.has(task.id) &&
+      task.subtaskPlanStatus &&
+      task.subtaskPlanStatus !== SubtaskPlanStatus.APPROVED
+    );
+    if (blockedParent) {
+      throw this.httpError(
+        `Phương án chia subtask của công việc ${blockedParent.nickname || blockedParent.name} chưa được PM duyệt`,
+        409,
+      );
+    }
   }
 
   private async getLockedRequest(
@@ -232,6 +250,7 @@ export class AcceptanceService {
       await manager.save(request);
 
       for (const service of request.services) {
+        this.assertSubtaskPlansApproved(service.tasks || []);
         if (service.results)
           service.results = service.results.map((result) => ({
             ...result,
@@ -459,6 +478,7 @@ export class AcceptanceService {
         const anyRejected = latestResults.some((r) => r.status === "REJECTED");
 
         if (allApproved) {
+          this.assertSubtaskPlansApproved(service.tasks || []);
           service.status = ContractServiceStatus.COMPLETED;
           service.feedback = null;
           anyApproved = true;
@@ -591,8 +611,43 @@ export class AcceptanceService {
   ) {
     if (!service.tasks) return;
 
+    const percentageRewards = new Map<string, number>();
+    const parentRewards = new Map<string, number>();
+    const subtasksByParent = new Map<string, Tasks[]>();
     for (const task of service.tasks) {
-      const rewardAmount = task.job?.vinicoin;
+      if (!task.parentTaskId) continue;
+      const group = subtasksByParent.get(task.parentTaskId) || [];
+      group.push(task);
+      subtasksByParent.set(task.parentTaskId, group);
+    }
+
+    for (const [parentTaskId, subtasks] of subtasksByParent.entries()) {
+      const parent = service.tasks.find(candidate => candidate.id === parentTaskId);
+      const percentageSubtasks = subtasks.filter(task => Number(task.allocationPercent || 0) > 0);
+      if (!parent) continue;
+
+      const rewardPlan = calculatePercentageRewardPlan(
+        Number(parent.job?.vinicoin ?? 0),
+        percentageSubtasks.map(task => ({
+          id: task.id,
+          allocationPercent: Number(task.allocationPercent || 0),
+        })),
+      );
+      rewardPlan.subtaskRewards.forEach((amount, taskId) => percentageRewards.set(taskId, amount));
+      parentRewards.set(parent.id, rewardPlan.parentReward);
+    }
+
+    for (const task of service.tasks) {
+      const isSubtask = Boolean(task.parentTaskId);
+      const childSubtasks = isSubtask ? [] : subtasksByParent.get(task.id) || [];
+      const hasSubtasks = childSubtasks.length > 0;
+      if (task.isRewardable === false && !hasSubtasks) continue;
+
+      const rewardAmount = isSubtask
+        ? percentageRewards.get(task.id) ?? 0
+        : hasSubtasks
+          ? parentRewards.get(task.id) ?? 0
+          : Number(task.job?.vinicoin || 0);
       if (!rewardAmount || rewardAmount <= 0) continue;
 
       const rewardedAccountIds = new Set<string>();
@@ -604,7 +659,7 @@ export class AcceptanceService {
       ) {
         rewardedAccountIds.add(assigneeAccount.id);
       }
-      if (helperAccount?.id && task.performerType === PerformerType.INTERNAL) {
+      if (!isSubtask && !hasSubtasks && helperAccount?.id && task.performerType === PerformerType.INTERNAL) {
         rewardedAccountIds.add(helperAccount.id);
       }
       for (const accountId of rewardedAccountIds) {
@@ -614,6 +669,13 @@ export class AcceptanceService {
           task.id,
           service.id,
           manager,
+        );
+      }
+      if (rewardedAccountIds.size > 0) {
+        task.rewardVinicoin = rewardAmount;
+        await manager.getRepository(Tasks).update(
+          { id: task.id },
+          { rewardVinicoin: rewardAmount },
         );
       }
     }

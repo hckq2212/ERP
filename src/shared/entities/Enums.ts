@@ -22,6 +22,12 @@ export enum TaskStatus {
     SUPPORT_AWAITING_RETURN = "SUPPORT_AWAITING_RETURN"
 }
 
+export enum SubtaskPlanStatus {
+    DRAFT = "DRAFT",
+    PENDING_APPROVAL = "PENDING_APPROVAL",
+    APPROVED = "APPROVED"
+}
+
 export enum PricingStatus {
     PENDING = "PENDING",
     BILLABLE = "BILLABLE",

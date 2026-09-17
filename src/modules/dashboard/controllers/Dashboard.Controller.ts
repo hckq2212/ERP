@@ -14,8 +14,8 @@ export class DashboardController {
             const { userId, month, year, projectId } = req.query;
 
             const data = await this.dashboardService.getDashboardData(
-                (userId as string) || (userInfo.userId as string),
-                userInfo.role,
+                userInfo,
+                userId ? (userId as string) : undefined,
                 month ? Number(month) : undefined,
                 year ? Number(year) : undefined,
                 projectId ? (projectId as string) : undefined
@@ -23,7 +23,7 @@ export class DashboardController {
 
             res.status(200).json(data);
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 }

@@ -9,8 +9,10 @@ import { Tasks } from "../../task/entities/Task.entity";
 import { TaskStatus } from "../../../shared/entities/Enums";
 import { Opportunities, OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
 import { UserRole } from "../../account/entities/Account.entity";
-import { Between, In, LessThanOrEqual, Not } from "typeorm";
+import { Between, In } from "typeorm";
 import { Violations } from "../../task/entities/Violation.entity";
+import { DashboardScopeType, selectDashboardWorkItems } from "./Dashboard.Scope";
+import { DashboardActor, DashboardScopeService } from "./DashboardScope.Service";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
 
 export class DashboardService {
@@ -21,28 +23,47 @@ export class DashboardService {
     private taskRepo = AppDataSource.getRepository(Tasks);
     private opportunityRepo = AppDataSource.getRepository(Opportunities);
     private quotationRepo = AppDataSource.getRepository(Quotations);
+    private scopeService = new DashboardScopeService();
     private workloadService = new WorkloadService();
 
-    async getDashboardData(userId: string, role: UserRole, month?: number, year?: number, projectId?: string) {
+    async getDashboardData(
+        actor: DashboardActor,
+        requestedUserId?: string,
+        month?: number,
+        year?: number,
+        projectId?: string
+    ) {
         const data: any = {};
         const dateFilter = this.getDateFilter(month, year);
+        const scope = await this.scopeService.resolve(actor, requestedUserId, projectId);
+        const userId = scope.targetUserId;
+        const role = actor.role;
+
+        data.scope = {
+            type: scope.type,
+            targetUserId: scope.targetUserId,
+            selectedProjectId: scope.selectedProjectId,
+            canSelectMembers: scope.canSelectMembers,
+            availableProjects: scope.availableProjects,
+            availableMembers: scope.availableMembers
+        };
 
         // 1. BOD/ADMIN Data
-        if (role === UserRole.BOD || role === UserRole.ADMIN) {
-            data.admin = await this.getAdminMetrics(dateFilter);
+        if (scope.type === DashboardScopeType.SYSTEM) {
+            data.admin = await this.getAdminMetrics(dateFilter, projectId);
             data.admin.staffWorkloads = await this.workloadService.getAllStaffWorkloads(month, year);
         }
 
         // 2. Team Lead Data
-        const ledProjects = await this.projectRepo.find({
-            where: {
-                team: { teamLead: { id: userId } },
-                status: Not(In([ProjectStatus.CANCELLED, ProjectStatus.COMPLETED])),
-                ...(projectId && { id: projectId })
-                // ...(dateFilter && { createdAt: dateFilter })
-            },
-            relations: ["contract", "contract.services"]
-        });
+        const ledProjectIds = scope.type === DashboardScopeType.MANAGEMENT
+            ? (projectId ? [projectId] : scope.projectIds)
+            : [];
+        const ledProjects = ledProjectIds.length > 0
+            ? await this.projectRepo.find({
+                where: { id: In(ledProjectIds) },
+                relations: ["contract", "contract.services"]
+            })
+            : [];
 
         if (ledProjects.length > 0) {
             data.teamLead = ledProjects.map(p => {
@@ -141,11 +162,13 @@ export class DashboardService {
         }
 
         // 4. Personal Tasks (strictly assigned to or helped by user)
+        const personalTaskWhere = [
+            { assignee: { id: userId }, ...(projectId && { project: { id: projectId } }) },
+            { helper: { id: userId }, ...(projectId && { project: { id: projectId } }) }
+        ].flatMap(condition => this.withTaskPeriod(condition, dateFilter));
+
         const rawPersonalTasks = await this.taskRepo.find({
-            where: [
-                { assignee: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }), ...(projectId && { project: { id: projectId } }) },
-                { helper: { id: userId }, ...(dateFilter && { plannedEndDate: dateFilter }), ...(projectId && { project: { id: projectId } }) }
-            ],
+            where: personalTaskWhere,
             relations: ["project", "project.contract", "project.contract.customer", "project.contract.services", "assignee", "helper"],
             select: {
                 id: true,
@@ -155,6 +178,8 @@ export class DashboardService {
                 code: true,
                 plannedStartDate: true,
                 plannedEndDate: true,
+                assignee: { id: true },
+                helper: { id: true },
                 project: {
                     id: true,
                     name: true,
@@ -178,34 +203,24 @@ export class DashboardService {
         const activeTasks = rawPersonalTasks.filter(t => !t.project || (t.project.status !== ProjectStatus.COMPLETED && t.project.status !== ProjectStatus.CANCELLED));
 
         // 5. Role-based Tasks (for MetricCardsGrid / roleStats)
-        const taskWhereConditions: any[] = [];
-        if (projectId) {
-            taskWhereConditions.push({
-                project: { id: projectId },
-                ...(dateFilter && { plannedEndDate: dateFilter })
-            });
-        } else if (role === UserRole.BOD || role === UserRole.ADMIN) {
-            taskWhereConditions.push({
-                ...(dateFilter && { plannedEndDate: dateFilter })
-            });
+        const roleTaskBaseConditions: any[] = [];
+        if (scope.type === DashboardScopeType.SYSTEM) {
+            roleTaskBaseConditions.push({ ...(projectId && { project: { id: projectId } }) });
+        } else if (scope.type === DashboardScopeType.MANAGEMENT) {
+            roleTaskBaseConditions.push({ project: { id: projectId || In(scope.projectIds) } });
         } else {
-            taskWhereConditions.push({
-                project: { team: { teamLead: { id: userId } } },
-                ...(dateFilter && { plannedEndDate: dateFilter })
-            });
-            taskWhereConditions.push({
-                project: { team: { members: { user: { id: userId } } } },
-                ...(dateFilter && { plannedEndDate: dateFilter })
-            });
-            taskWhereConditions.push({
+            roleTaskBaseConditions.push({
                 assignee: { id: userId },
-                ...(dateFilter && { plannedEndDate: dateFilter })
+                ...(projectId && { project: { id: projectId } })
             });
-            taskWhereConditions.push({
+            roleTaskBaseConditions.push({
                 helper: { id: userId },
-                ...(dateFilter && { plannedEndDate: dateFilter })
+                ...(projectId && { project: { id: projectId } })
             });
         }
+        const taskWhereConditions = roleTaskBaseConditions.flatMap(condition =>
+            this.withTaskPeriod(condition, dateFilter)
+        );
 
         const rawRoleTasks = await this.taskRepo.find({
             where: taskWhereConditions,
@@ -218,6 +233,8 @@ export class DashboardService {
                 code: true,
                 plannedStartDate: true,
                 plannedEndDate: true,
+                assignee: { id: true },
+                helper: { id: true },
                 project: {
                     id: true,
                     name: true,
@@ -243,9 +260,11 @@ export class DashboardService {
             if (t && t.id && !roleTaskMap.has(t.id)) roleTaskMap.set(t.id, t);
         });
         const activeRoleTasks = Array.from(roleTaskMap.values()).filter(t => !t.project || (t.project.status !== ProjectStatus.COMPLETED && t.project.status !== ProjectStatus.CANCELLED));
-
-        const now = new Date();
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+        const workTasks = selectDashboardWorkItems(
+            scope.type,
+            activeTasks,
+            activeRoleTasks
+        );
 
         // Role-based stats calculation
         const roleStatusCounts = activeRoleTasks.reduce((acc: any, t) => {
@@ -253,12 +272,7 @@ export class DashboardService {
             return acc;
         }, {});
 
-        const roleOverdueCount = activeRoleTasks.filter(t => {
-            if (!t.plannedEndDate) return false;
-            const end = new Date(t.plannedEndDate);
-            const isUnfinished = ![TaskStatus.COMPLETED, TaskStatus.ACCEPTED, TaskStatus.INTERNAL_COMPLETED].includes(t.status as any);
-            return isUnfinished && end < startOfToday;
-        }).length;
+        const roleOverdueCount = activeRoleTasks.filter(t => t.status === TaskStatus.OVERDUE).length;
 
         const roleReworkCount = activeRoleTasks.filter(t =>
             [TaskStatus.REWORKING, TaskStatus.REJECTED, TaskStatus.REJECTED_BILLABLE, TaskStatus.REJECTED_SUPPORT].includes(t.status as any)
@@ -297,13 +311,10 @@ export class DashboardService {
         }, {});
 
         // Participating Projects
-        const teamProjects = await this.projectRepo.find({
-            where: [
-                { team: { teamLead: { id: userId } } },
-                { team: { members: { user: { id: userId } } } }
-            ],
+        const teamProjects = scope.projectIds.length > 0 ? await this.projectRepo.find({
+            where: { id: In(scope.projectIds) },
             relations: ["contract", "contract.customer", "contract.services", "team", "team.teamLead", "team.members", "team.members.user"]
-        });
+        }) : [];
 
         const projectMap = new Map();
 
@@ -346,13 +357,25 @@ export class DashboardService {
         // Chart Stats (Still using yearly context if year provided, otherwise current year)
         const chartYear = year || new Date().getFullYear();
         const completionStats = Array(12).fill(0);
+        const chartDateFilter = Between(
+            new Date(chartYear, 0, 1),
+            new Date(chartYear, 11, 31, 23, 59, 59, 999)
+        );
+        const chartWhere = scope.type === DashboardScopeType.SYSTEM
+            ? [{ actualEndDate: chartDateFilter, ...(projectId && { project: { id: projectId } }) }]
+            : scope.type === DashboardScopeType.MANAGEMENT
+                ? [{
+                    actualEndDate: chartDateFilter,
+                    project: { id: projectId || In(scope.projectIds) }
+                }]
+                : [
+                    { assignee: { id: userId }, actualEndDate: chartDateFilter, ...(projectId && { project: { id: projectId } }) },
+                    { helper: { id: userId }, actualEndDate: chartDateFilter, ...(projectId && { project: { id: projectId } }) }
+                ];
 
         // We query all tasks for the chart year to show the trend
         const allTasksForChart = await this.taskRepo.find({
-            where: [
-                { assignee: { id: userId }, plannedEndDate: Between(new Date(`${chartYear}-01-01`), new Date(`${chartYear}-12-31`)) },
-                { helper: { id: userId }, plannedEndDate: Between(new Date(`${chartYear}-01-01`), new Date(`${chartYear}-12-31`)) }
-            ],
+            where: chartWhere,
             select: { status: true, actualEndDate: true }
         });
 
@@ -365,19 +388,16 @@ export class DashboardService {
             }
         });
 
-        const statusCounts = activeTasks.reduce((acc: any, t) => {
+        const statusCounts = workTasks.reduce((acc: any, t) => {
             acc[t.status] = (acc[t.status] || 0) + 1;
             return acc;
         }, {});
 
-        // 1. Task quá hạn (Chưa hoàn thành & Deadline < Hôm nay)
-        const overdueTasks = activeTasks
-            .filter(t => {
-                if (!t.plannedEndDate) return false;
-                const end = new Date(t.plannedEndDate);
-                const isUnfinished = ![TaskStatus.COMPLETED, TaskStatus.ACCEPTED, TaskStatus.INTERNAL_COMPLETED].includes(t.status as any);
-                return isUnfinished && end < startOfToday;
-            })
+        // Dashboard cá nhân chỉ tính task chính chủ; dashboard quản lý tính toàn bộ dự án trong scope.
+        const overdueTasks = workTasks
+            .filter(t => t.status === TaskStatus.OVERDUE && (
+                scope.type !== DashboardScopeType.PERSONAL || t.assignee?.id === userId
+            ))
             .map(t => ({
                 id: t.id,
                 name: t.name,
@@ -391,7 +411,7 @@ export class DashboardService {
             }));
 
         // 2. Rework Tasks (Làm sai / Bị từ chối do chưa đạt yêu cầu)
-        const reworkTasks = activeTasks
+        const reworkTasks = workTasks
             .filter(t => [TaskStatus.REWORKING, TaskStatus.REJECTED, TaskStatus.REJECTED_BILLABLE, TaskStatus.REJECTED_SUPPORT].includes(t.status as any))
             .map(t => ({
                 id: t.id,
@@ -410,7 +430,7 @@ export class DashboardService {
             vinicoinTotal,
             vinicoinWithdrawn,
             workload: await this.workloadService.getWorkloadForUser(userId, month, year),
-            totalTasks: activeTasks.length,
+            totalTasks: workTasks.length,
             statusCounts,
             doingCount: (statusCounts[TaskStatus.DOING] || 0) + (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),
             reworkCount: reworkTasks.length,
@@ -420,8 +440,9 @@ export class DashboardService {
             completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0) + (statusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
             participatingProjects,
             roleStats,
-            upcomingDeadlines: activeTasks
+            upcomingDeadlines: workTasks
                 .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.INTERNAL_COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
+                .sort((a, b) => new Date(a.plannedEndDate).getTime() - new Date(b.plannedEndDate).getTime())
                 .slice(0, 10)
                 .map(t => ({
                     id: t.id,
@@ -433,7 +454,7 @@ export class DashboardService {
                     code: t.code,
                     projectId: t.project?.id
                 })),
-            calendarTasks: activeTasks
+            calendarTasks: workTasks
                 .filter(t => t.plannedStartDate || t.plannedEndDate)
                 .map(t => ({
                     id: t.id,
@@ -479,18 +500,37 @@ export class DashboardService {
         return Between(start, end);
     }
 
-    private async getAdminMetrics(dateFilter: any | null) {
+    private withTaskPeriod(condition: any, dateFilter: any | null) {
+        if (!dateFilter) return [condition];
+        return [
+            { ...condition, plannedEndDate: dateFilter },
+            { ...condition, actualEndDate: dateFilter }
+        ];
+    }
+
+    private async getAdminMetrics(dateFilter: any | null, projectId?: string) {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
         const [totalCustomers, newCustomers] = await Promise.all([
-            this.customerRepo.count(dateFilter ? { where: { createdAt: dateFilter } as any } : {}),
-            this.customerRepo.count({ where: { createdAt: Between(thirtyDaysAgo, new Date()) } as any })
+            this.customerRepo.count({
+                where: {
+                    ...(projectId && { contracts: { project: { id: projectId } } }),
+                    ...(dateFilter && { createdAt: dateFilter })
+                } as any
+            }),
+            this.customerRepo.count({
+                where: {
+                    ...(projectId && { contracts: { project: { id: projectId } } }),
+                    createdAt: Between(thirtyDaysAgo, new Date())
+                } as any
+            })
         ]);
 
         const signedContracts = await this.contractRepo.find({
             where: {
                 status: In([ContractStatus.SIGNED, ContractStatus.COMPLETED]),
+                ...(projectId && { project: { id: projectId } }),
                 ...(dateFilter && { createdAt: dateFilter })
             }
         });
@@ -500,38 +540,52 @@ export class DashboardService {
         const unpaidDebts = await this.debtRepo.find({
             where: {
                 status: In([DebtStatus.UNPAID, DebtStatus.PARTIAL]),
-                ...(dateFilter && { createdAt: dateFilter })
-            }
+                ...(projectId && { contract: { project: { id: projectId } } })
+            },
+            relations: ["payments"]
         });
 
-        const totalDebt = unpaidDebts.reduce((sum, d) => sum + parseFloat(d.amount as any), 0);
+        const totalDebt = unpaidDebts.reduce((sum, debt) => {
+            const paidAmount = debt.payments?.reduce(
+                (paymentSum, payment) => paymentSum + parseFloat(payment.amount as any),
+                0
+            ) || 0;
+            return sum + Math.max(0, parseFloat(debt.amount as any) - paidAmount);
+        }, 0);
 
-        const [pendingQuotations, pendingContracts] = await Promise.all([
+        const quotationWhere: any[] = [
+            {
+                status: QuotationStatus.PENDING_APPROVAL,
+                ...(projectId && { opportunity: { contracts: { project: { id: projectId } } } })
+            },
+            {
+                status: QuotationStatus.DRAFT,
+                opportunity: {
+                    status: OpportunityStatus.PENDING_QUOTE_APPROVAL,
+                    ...(projectId && { contracts: { project: { id: projectId } } })
+                }
+            }
+        ];
+        const contractWhere: any = {
+            status: ContractStatus.PROPOSAL_UPLOADED,
+            ...(projectId && { project: { id: projectId } })
+        };
+
+        const [pendingQuotations, pendingContracts, quotationApprovalCount, contractApprovalCount] = await Promise.all([
             this.quotationRepo.find({
-                where: [
-                    {
-                        status: QuotationStatus.PENDING_APPROVAL,
-                        ...(dateFilter && { createdAt: dateFilter })
-                    },
-                    {
-                        status: QuotationStatus.DRAFT,
-                        opportunity: { status: OpportunityStatus.PENDING_QUOTE_APPROVAL },
-                        ...(dateFilter && { createdAt: dateFilter })
-                    }
-                ],
+                where: quotationWhere,
                 relations: ["opportunity", "opportunity.customer", "opportunity.createdBy", "createdBy"],
                 order: { createdAt: "DESC" },
                 take: 20
             }),
             this.contractRepo.find({
-                where: {
-                    status: ContractStatus.PROPOSAL_UPLOADED,
-                    ...(dateFilter && { createdAt: dateFilter })
-                },
+                where: contractWhere,
                 relations: ["customer", "opportunity", "createdBy"],
                 order: { createdAt: "DESC" },
                 take: 20
-            })
+            }),
+            this.quotationRepo.count({ where: quotationWhere }),
+            this.contractRepo.count({ where: contractWhere })
         ]);
 
         const approvalQueue = {
@@ -565,7 +619,7 @@ export class DashboardService {
             }))
         };
 
-        const currentProjects = await this.getCurrentProjectProgress();
+        const currentProjects = await this.getCurrentProjectProgress(projectId);
 
         return {
             totalCustomers,
@@ -574,13 +628,14 @@ export class DashboardService {
             totalDebt,
             approvalQueue,
             currentProjects,
-            pendingApprovalCount: approvalQueue.quotations.length + approvalQueue.contracts.length
+            pendingApprovalCount: quotationApprovalCount + contractApprovalCount
         };
     }
 
-    private async getCurrentProjectProgress() {
+    private async getCurrentProjectProgress(projectId?: string) {
         const projects = await this.projectRepo.find({
             where: {
+                ...(projectId && { id: projectId }),
                 status: In([
                     ProjectStatus.PENDING_CONFIRMATION,
                     ProjectStatus.CONFIRMED,

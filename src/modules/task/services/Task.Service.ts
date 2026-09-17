@@ -8,6 +8,7 @@ import { TaskQueryService } from "./Task.QueryService";
 import { TaskReminderService } from "./Task.ReminderService";
 import { TaskResultService } from "./Task.ResultService";
 import { TaskSupportService } from "./Task.SupportService";
+import { TaskDelegationService } from "./Task.DelegationService";
 
 export class TaskService {
     private queryService = new TaskQueryService();
@@ -18,13 +19,14 @@ export class TaskService {
     private pricingService = new TaskPricingService();
     private deletionService = new TaskDeletionService();
     private reminderService = new TaskReminderService();
+    private delegationService = new TaskDelegationService();
 
     getAll(filters: any = {}, userInfo?: { id: string, userId?: string, role: string }) {
         return this.queryService.getAll(filters, userInfo);
     }
 
-    getOne(id: string) {
-        return this.queryService.getOne(id);
+    getOne(id: string, currentUser?: { id: string; userId?: string; role?: string }) {
+        return this.queryService.getOne(id, currentUser);
     }
 
     createInternalTask(data: Parameters<TaskCreationService["createInternalTask"]>[0], currentUser?: { id: string; userId?: string; role?: string }) {
@@ -101,5 +103,49 @@ export class TaskService {
 
     sendReminder(id: string, currentUser?: { id: string; userId?: string; role?: string }) {
         return this.reminderService.sendReminder(id, currentUser);
+    }
+
+    requestStaffing(id: string, note: string | undefined, currentUser: { id: string; userId?: string; role?: string }) {
+        return this.delegationService.requestStaffing(id, note, currentUser);
+    }
+
+    respondStaffingRequest(
+        id: string,
+        action: "RESOLVE" | "REJECT",
+        currentUser: { id: string; userId?: string; role?: string }
+    ) {
+        return this.delegationService.respondStaffingRequest(id, action, currentUser);
+    }
+
+    createSubtask(
+        id: string,
+        data: { name: string; assigneeId: string; allocationPercent: number; description?: string },
+        currentUser: { id: string; userId?: string; role?: string }
+    ) {
+        return this.delegationService.createSubtask(id, data, currentUser);
+    }
+
+    updateSubtask(
+        id: string,
+        data: { name: string; assigneeId: string; allocationPercent: number; description?: string },
+        currentUser: { id: string; userId?: string; role?: string }
+    ) {
+        return this.delegationService.updateSubtask(id, data, currentUser);
+    }
+
+    submitSubtaskPlan(
+        id: string,
+        currentUser: { id: string; userId?: string; role?: string }
+    ) {
+        return this.delegationService.submitSubtaskPlan(id, currentUser);
+    }
+
+    respondSubtaskPlan(
+        id: string,
+        action: "APPROVE" | "REJECT",
+        note: string | undefined,
+        currentUser: { id: string; userId?: string; role?: string }
+    ) {
+        return this.delegationService.respondSubtaskPlan(id, action, note, currentUser);
     }
 }

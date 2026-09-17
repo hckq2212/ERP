@@ -19,6 +19,8 @@ import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
 
 import { TaskBaseService } from "./Task.BaseService";
+import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
+import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
 
 export class TaskAssignmentService extends TaskBaseService {
     async updateNickname(
@@ -56,6 +58,21 @@ export class TaskAssignmentService extends TaskBaseService {
 
     async update(id: string, data: Partial<Tasks> & { assigneeId?: string }, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
+        await assertSubtaskPlanApproved(this.taskRepository, task, "cập nhật subtask");
+
+        const completionStatuses = [
+            TaskStatus.AWAITING_REVIEW,
+            TaskStatus.INTERNAL_COMPLETED,
+            TaskStatus.COMPLETED,
+            TaskStatus.ACCEPTED
+        ];
+        if (data.result || (data.status && completionStatuses.includes(data.status))) {
+            await assertSubtasksCompleted(
+                this.taskRepository,
+                task,
+                data.result ? "nộp kết quả" : "hoàn thành"
+            );
+        }
 
         if (data.assigneeId && (!task.assignee || task.assignee.id !== data.assigneeId)) {
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
@@ -146,11 +163,16 @@ export class TaskAssignmentService extends TaskBaseService {
                     relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job"]
                 });
                 if (!task) continue;
+                await assertSubtaskPlanApproved(
+                    transactionalEntityManager.getRepository(Tasks),
+                    task,
+                    "phân công subtask"
+                );
 
                 const oldCost = Number(task.cost || 0);
                 let newCost = 0;
 
-                const isSupportAssign = task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
+                const isSupportAssign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
                     (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
 
                 if (isSupportAssign) {
@@ -186,6 +208,7 @@ export class TaskAssignmentService extends TaskBaseService {
                     task.isSupportReturnRequested = false;
                     task.supportRequestNote = null as any;
                     task.supportReturnNote = null as any;
+                    task.supportRequestType = null;
 
                     if (data.performerType === PerformerType.VENDOR) {
                         const vendor = await transactionalEntityManager.findOneBy(Vendors, { id: data.assigneeId });
@@ -433,7 +456,7 @@ export class TaskAssignmentService extends TaskBaseService {
         let newPerformerName = "";
         let newRecipient: Users | null = null;
 
-        const isSupportReassign = task.isSupportRequested && task.isSupportAccepted && currentUser &&
+        const isSupportReassign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.isSupportAccepted && currentUser &&
             (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
 
         if (isSupportReassign) {
@@ -460,6 +483,7 @@ export class TaskAssignmentService extends TaskBaseService {
             task.isSupportReturnRequested = false;
             task.supportRequestNote = null as any;
             task.supportReturnNote = null as any;
+            task.supportRequestType = null;
 
             if (data.performerType === PerformerType.VENDOR) {
                 const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
