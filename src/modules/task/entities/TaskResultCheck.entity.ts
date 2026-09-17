@@ -26,8 +26,31 @@ export class TaskResultChecks extends BaseEntity {
     })
     status: TaskResultCheckStatus;
 
+    @Column({
+        type: "enum",
+        enum: TaskResultCheckStatus,
+        default: TaskResultCheckStatus.PENDING
+    })
+    spellStatus: TaskResultCheckStatus;
+
+    @Column({
+        type: "enum",
+        enum: TaskResultCheckStatus,
+        default: TaskResultCheckStatus.PENDING
+    })
+    qcStatus: TaskResultCheckStatus;
+
+    @Column({ type: "text", nullable: true })
+    spellErrorMessage: string | null;
+
+    @Column({ type: "text", nullable: true })
+    qcErrorMessage: string | null;
+
     @Column({ type: "simple-json", nullable: true })
     sheetNames: string[];
+
+    @Column({ type: "simple-json", nullable: true })
+    scenarioIds: string[] | null;
 
     @Column({ type: "varchar", nullable: true })
     filteredFileUrl: string | null;
@@ -36,16 +59,19 @@ export class TaskResultChecks extends BaseEntity {
     fileName: string | null;
 
     @Column({ type: "simple-json", nullable: true })
-    spellErrors: { id: string; location: string; token: string }[];
+    spellErrors: { id: string; location: string; token: string; sheetName?: string | null; scenarioLabel?: string | null; scenarioId?: string | null }[];
 
     @Column({ type: "simple-json", nullable: true })
     qcMismatches: Record<string, any>[];
 
     @Column({ type: "simple-json", nullable: true })
-    qcModels: { extract: string; verify: string } | null;
+    scannedScenarios: { id: string; sheet: string; scenarioLabel: string; startRow: number | null; endRow: number | null }[] | null;
 
     @Column({ type: "simple-json", nullable: true })
-    reviewedSpellErrors: { id: string; location: string; token: string; confirmed: boolean }[];
+    qcModels: { verify: string } | null;
+
+    @Column({ type: "simple-json", nullable: true })
+    reviewedSpellErrors: { id: string; location: string; token: string; sheetName?: string | null; scenarioLabel?: string | null; scenarioId?: string | null; confirmed: boolean }[];
 
     @Column({ type: "simple-json", nullable: true })
     reviewedQcMismatches: (Record<string, any> & { id: string; confirmed: boolean })[];

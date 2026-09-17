@@ -48,12 +48,13 @@ export class SpellingCheckService {
         return this.listSheets(buffer, fileName);
     }
 
-    async start(fileBuffer: Buffer, fileName: string, lang: string, sheetNames?: string, whitelist?: string) {
+    async start(fileBuffer: Buffer, fileName: string, lang: string, sheetNames?: string, whitelist?: string, scenarioIds?: string) {
         const formData = new FormData();
         formData.append("file", new Blob([new Uint8Array(fileBuffer)]), fileName);
         formData.append("lang", lang || "both");
         if (sheetNames) formData.append("sheet_names", sheetNames);
         if (whitelist) formData.append("whitelist", whitelist);
+        if (scenarioIds) formData.append("scenario_ids", scenarioIds);
 
         const res = await axios.post(`${AI_SERVICE_URL}/check/start`, formData, {
             timeout: REQUEST_TIMEOUT_MS,
@@ -63,9 +64,9 @@ export class SpellingCheckService {
         return res.data;
     }
 
-    async startFromUrl(fileUrl: string, fileName: string, lang: string, sheetNames?: string, whitelist?: string) {
+    async startFromUrl(fileUrl: string, fileName: string, lang: string, sheetNames?: string, whitelist?: string, scenarioIds?: string) {
         const buffer = await fetchRemoteFile(fileUrl);
-        return this.start(buffer, fileName, lang, sheetNames, whitelist);
+        return this.start(buffer, fileName, lang, sheetNames, whitelist, scenarioIds);
     }
 
     async getStatus(jobId: string) {

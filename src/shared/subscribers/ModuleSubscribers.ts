@@ -4,6 +4,7 @@ import { taskEmitter, TASK_EVENTS } from "../../modules/task/events/TaskEmitter"
 import { contractEmitter, CONTRACT_EVENTS } from "../../modules/contract/events/ContractEmitter";
 import { projectEmitter, PROJECT_EVENTS } from "../../modules/project/events/ProjectEmitter";
 import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../../modules/task/events/TaskReviewEmitter";
+import { taskResultCheckEmitter, TASK_RESULT_CHECK_EVENTS } from "../../modules/task/events/TaskResultCheckEmitter";
 import { notificationEmitter, NOTIFICATION_EVENTS } from "../../modules/notification/events/NotificationEmitter";
 
 const emitModuleEvent = (event: string, payload: any) => {
@@ -113,6 +114,12 @@ export const initModuleSubscribers = () => {
     taskReviewEmitter.on(TASK_REVIEW_EVENTS.UPDATED, (data) => {
         // console.log(`[EVENT] Task Review Updated for Task: ${data.taskId}`);
         emitModuleEvent(TASK_REVIEW_EVENTS.UPDATED, data);
+    });
+
+    // --- TASK RESULT CHECK EVENTS ---
+    taskResultCheckEmitter.on(TASK_RESULT_CHECK_EVENTS.UPDATED, (data) => {
+        // console.log(`[EVENT] Task Result Check Updated for Task: ${data.taskId}`);
+        emitModuleEvent(TASK_RESULT_CHECK_EVENTS.UPDATED, data);
     });
 
     // console.log("All Module Subscribers Initialized (Global SSE Broadcast Active)");

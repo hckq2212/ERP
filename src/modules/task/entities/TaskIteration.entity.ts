@@ -34,4 +34,10 @@ export class TaskIterations extends BaseEntity {
     @ManyToOne(() => Users, { nullable: true })
     @JoinColumn({ name: "submittedById" })
     submittedBy: Users;
+
+    @Column({ type: "json", nullable: true })
+    confirmedSpellErrors: { id: string; location: string; token: string; sheetName?: string | null; scenarioLabel?: string | null }[];
+
+    @Column({ type: "json", nullable: true })
+    confirmedQcMismatches: Record<string, any>[];
 }

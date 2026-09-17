@@ -11,33 +11,27 @@ import {
 } from "../entities/ProjectProductDescriptionSubmission.entity";
 import {
     ProjectProductDescriptionItems,
-    ProjectProductDescriptionSourceType
+    ProjectProductDescriptionSpec
 } from "../entities/ProjectProductDescriptionItem.entity";
 
 type Actor = { id: string; userId?: string; role: string; username?: string };
 
+type ProductDescriptionSpecInput = {
+    key?: string;
+    value?: string;
+};
+
 type ProductDescriptionItemInput = {
     id?: string | null;
     productName?: string;
-    sourceType?: ProjectProductDescriptionSourceType | "FILE" | "LINK";
-    sourceName?: string;
-    sourceUrl?: string;
-    size?: number;
-    publicId?: string;
+    specs?: ProductDescriptionSpecInput[];
+    note?: string;
+    docUrl?: string;
 };
 
 type ProductDescriptionPayload = {
     items?: ProductDescriptionItemInput[];
     reviewNote?: string;
-};
-
-const PRODUCT_DESCRIPTION_ALLOWED_EXTENSIONS = ["pdf", "docx", "xlsx"];
-const PRODUCT_DESCRIPTION_MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-const getFileExtension = (fileName = "") => {
-    const cleanName = fileName.split("?")[0].split("#")[0];
-    const parts = cleanName.split(".");
-    return parts.length > 1 ? parts.pop()?.toLowerCase() || "" : "";
 };
 
 export class ProjectProductDescriptionService {
@@ -121,40 +115,28 @@ export class ProjectProductDescriptionService {
 
         return rawItems.map((item, index) => {
             const productName = item.productName?.trim();
-            const sourceType = item.sourceType;
-            const sourceUrl = item.sourceUrl?.trim();
-            const sourceName = item.sourceName?.trim() || sourceUrl;
 
             if (!productName) {
                 throw this.httpError(`Vui lòng nhập tên sản phẩm ở dòng ${index + 1}`, 400);
             }
-            if (sourceType !== ProjectProductDescriptionSourceType.FILE && sourceType !== ProjectProductDescriptionSourceType.LINK) {
-                throw this.httpError(`Vui lòng chọn file hoặc link cho sản phẩm ${productName}`, 400);
+
+            const specs: ProjectProductDescriptionSpec[] = (Array.isArray(item.specs) ? item.specs : [])
+                .map((spec) => ({ key: spec.key?.trim() || "", value: spec.value?.trim() || "" }))
+                .filter((spec) => spec.key && spec.value);
+
+            if (specs.length === 0) {
+                throw this.httpError(`Vui lòng nhập ít nhất một thông tin chuẩn (key:value) cho sản phẩm ${productName}`, 400);
             }
-            if (!sourceUrl) {
-                throw this.httpError(`Vui lòng cung cấp file hoặc link cho sản phẩm ${productName}`, 400);
-            }
-            if (!sourceName) {
-                throw this.httpError(`Vui lòng cung cấp tên tài liệu cho sản phẩm ${productName}`, 400);
-            }
-            if (sourceType === ProjectProductDescriptionSourceType.FILE) {
-                const extension = getFileExtension(sourceName) || getFileExtension(sourceUrl);
-                if (!PRODUCT_DESCRIPTION_ALLOWED_EXTENSIONS.includes(extension)) {
-                    throw this.httpError(`File mô tả sản phẩm ${productName} chỉ được dùng định dạng .pdf, .docx hoặc .xlsx`, 400);
-                }
-                if (typeof item.size === "number" && item.size >= PRODUCT_DESCRIPTION_MAX_FILE_SIZE) {
-                    throw this.httpError(`Dung lượng file mô tả sản phẩm ${productName} phải dưới 10MB`, 400);
-                }
-            }
+
+            const note = item.note?.trim() || null;
+            const docUrl = item.docUrl?.trim() || null;
 
             return {
                 id: item.id || null,
                 productName,
-                sourceType: sourceType as ProjectProductDescriptionSourceType,
-                sourceName,
-                sourceUrl,
-                size: item.size,
-                publicId: item.publicId
+                specs,
+                note,
+                docUrl
             };
         });
     }
@@ -189,15 +171,13 @@ export class ProjectProductDescriptionService {
                 keptIds.add(item.id);
                 await this.itemRepository.query(
                     `UPDATE "project_product_description_items"
-                     SET "productName" = $1, "sourceType" = $2, "sourceName" = $3, "sourceUrl" = $4, "size" = $5, "publicId" = $6, "updatedAt" = NOW()
-                     WHERE "id" = $7 AND "submissionId" = $8`,
+                     SET "productName" = $1, "specs" = $2, "note" = $3, "docUrl" = $4, "updatedAt" = NOW()
+                     WHERE "id" = $5 AND "submissionId" = $6`,
                     [
                         item.productName,
-                        item.sourceType,
-                        item.sourceName,
-                        item.sourceUrl,
-                        item.size || null,
-                        item.publicId || null,
+                        JSON.stringify(item.specs),
+                        item.note,
+                        item.docUrl,
                         item.id,
                         submissionId
                     ]
@@ -209,16 +189,14 @@ export class ProjectProductDescriptionService {
             keptIds.add(newId);
             await this.itemRepository.query(
                 `INSERT INTO "project_product_description_items"
-                    ("id", "productName", "sourceType", "sourceName", "sourceUrl", "size", "publicId", "submissionId")
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    ("id", "productName", "specs", "note", "docUrl", "submissionId")
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
                 [
                     newId,
                     item.productName,
-                    item.sourceType,
-                    item.sourceName,
-                    item.sourceUrl,
-                    item.size || null,
-                    item.publicId || null,
+                    JSON.stringify(item.specs),
+                    item.note,
+                    item.docUrl,
                     submissionId
                 ]
             );

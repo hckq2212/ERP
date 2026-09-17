@@ -57,7 +57,7 @@ export class QcController {
     run = async (req: AuthRequest, res: Response) => {
         try {
             const file = (req as any).file;
-            const { fileUrl, fileName, sheetNames, projectId, extractModel, verifyModel } = req.body;
+            const { fileUrl, fileName, sheetNames, projectId, extractModel, verifyModel, scenarioIds } = req.body;
 
             const sheetList = String(sheetNames || "")
                 .split(",")
@@ -74,6 +74,10 @@ export class QcController {
                 return res.status(400).json({ message: "Cần cung cấp file hoặc url" });
             }
 
+            const scenarioIdList = scenarioIds
+                ? String(scenarioIds).split(",").map((s: string) => s.trim()).filter(Boolean)
+                : undefined;
+
             const result = await this.service.run({
                 fileBuffer: file?.buffer,
                 fileName: file?.originalname || fileName,
@@ -82,6 +86,7 @@ export class QcController {
                 projectId,
                 extractModel,
                 verifyModel,
+                scenarioIds: scenarioIdList,
                 actor: req.user as unknown as { id: string; userId?: string; role: string },
             });
             res.status(200).json(result);

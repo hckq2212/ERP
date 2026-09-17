@@ -42,8 +42,8 @@ export class SpellingCheckController {
             if (!ALLOWED_EXTENSIONS.includes(ext)) {
                 return res.status(400).json({ message: `Định dạng ${ext} chưa được hỗ trợ kiểm tra chính tả` });
             }
-            const { lang, sheetNames, whitelist } = req.body;
-            const result = await this.service.start(file.buffer, file.originalname, lang, sheetNames, whitelist);
+            const { lang, sheetNames, whitelist, scenarioIds } = req.body;
+            const result = await this.service.start(file.buffer, file.originalname, lang, sheetNames, whitelist, scenarioIds);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(error.response?.status || 500).json({ message: error.response?.data?.detail || error.message });
@@ -52,7 +52,7 @@ export class SpellingCheckController {
 
     startFromUrl = async (req: Request, res: Response) => {
         try {
-            const { fileUrl, fileName, lang, sheetNames, whitelist } = req.body;
+            const { fileUrl, fileName, lang, sheetNames, whitelist, scenarioIds } = req.body;
             if (!fileUrl || !fileName) {
                 return res.status(400).json({ message: "Thiếu fileUrl hoặc fileName" });
             }
@@ -60,7 +60,7 @@ export class SpellingCheckController {
             if (!ALLOWED_EXTENSIONS.includes(ext)) {
                 return res.status(400).json({ message: `Định dạng ${ext} chưa được hỗ trợ kiểm tra chính tả` });
             }
-            const result = await this.service.startFromUrl(fileUrl, fileName, lang, sheetNames, whitelist);
+            const result = await this.service.startFromUrl(fileUrl, fileName, lang, sheetNames, whitelist, scenarioIds);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(error.statusCode || error.response?.status || 500).json({ message: error.response?.data?.detail || error.message });

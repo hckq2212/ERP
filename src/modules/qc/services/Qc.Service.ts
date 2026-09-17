@@ -62,13 +62,15 @@ export class QcService {
         const approved = submissions.find((submission) => submission.status === ProjectProductDescriptionStatus.APPROVED);
 
         if (!approved) {
+            console.log(`[QC_DEBUG] projectId=${projectId} chua co product description duoc duyet -> QC se bi bo qua (0 mismatch, khong bao loi)`);
             throw httpError("Dự án chưa có thông tin chuẩn sản phẩm được duyệt, không thể chạy QC", 400);
         }
 
         return approved.items.map((item) => ({
             productName: item.productName,
-            sourceName: item.sourceName,
-            sourceUrl: item.sourceUrl,
+            specs: item.specs,
+            note: item.note,
+            docUrl: item.docUrl,
         }));
     }
 
@@ -80,6 +82,7 @@ export class QcService {
         projectId: string;
         extractModel?: string;
         verifyModel?: string;
+        scenarioIds?: string[];
         actor?: Actor;
     }) {
         const productInfo = await this.getApprovedProductInfo(params.projectId, params.actor);
@@ -103,18 +106,32 @@ export class QcService {
         const finalFileName = fileName;
 
         const sheetResults = await Promise.all(sheetNames.map(async (sheetName) => {
+            const sheetScenarioIds = params.scenarioIds
+                ? params.scenarioIds.filter((sid) => sid.startsWith(`${sheetName}::`))
+                : null;
+            if (params.scenarioIds && sheetScenarioIds!.length === 0) {
+                console.log(`[QC_DEBUG] sheet=${sheetName} khong co scenarioId nao khop trong danh sach da chon (${JSON.stringify(params.scenarioIds)}) -> bo qua sheet nay, tra ve rong`);
+                return { sheetName, data: { content_blocks: [], mismatch_report: { mismatches: [] }, models: null } };
+            }
+
             const formData = new FormData();
             formData.append("file", new Blob([new Uint8Array(finalFileBuffer)]), finalFileName || "result");
             formData.append("sheet_name", sheetName);
             formData.append("product_info", JSON.stringify(productInfo));
-            if (params.extractModel) formData.append("extract_model", params.extractModel);
             if (params.verifyModel) formData.append("verify_model", params.verifyModel);
+            if (sheetScenarioIds) formData.append("scenario_ids", sheetScenarioIds.join(","));
 
-            const res = await axios.post(`${AI_SERVICE_URL}/qc/run`, formData, {
-                timeout: REQUEST_TIMEOUT_MS,
-                maxBodyLength: MAX_FETCH_BYTES,
-                maxContentLength: MAX_FETCH_BYTES,
-            });
+            let res;
+            try {
+                res = await axios.post(`${AI_SERVICE_URL}/qc/run`, formData, {
+                    timeout: REQUEST_TIMEOUT_MS,
+                    maxBodyLength: MAX_FETCH_BYTES,
+                    maxContentLength: MAX_FETCH_BYTES,
+                });
+            } catch (err: any) {
+                console.log(`[QC_DEBUG] /qc/run that bai sheet=${sheetName} status=${err?.response?.status} detail=${JSON.stringify(err?.response?.data)} message=${err?.message}`);
+                throw err;
+            }
             return { sheetName, data: res.data };
         }));
 

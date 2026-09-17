@@ -2,10 +2,10 @@ import { Column, Entity, JoinColumn, ManyToOne } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { ProjectProductDescriptionSubmissions } from "./ProjectProductDescriptionSubmission.entity";
 
-export enum ProjectProductDescriptionSourceType {
-    FILE = "FILE",
-    LINK = "LINK"
-}
+export type ProjectProductDescriptionSpec = {
+    key: string;
+    value: string;
+};
 
 @Entity()
 export class ProjectProductDescriptionItems extends BaseEntity {
@@ -14,24 +14,16 @@ export class ProjectProductDescriptionItems extends BaseEntity {
     submission: ProjectProductDescriptionSubmissions;
 
     submissionId: string;
+
     @Column()
     productName: string;
 
-    @Column({
-        type: "enum",
-        enum: ProjectProductDescriptionSourceType
-    })
-    sourceType: ProjectProductDescriptionSourceType;
+    @Column({ type: "simple-json" })
+    specs: ProjectProductDescriptionSpec[];
 
-    @Column()
-    sourceName: string;
+    @Column({ type: "text", nullable: true })
+    note: string | null;
 
-    @Column()
-    sourceUrl: string;
-
-    @Column({ type: "int", nullable: true })
-    size: number;
-
-    @Column({ nullable: true })
-    publicId: string;
+    @Column({ type: "varchar", nullable: true })
+    docUrl: string | null;
 }
