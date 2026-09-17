@@ -16,7 +16,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { ContractServices, ContractServiceStatus } from "../../contract/entities/ContractService.entity";
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
-import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { isManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
 
 import { TaskBaseService } from "./Task.BaseService";
@@ -31,7 +31,7 @@ export class TaskQueryService extends TaskBaseService {
 
     private async canOperateProject(projectId: string, userInfo?: { id: string, userId?: string, role: string }) {
         if (!userInfo) return false;
-        if (isProjectManagementRole(userInfo.role)) return true;
+        if (isManagementRole(userInfo.role)) return true;
 
         const userId = userInfo.userId || userInfo.id;
         const project = await this.projectRepository.findOne({
@@ -40,12 +40,7 @@ export class TaskQueryService extends TaskBaseService {
         });
 
         if (!project?.team || !userId) return false;
-        if (project.team.teamLead?.id === userId) return true;
-
-        return project.team.members?.some(member =>
-            member.user?.id === userId &&
-            [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].includes(member.role)
-        ) || false;
+        return this.isProjectOperatorFromTeam(project.team, userInfo);
     }
 
     async getAll(filters: any = {}, userInfo?: { id: string, userId?: string, role: string }) {

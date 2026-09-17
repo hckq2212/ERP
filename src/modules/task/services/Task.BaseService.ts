@@ -16,7 +16,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { ContractServices, ContractServiceStatus } from "../../contract/entities/ContractService.entity";
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
-import { Accounts, isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { Accounts, isManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { ProjectTeams } from "../../project/entities/ProjectTeam.entity";
 import { TeamMembers, MemberRole } from "../../project/entities/TeamMember.entity";
 
@@ -71,6 +71,12 @@ export class TaskBaseService {
         const actorUserId = this.getActorUserId(actor);
         if (!actorUserId || !team) return false;
 
+        if (actor?.role === UserRole.PM) {
+            return team.members?.some(member =>
+                member.user?.id === actorUserId && member.role === MemberRole.PROJECT_MANAGER
+            ) || false;
+        }
+
         if (team.teamLead?.id === actorUserId) return true;
 
         return team.members?.some(member =>
@@ -81,7 +87,7 @@ export class TaskBaseService {
 
     protected async isProjectOperator(projectId: string | undefined, actor?: TaskActor, manager?: any) {
         if (!projectId) return false;
-        if (isProjectManagementRole(actor?.role)) return true;
+        if (isManagementRole(actor?.role)) return true;
 
         const actorUserId = this.getActorUserId(actor);
         if (!actorUserId) return false;
@@ -115,13 +121,34 @@ export class TaskBaseService {
     }
 
 
-    async getOne(id: string) {
+    async getOne(id: string, actor?: TaskActor) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job", "job.criteria", "assignee", "assigner", "quotation", "supervisor", "iterations", "lastSubmittedBy", "iterations.submittedBy"]
+            relations: [
+                "project",
+                "project.team",
+                "project.team.teamLead",
+                "project.team.members",
+                "project.team.members.user",
+                "job",
+                "job.criteria",
+                "assignee",
+                "helper",
+                "quotation",
+                "supervisor",
+                "iterations",
+                "lastSubmittedBy",
+                "iterations.submittedBy",
+                "parentTask",
+                "subtasks",
+                "subtasks.assignee"
+            ]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
+        if (actor?.role === UserRole.PM && !this.isProjectOperatorFromTeam(task.project?.team, actor)) {
+            throw this.httpError("Bạn không có quyền xem công việc ngoài dự án được phân công", 403);
+        }
         return task;
     }
 }

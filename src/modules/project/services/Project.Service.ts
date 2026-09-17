@@ -22,24 +22,24 @@ export class ProjectService {
         return this.queryService.getOne(id, userInfo);
     }
 
-    getByContractId(contractId: string) {
-        return this.queryService.getByContractId(contractId);
+    getByContractId(contractId: string, userInfo?: { id: string, role: string, userId?: string }) {
+        return this.queryService.getByContractId(contractId, userInfo);
     }
 
     getMyProjects(userInfo: { id: string, role: string, userId?: string }) {
         return this.queryService.getMyProjects(userInfo);
     }
 
-    assign(data: { contractId: string, pmId: string, name?: string }) {
-        return this.assignmentService.assign(data);
+    assign(data: { contractId: string, pmId: string, name?: string }, actor?: { id: string, role: string, userId?: string }) {
+        return this.assignmentService.assign(data, actor);
     }
 
     createFromContract(contract: Contracts, userInfo?: { id: string, userId?: string }) {
         return this.assignmentService.createFromContract(contract, userInfo);
     }
 
-    syncServiceJobs(id: string) {
-        return this.jobSyncService.syncServiceJobs(id);
+    syncServiceJobs(id: string, actor?: { id: string, role: string, userId?: string }) {
+        return this.jobSyncService.syncServiceJobs(id, actor);
     }
 
     getMonthlyWorkTemplate(id: string, monthKey?: string, userInfo?: { id: string, role: string, userId?: string }) {

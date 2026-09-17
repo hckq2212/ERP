@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany, Index } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { Projects } from "../../project/entities/Project.entity";
 import { Jobs } from "../../job/entities/Job.entity";
@@ -8,7 +8,7 @@ import { Vendors } from "../../vendor/entities/Vendor.entity";
 import { TaskReviews } from "./TaskReview.entity";
 import { Services } from "../../service/entities/Service.entity";
 import { TaskIterations } from "./TaskIteration.entity";
-import { TaskStatus, PerformerType, PricingStatus } from "../../../shared/entities/Enums";
+import { TaskStatus, PerformerType, PricingStatus, SubtaskPlanStatus } from "../../../shared/entities/Enums";
 import { Violations } from "./Violation.entity";
 
 
@@ -26,6 +26,17 @@ export class Tasks extends BaseEntity {
 
     @ManyToOne(() => Projects, (project) => project.tasks, { nullable: true })
     project: Projects;
+
+    @Index()
+    @Column({ type: "varchar", length: 26, nullable: true })
+    parentTaskId: string | null;
+
+    @ManyToOne(() => Tasks, (task) => task.subtasks, { nullable: true, onDelete: "RESTRICT" })
+    @JoinColumn({ name: "parentTaskId" })
+    parentTask: Tasks | null;
+
+    @OneToMany(() => Tasks, (task) => task.parentTask)
+    subtasks: Tasks[];
 
     @ManyToOne(() => Jobs, (job) => job.tasks, { nullable: true })
     job: Jobs;
@@ -128,6 +139,31 @@ export class Tasks extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     cost: number;
 
+    /** Contribution share of a subtask in its parent task. */
+    @Column({ type: "decimal", precision: 5, scale: 2, default: 0 })
+    allocationPercent: number;
+
+    /** Actual reward settled when acceptance succeeds; null before settlement. */
+    @Column({ type: "decimal", precision: 15, scale: 3, nullable: true })
+    rewardVinicoin: number | null;
+
+    /** Approval state of the complete subtask allocation plan (parent tasks only). */
+    @Column({ type: "varchar", length: 30, nullable: true })
+    subtaskPlanStatus: SubtaskPlanStatus | null;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    subtaskPlanReviewerId: string | null;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    subtaskPlanRequesterId: string | null;
+
+    @Column({ type: "text", nullable: true })
+    subtaskPlanReviewNote: string | null;
+
+    /** Allows reward processing. Split parent tasks receive the unallocated budget remainder. */
+    @Column({ default: true })
+    isRewardable: boolean;
+
     @ManyToOne(() => Services)
     mappedService: Services;
 
@@ -165,6 +201,9 @@ export class Tasks extends BaseEntity {
     @Column({ type: "text", nullable: true })
     supportRequestNote: string;
 
+    @Column({ type: "varchar", length: 30, nullable: true })
+    supportRequestType: "EXECUTION" | "STAFFING" | null;
+
     @Column({ type: "text", nullable: true })
     supportReturnNote: string;
 
@@ -174,4 +213,5 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => Users, { nullable: true })
     @JoinColumn({ name: "lastSubmittedById" })
     lastSubmittedBy: Users;
+
 }

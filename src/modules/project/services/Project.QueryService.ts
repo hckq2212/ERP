@@ -113,13 +113,26 @@ export class ProjectQueryService extends ProjectBaseService {
         };
     }
 
-    async getByContractId(contractId: string) {
+    async getByContractId(contractId: string, userInfo?: { id: string, role: string, userId?: string }) {
+        const rbacWhere = userInfo ? SecurityService.getProjectFilters(userInfo) : {};
+        const where = Array.isArray(rbacWhere)
+            ? rbacWhere.map(condition => ({
+                ...condition,
+                contract: { ...(condition.contract || {}), id: contractId }
+            }))
+            : { ...rbacWhere, contract: { ...(rbacWhere.contract || {}), id: contractId } };
         const project = await this.projectRepository.findOne({
-            where: { contract: { id: contractId } },
+            where,
             relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user", "team.members.user.accounts", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation"]
         });
 
-        if (!project) throw new Error("Không tìm thấy dự án liên kết với hợp đồng này");
+        if (!project) {
+            if (userInfo?.role === UserRole.PM) {
+                const exists = await this.projectRepository.exist({ where: { contract: { id: contractId } } });
+                if (exists) throw new Error("FORBIDDEN_ACCESS");
+            }
+            throw new Error("Không tìm thấy dự án liên kết với hợp đồng này");
+        }
         return project;
     }
 

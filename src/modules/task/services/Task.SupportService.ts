@@ -25,6 +25,7 @@ export class TaskSupportService extends TaskBaseService {
         const task = await this.getOne(id);
         task.isSupportRequested = true;
         task.supportRequestNote = note;
+        task.supportRequestType = "EXECUTION";
         task.status = TaskStatus.AWAITING_SUPPORT;
 
         const savedTask = await this.taskRepository.save(task);
@@ -64,6 +65,7 @@ export class TaskSupportService extends TaskBaseService {
         task.supportLeadId = team.teamLead.id;
         task.isSupportRequested = true;
         task.isSupportAccepted = false;
+        task.supportRequestType = "EXECUTION";
         task.status = TaskStatus.SUPPORT_PENDING;
 
         const savedTask = await this.taskRepository.save(task);
@@ -112,6 +114,7 @@ export class TaskSupportService extends TaskBaseService {
             task.supportLeadId = null as any;
             task.isSupportRequested = true; // Still needs support
             task.isSupportAccepted = false;
+            task.supportRequestType = "EXECUTION";
             task.status = TaskStatus.AWAITING_SUPPORT; // Back to original lead to pick another team
 
             // Notify original lead
@@ -146,6 +149,7 @@ export class TaskSupportService extends TaskBaseService {
         task.helperId = null as any;
         task.isSupportRequested = true; // Still needs support
         task.isSupportAccepted = false;
+        task.supportRequestType = "EXECUTION";
         task.isSupportReturnRequested = false; // Reset flag
         task.status = TaskStatus.AWAITING_SUPPORT;
 

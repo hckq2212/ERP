@@ -17,7 +17,7 @@ import { NotificationService } from "../../notification/services/Notification.Se
 import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
 
 import { SecurityService } from "../../../shared/services/Security.Service";
-import { isProjectManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
+import { isManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 // Google Sheet integration is temporarily disabled.
@@ -50,8 +50,14 @@ export class ProjectBaseService {
 
     protected canManageMonthlyWork(project: Projects, userInfo?: { id: string, role: string, userId?: string }) {
         if (!userInfo) return false;
-        if (isProjectManagementRole(userInfo.role)) return true;
-        return project.team?.teamLead?.id === (userInfo.userId || userInfo.id);
+        if (isManagementRole(userInfo.role)) return true;
+        const actorUserId = userInfo.userId || userInfo.id;
+        if (userInfo.role === UserRole.PM) {
+            return project.team?.members?.some(member =>
+                member.user?.id === actorUserId && member.role === MemberRole.PROJECT_MANAGER
+            ) || false;
+        }
+        return project.team?.teamLead?.id === actorUserId;
     }
 
     protected mapContractServiceToMonthlyItem(cs: ContractServices) {
@@ -293,7 +299,13 @@ export class ProjectBaseService {
             }
         });
 
-        if (!project) throw new Error("Không tìm thấy dự án");
+        if (!project) {
+            if (userInfo?.role === UserRole.PM) {
+                const exists = await this.projectRepository.exist({ where: { id } });
+                if (exists) throw new Error("FORBIDDEN_ACCESS");
+            }
+            throw new Error("Không tìm thấy dự án");
+        }
 
         // Tải các task riêng biệt để tránh tình trạng Cartesian product làm chậm câu truy vấn
         project.tasks = await this.taskRepository.find({
