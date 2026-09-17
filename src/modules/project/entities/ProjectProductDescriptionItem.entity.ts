@@ -2,9 +2,18 @@ import { Column, Entity, JoinColumn, ManyToOne } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { ProjectProductDescriptionSubmissions } from "./ProjectProductDescriptionSubmission.entity";
 
+export type ProjectProductDescriptionSpecType = "text" | "number" | "percent" | "currency" | "date" | "url";
+
+export type ProjectProductDescriptionSubKey = {
+    key: string;
+    value: string;
+};
+
 export type ProjectProductDescriptionSpec = {
     key: string;
     value: string;
+    type?: ProjectProductDescriptionSpecType;
+    subKeys?: ProjectProductDescriptionSubKey[];
 };
 
 @Entity()

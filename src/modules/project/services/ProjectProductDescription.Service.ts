@@ -11,14 +11,24 @@ import {
 } from "../entities/ProjectProductDescriptionSubmission.entity";
 import {
     ProjectProductDescriptionItems,
-    ProjectProductDescriptionSpec
+    ProjectProductDescriptionSpec,
+    ProjectProductDescriptionSpecType
 } from "../entities/ProjectProductDescriptionItem.entity";
 
 type Actor = { id: string; userId?: string; role: string; username?: string };
 
+const VALID_SPEC_TYPES: ProjectProductDescriptionSpecType[] = ["text", "number", "percent", "currency", "date", "url"];
+
+type ProductDescriptionSubKeyInput = {
+    key?: string;
+    value?: string;
+};
+
 type ProductDescriptionSpecInput = {
     key?: string;
     value?: string;
+    type?: string;
+    subKeys?: ProductDescriptionSubKeyInput[];
 };
 
 type ProductDescriptionItemInput = {
@@ -121,8 +131,22 @@ export class ProjectProductDescriptionService {
             }
 
             const specs: ProjectProductDescriptionSpec[] = (Array.isArray(item.specs) ? item.specs : [])
-                .map((spec) => ({ key: spec.key?.trim() || "", value: spec.value?.trim() || "" }))
-                .filter((spec) => spec.key && spec.value);
+                .map((spec) => {
+                    const key = spec.key?.trim() || "";
+                    const type = VALID_SPEC_TYPES.includes(spec.type as ProjectProductDescriptionSpecType)
+                        ? (spec.type as ProjectProductDescriptionSpecType)
+                        : "text";
+                    const subKeys = (Array.isArray(spec.subKeys) ? spec.subKeys : [])
+                        .map((sk) => ({ key: sk.key?.trim() || "", value: sk.value?.trim() || "" }))
+                        .filter((sk) => sk.key && sk.value);
+                    const value = spec.value?.trim() || "";
+
+                    if (type === "text" && subKeys.length > 0) {
+                        return { key, value: "", type, subKeys };
+                    }
+                    return { key, value, type };
+                })
+                .filter((spec) => spec.key && (spec.value || (spec.subKeys && spec.subKeys.length > 0)));
 
             if (specs.length === 0) {
                 throw this.httpError(`Vui lòng nhập ít nhất một thông tin chuẩn (key:value) cho sản phẩm ${productName}`, 400);

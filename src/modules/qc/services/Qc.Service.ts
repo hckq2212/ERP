@@ -38,6 +38,23 @@ async function fetchRemoteFile(fileUrl: string): Promise<Buffer> {
     return Buffer.from(fileRes.data);
 }
 
+function flattenSpecValue(spec: any): string {
+    if (Array.isArray(spec?.subKeys) && spec.subKeys.length > 0) {
+        return spec.subKeys.map((sk: any) => `${sk.key}: ${sk.value}`).join("; ");
+    }
+    return spec?.value || "";
+}
+
+function toAiProductInfo(productInfo: any[]) {
+    return productInfo.map((item) => ({
+        ...item,
+        specs: (item.specs || []).map((spec: any) => ({
+            key: spec.key,
+            value: flattenSpecValue(spec)
+        }))
+    }));
+}
+
 export class QcService {
     private productDescriptionService = new ProjectProductDescriptionService();
 
@@ -86,6 +103,7 @@ export class QcService {
         actor?: Actor;
     }) {
         const productInfo = await this.getApprovedProductInfo(params.projectId, params.actor);
+        const aiProductInfo = toAiProductInfo(productInfo);
 
         let fileBuffer = params.fileBuffer;
         let fileName = params.fileName;
@@ -117,7 +135,7 @@ export class QcService {
             const formData = new FormData();
             formData.append("file", new Blob([new Uint8Array(finalFileBuffer)]), finalFileName || "result");
             formData.append("sheet_name", sheetName);
-            formData.append("product_info", JSON.stringify(productInfo));
+            formData.append("product_info", JSON.stringify(aiProductInfo));
             if (params.verifyModel) formData.append("verify_model", params.verifyModel);
             if (sheetScenarioIds) formData.append("scenario_ids", sheetScenarioIds.join(","));
 
