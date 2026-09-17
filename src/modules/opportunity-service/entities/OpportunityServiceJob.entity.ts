@@ -40,9 +40,6 @@ export class OpportunityServiceJobs extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     costAtSale: number;
 
-    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
-    sellingPrice: number;
-
     @Column({ default: false })
     isBriefVideo: boolean;
 

@@ -197,7 +197,11 @@ export class TaskCreationService extends TaskBaseService {
             opportunityServiceJob,
             opportunityServiceJobId: opportunityServiceJob?.id || null,
             job: job,
-            status: data.isExtra ? TaskStatus.AWAITING_PRICING : TaskStatus.PENDING,
+            status: data.isExtra
+                ? TaskStatus.AWAITING_PRICING
+                : data.assigneeId
+                    ? TaskStatus.DOING
+                    : TaskStatus.PENDING,
             performerType: data.performerType || job.defaultPerformerType,
             description: data.description,
             plannedStartDate: data.plannedStartDate,

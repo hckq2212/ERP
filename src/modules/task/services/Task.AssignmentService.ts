@@ -138,12 +138,13 @@ export class TaskAssignmentService extends TaskBaseService {
             for (const id of taskIds) {
                 const task = await transactionalEntityManager.findOne(Tasks, {
                     where: { id },
-                    relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job"]
+                    relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunity", "opportunityServiceJob", "job"]
                 });
                 if (!task) continue;
 
                 const oldCost = Number(task.cost || 0);
                 let newCost = 0;
+                const isVideoDemoTask = Boolean(task.opportunityServiceJob?.isBriefVideo);
 
                 const isSupportAssign = task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
                     (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
@@ -182,6 +183,10 @@ export class TaskAssignmentService extends TaskBaseService {
                     task.supportRequestNote = null as any;
                     task.supportReturnNote = null as any;
 
+                    if (isVideoDemoTask && data.performerType === PerformerType.VENDOR) {
+                        throw this.httpError("Video AI demo chỉ được phân công cho nhân viên nội bộ", 400);
+                    }
+
                     if (data.performerType === PerformerType.VENDOR) {
                         const vendor = await transactionalEntityManager.findOneBy(Vendors, { id: data.assigneeId });
                         if (!vendor) throw new Error("Vendor không tồn tại");
@@ -201,8 +206,14 @@ export class TaskAssignmentService extends TaskBaseService {
                         task.performerType = PerformerType.VENDOR;
                         task.cost = newCost;
                     } else {
-                        const user = await transactionalEntityManager.findOneBy(Users, { id: data.assigneeId });
+                        const user = await transactionalEntityManager.findOne(Users, {
+                            where: { id: data.assigneeId },
+                            relations: isVideoDemoTask ? ["accounts"] : []
+                        });
                         if (!user) throw new Error("Người thực hiện không tồn tại");
+                        if (isVideoDemoTask && (user.isLocked || !user.accounts?.some(account => account.isActive))) {
+                            throw this.httpError("Chỉ có thể phân công Video AI demo cho nhân viên đang hoạt động", 400);
+                        }
                         task.assignee = user;
                         task.vendor = null as any;
                         task.performerType = PerformerType.INTERNAL;
@@ -210,7 +221,9 @@ export class TaskAssignmentService extends TaskBaseService {
 
                         await this.notificationService.createNotification({
                             title: "Công việc mới được giao",
-                            content: `Bạn được giao công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code})`,
+                            content: isVideoDemoTask
+                                ? `Bạn được giao làm Video AI demo cho cơ hội ${task.opportunity?.name || task.opportunity?.opportunityCode || ""} (Mã task: ${task.code})`
+                                : `Bạn được giao công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code})`,
                             type: "TASK_ASSIGNED",
                             recipient: user,
                             relatedEntityId: task.id.toString(),

@@ -5,6 +5,7 @@ import { Services } from "../../service/entities/Service.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { OpportunityServiceJobs } from "../entities/OpportunityServiceJob.entity";
 import { RedisService } from "../../../shared/services/Redis.Service";
+import { calculateRecommendedSellingPrice } from "../../../shared/helpers/Pricing.helper";
 
 export class OpportunityServiceService {
     private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
@@ -15,20 +16,20 @@ export class OpportunityServiceService {
     async getAllByOpportunity(opportunityId: string) {
         return await this.oppServiceRepository.find({
             where: SecurityService.withTenant({ opportunity: { id: opportunityId } }),
-            relations: ["service", "jobs", "jobs.job"]
+            relations: ["service", "jobs", "jobs.job", "jobs.tasks"]
         });
     }
 
     async getOne(id: string) {
         const item = await this.oppServiceRepository.findOne({
             where: SecurityService.withTenant({ id }),
-            relations: ["opportunity", "service", "jobs", "jobs.job"]
+            relations: ["opportunity", "service", "jobs", "jobs.job", "jobs.tasks"]
         });
         if (!item) throw new Error("Không tìm thấy hạng mục dịch vụ");
         return item;
     }
 
-    async create(data: { opportunityId: string, serviceId: string, quantity: number, sellingPrice?: number, costAtSale?: number }) {
+    async create(data: { opportunityId: string, serviceId: string, quantity: number, costAtSale?: number }) {
         const opportunity = await this.opportunityRepository.findOne({ where: SecurityService.withTenant({ id: data.opportunityId }) });
         if (!opportunity) throw new Error("Không tìm thấy cơ hội kinh doanh");
 
@@ -39,8 +40,8 @@ export class OpportunityServiceService {
             opportunity,
             service,
             quantity: data.quantity || 1,
-            sellingPrice: data.sellingPrice ?? service.costPrice ?? 0,
-            costAtSale: data.costAtSale ?? service.costPrice ?? 0,
+            sellingPrice: calculateRecommendedSellingPrice(Number(data.costAtSale ?? service.costPrice ?? 0)),
+            costAtSale: Number(data.costAtSale ?? service.costPrice ?? 0),
             ...SecurityService.getTenantWhere()
         } as any) as unknown as OpportunityServices;
 
@@ -51,14 +52,12 @@ export class OpportunityServiceService {
 
     async update(id: string, data: {
         quantity?: number,
-        sellingPrice?: number,
         costAtSale?: number,
-        jobs?: { id: string, costAtSale?: number, sellingPrice?: number, briefVideo?: string }[]
+        jobs?: { id: string, costAtSale?: number, briefVideo?: string }[]
     }) {
         const item = await this.getOne(id);
 
         if (data.quantity !== undefined) item.quantity = data.quantity;
-        if (data.sellingPrice !== undefined) item.sellingPrice = data.sellingPrice;
         if (data.costAtSale !== undefined) item.costAtSale = data.costAtSale;
 
         if (Array.isArray(data.jobs)) {
@@ -74,26 +73,23 @@ export class OpportunityServiceService {
                     job.briefVideo = briefVideo;
                 }
 
-                if (job.isQuotationItem) {
+                const isQuotationJob = job.isQuotationItem && !job.isBriefVideo;
+                if (isQuotationJob) {
                     if (input.costAtSale !== undefined) job.costAtSale = input.costAtSale;
-                    if (input.sellingPrice !== undefined) job.sellingPrice = input.sellingPrice;
-                } else if (input.sellingPrice !== undefined && Number(input.sellingPrice) !== 0) {
-                    throw new Error(`Hạng mục ${job.name} không được phép tính giá bán`);
                 }
+                if (job.isBriefVideo) job.isQuotationItem = false;
 
                 await this.oppServiceJobRepository.save(job);
             }
 
-            const quotationJobs = await this.oppServiceJobRepository.find({
-                where: SecurityService.withTenant({ opportunityServiceId: id, isQuotationItem: true })
-            });
+            const quotationJobs = (await this.oppServiceJobRepository.find({
+                where: SecurityService.withTenant({ opportunityServiceId: id })
+            })).filter((job) => job.isQuotationItem && !job.isBriefVideo);
             item.costAtSale = quotationJobs.reduce(
                 (sum, job) => sum + Number(job.costAtSale || 0) * Number(job.quantity || 1), 0
             );
-            item.sellingPrice = quotationJobs.reduce(
-                (sum, job) => sum + Number(job.sellingPrice || 0) * Number(job.quantity || 1), 0
-            );
         }
+        item.sellingPrice = calculateRecommendedSellingPrice(Number(item.costAtSale || 0));
 
         await this.oppServiceRepository.save(item);
         await this.recalculateRevenue(item.opportunity.id);

@@ -16,6 +16,7 @@ import { validateLeadData } from "../../customer/validations/Customer.Validation
 import { RedisService } from "../../../shared/services/Redis.Service";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
 import { OpportunityServiceJobs } from "../../opportunity-service/entities/OpportunityServiceJob.entity";
+import { calculateRecommendedSellingPrice } from "../../../shared/helpers/Pricing.helper";
 import { Tasks } from "../../task/entities/Task.entity";
 import { TaskStatus } from "../../../shared/entities/Enums";
 
@@ -198,11 +199,13 @@ export class OpportunityService {
                     "services.service",
                     "services.jobs",
                     "services.jobs.job",
+                    "services.jobs.tasks",
                     "packages",
                     "packages.services",
                     "packages.services.service",
                     "packages.services.jobs",
                     "packages.services.jobs.job",
+                    "packages.services.jobs.tasks",
                     "quotations",
                     "contracts",
                     "createdBy", "createdBy.accounts"
@@ -686,9 +689,8 @@ export class OpportunityService {
                 quantity: Number(serviceJob.quantity || 1),
                 briefVideo,
                 costAtSale: Number(job.costPrice || 0),
-                sellingPrice: Number(job.costPrice || 0),
                 isBriefVideo: Boolean(job.isBriefVideo),
-                isQuotationItem: job.isQuotationItem !== false,
+                isQuotationItem: !job.isBriefVideo && job.isQuotationItem !== false,
                 ...SecurityService.getTenantWhere()
             } as any) as unknown as OpportunityServiceJobs;
         });
@@ -735,18 +737,15 @@ export class OpportunityService {
     }
 
     private async recalculateOpportunityServicePrices(opportunityServiceId: string) {
-        const jobs = await this.opportunityServiceJobRepository.find({
-            where: SecurityService.withTenant({ opportunityServiceId, isQuotationItem: true })
-        });
+        const jobs = (await this.opportunityServiceJobRepository.find({
+            where: SecurityService.withTenant({ opportunityServiceId })
+        })).filter((job) => job.isQuotationItem && !job.isBriefVideo);
 
         const costAtSale = jobs.reduce(
             (sum, job) => sum + Number(job.costAtSale || 0) * Number(job.quantity || 1),
             0
         );
-        const sellingPrice = jobs.reduce(
-            (sum, job) => sum + Number(job.sellingPrice || 0) * Number(job.quantity || 1),
-            0
-        );
+        const sellingPrice = calculateRecommendedSellingPrice(costAtSale);
 
         await this.opportunityServiceRepository.update(
             SecurityService.withTenant({ id: opportunityServiceId }),

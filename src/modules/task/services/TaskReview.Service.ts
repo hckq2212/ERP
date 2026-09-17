@@ -16,6 +16,7 @@ import { MotionGenerations } from "../../video-generation/entities/MotionGenerat
 import { OpportunityServiceJobs } from "../../opportunity-service/entities/OpportunityServiceJob.entity";
 import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
 import { RedisService } from "../../../shared/services/Redis.Service";
+import { calculateRecommendedSellingPrice } from "../../../shared/helpers/Pricing.helper";
 
 type ReviewActor = { id?: string; userId?: string; role?: string };
 
@@ -207,18 +208,19 @@ export class TaskReviewService {
                     );
                     if (generatedCost.generationCount > 0) {
                         opportunityServiceJob.costAtSale = generatedCost.total;
-                        if (!opportunityServiceJob.isQuotationItem) {
-                            opportunityServiceJob.sellingPrice = 0;
-                        }
+                        if (opportunityServiceJob.isBriefVideo) opportunityServiceJob.isQuotationItem = false;
                     }
                     await opportunityServiceJobRepository.save(opportunityServiceJob);
                     await this.recalculateOpportunityServicePrices(manager, opportunityServiceJob.opportunityServiceId);
 
                     const businessDeveloper = opportunityServiceJob.opportunityService?.opportunity?.createdBy;
-                    if (generatedCost.generationCount > 0 && businessDeveloper) {
+                    if (businessDeveloper && (task.result?.url || generatedCost.generationCount > 0)) {
+                        const resultMessage = task.result?.url
+                            ? "Kết quả Video AI demo đã sẵn sàng trên cơ hội. "
+                            : "";
                         await this.notificationService.createNotification({
                             title: `${opportunityServiceJob.name} đã hoàn thành`,
-                            content: `PM đã xác nhận kết quả. Giá vốn từ các lần tạo video thành công là ${Number(opportunityServiceJob.costAtSale).toLocaleString("vi-VN")} VNĐ.`,
+                            content: `PM đã xác nhận kết quả. ${resultMessage}Giá vốn từ các lần tạo video thành công là ${Number(opportunityServiceJob.costAtSale).toLocaleString("vi-VN")} VNĐ.`,
                             type: "TASK_COMPLETED",
                             recipient: businessDeveloper,
                             relatedEntityId: task.id,
@@ -319,9 +321,9 @@ export class TaskReviewService {
     }
 
     private async recalculateOpportunityServicePrices(manager: any, opportunityServiceId: string) {
-        const jobs = await manager.getRepository(OpportunityServiceJobs).find({
-            where: { opportunityServiceId, isQuotationItem: true }
-        });
+        const jobs = (await manager.getRepository(OpportunityServiceJobs).find({
+            where: { opportunityServiceId }
+        })).filter((job: OpportunityServiceJobs) => job.isQuotationItem && !job.isBriefVideo);
         const opportunityService = await manager.getRepository(OpportunityServices).findOneBy({
             id: opportunityServiceId
         });
@@ -331,10 +333,7 @@ export class TaskReviewService {
             (sum: number, job: OpportunityServiceJobs) => sum + Number(job.costAtSale || 0) * Number(job.quantity || 1),
             0
         );
-        opportunityService.sellingPrice = jobs.reduce(
-            (sum: number, job: OpportunityServiceJobs) => sum + Number(job.sellingPrice || 0) * Number(job.quantity || 1),
-            0
-        );
+        opportunityService.sellingPrice = calculateRecommendedSellingPrice(Number(opportunityService.costAtSale || 0));
         await manager.getRepository(OpportunityServices).save(opportunityService);
     }
 
