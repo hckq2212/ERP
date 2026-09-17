@@ -14,7 +14,7 @@ import {
 import { Users } from "../../user/entities/User.entity";
 import { Tasks } from "../../task/entities/Task.entity";
 import { TaskStatus, PerformerType, SubtaskPlanStatus } from "../../../shared/entities/Enums";
-import { calculatePercentageRewards, calculateTaskReward } from "../helpers/TaskReward.helper";
+import { calculatePercentageRewardPlan } from "../helpers/TaskReward.helper";
 import { Projects, ProjectStatus } from "../../project/entities/Project.entity";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { VinicoinService } from "../../../shared/services/Vinicoin.Service";
@@ -612,6 +612,7 @@ export class AcceptanceService {
     if (!service.tasks) return;
 
     const percentageRewards = new Map<string, number>();
+    const parentRewards = new Map<string, number>();
     const subtasksByParent = new Map<string, Tasks[]>();
     for (const task of service.tasks) {
       if (!task.parentTaskId) continue;
@@ -623,37 +624,29 @@ export class AcceptanceService {
     for (const [parentTaskId, subtasks] of subtasksByParent.entries()) {
       const parent = service.tasks.find(candidate => candidate.id === parentTaskId);
       const percentageSubtasks = subtasks.filter(task => Number(task.allocationPercent || 0) > 0);
-      if (!parent || percentageSubtasks.length === 0) continue;
+      if (!parent) continue;
 
-      const rewards = calculatePercentageRewards(
-        Number(parent.vinicoinBudget ?? parent.job?.vinicoin ?? 0),
+      const rewardPlan = calculatePercentageRewardPlan(
+        Number(parent.job?.vinicoin ?? 0),
         percentageSubtasks.map(task => ({
           id: task.id,
           allocationPercent: Number(task.allocationPercent || 0),
         })),
       );
-      rewards.forEach((amount, taskId) => percentageRewards.set(taskId, amount));
+      rewardPlan.subtaskRewards.forEach((amount, taskId) => percentageRewards.set(taskId, amount));
+      parentRewards.set(parent.id, rewardPlan.parentReward);
     }
 
     for (const task of service.tasks) {
       const isSubtask = Boolean(task.parentTaskId);
       const childSubtasks = isSubtask ? [] : subtasksByParent.get(task.id) || [];
       const hasSubtasks = childSubtasks.length > 0;
-      const hasPercentagePlan = childSubtasks.some(
-        child => Number(child.allocationPercent || 0) > 0,
-      );
-
       if (task.isRewardable === false && !hasSubtasks) continue;
 
       const rewardAmount = isSubtask
-        ? percentageRewards.get(task.id) ?? Number(task.vinicoinAllocation || 0)
+        ? percentageRewards.get(task.id) ?? 0
         : hasSubtasks
-          ? hasPercentagePlan
-            ? 0
-            : calculateTaskReward(
-                Number(task.vinicoinBudget ?? task.job?.vinicoin ?? 0),
-                childSubtasks.map(child => Number(child.vinicoinAllocation || 0)),
-              )
+          ? parentRewards.get(task.id) ?? 0
           : Number(task.job?.vinicoin || 0);
       if (!rewardAmount || rewardAmount <= 0) continue;
 
@@ -666,9 +659,7 @@ export class AcceptanceService {
       ) {
         rewardedAccountIds.add(assigneeAccount.id);
       }
-      // Subtasks receive exactly their explicit allocation. Legacy unsplit tasks
-      // keep the existing helper reward behavior for backward compatibility.
-      if (!isSubtask && helperAccount?.id && task.performerType === PerformerType.INTERNAL) {
+      if (!isSubtask && !hasSubtasks && helperAccount?.id && task.performerType === PerformerType.INTERNAL) {
         rewardedAccountIds.add(helperAccount.id);
       }
       for (const accountId of rewardedAccountIds) {

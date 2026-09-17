@@ -139,14 +139,6 @@ export class Tasks extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     cost: number;
 
-    /** Fixed reward pool captured from the job when this task is first split. */
-    @Column({ type: "decimal", precision: 15, scale: 3, nullable: true })
-    vinicoinBudget: number | null;
-
-    /** Legacy fixed allocation. New subtask plans use allocationPercent. */
-    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
-    vinicoinAllocation: number;
-
     /** Contribution share of a subtask in its parent task. */
     @Column({ type: "decimal", precision: 5, scale: 2, default: 0 })
     allocationPercent: number;

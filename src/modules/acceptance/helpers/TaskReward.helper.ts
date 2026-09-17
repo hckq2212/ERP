@@ -1,22 +1,10 @@
-export const calculateTaskReward = (
-    budgetValue: number,
-    subtaskAllocationValues: number[]
-) => {
-    const budget = Number.isFinite(budgetValue) ? Math.max(0, budgetValue) : 0;
-    const allocated = subtaskAllocationValues.reduce((total, value) => (
-        Number.isFinite(value) ? total + Math.max(0, value) : total
-    ), 0);
-
-    return Math.max(0, budget - allocated);
-};
-
 type PercentageAllocation = {
     id: string;
     allocationPercent: number;
 };
 
 /**
- * Converts an approved percentage plan to rewards with three-decimal precision.
+ * Converts a percentage plan to rewards with three-decimal precision.
  * Remaining milli-Vinicoin units are assigned by largest remainder so the
  * settled total always matches the percentage share of the parent pool.
  */
@@ -31,10 +19,13 @@ export const calculatePercentageRewards = (
             basisPoints: Math.max(0, Math.min(10_000, Math.round(Number(item.allocationPercent || 0) * 100)))
         }))
         .sort((left, right) => left.id.localeCompare(right.id));
-    const totalBasisPoints = Math.min(
-        10_000,
-        normalized.reduce((total, item) => total + item.basisPoints, 0)
+    const totalBasisPoints = normalized.reduce(
+        (total, item) => total + item.basisPoints,
+        0
     );
+    if (totalBasisPoints > 10_000) {
+        throw new RangeError("Tổng tỷ lệ công việc con không được vượt quá 100%");
+    }
     const targetUnits = Math.round((budgetUnits * totalBasisPoints) / 10_000);
     const rewards = normalized.map(item => {
         const exactUnits = (budgetUnits * item.basisPoints) / 10_000;
@@ -53,4 +44,21 @@ export const calculatePercentageRewards = (
         });
 
     return new Map(rewards.map(item => [item.id, item.units / 1_000]));
+};
+
+export const calculatePercentageRewardPlan = (
+    budgetValue: number,
+    allocations: PercentageAllocation[]
+) => {
+    const budgetUnits = Math.max(0, Math.round(Number(budgetValue || 0) * 1_000));
+    const subtaskRewards = calculatePercentageRewards(budgetValue, allocations);
+    const allocatedUnits = [...subtaskRewards.values()].reduce(
+        (total, amount) => total + Math.round(amount * 1_000),
+        0
+    );
+
+    return {
+        subtaskRewards,
+        parentReward: Math.max(0, budgetUnits - allocatedUnits) / 1_000
+    };
 };

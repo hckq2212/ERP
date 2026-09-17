@@ -19,6 +19,7 @@ import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
 
 import { TaskBaseService } from "./Task.BaseService";
+import { SUBTASK_PM_APPROVAL_ENABLED } from "../constants/SubtaskPlan.constants";
 
 export class TaskDeletionService extends TaskBaseService {
     async delete(id: string) {
@@ -26,7 +27,35 @@ export class TaskDeletionService extends TaskBaseService {
         if (task.subtasks?.length) {
             throw this.httpError("Không thể xóa task gốc khi vẫn còn subtask", 409);
         }
+        if (task.parentTaskId) {
+            const reviewCount = await this.taskRepository.manager.getRepository(TaskReviews).count({
+                where: { task: { id: task.id } }
+            });
+            const executionStarted = Boolean(
+                task.result ||
+                task.actualStartDate ||
+                task.actualEndDate ||
+                task.lastSubmittedById ||
+                task.rewardVinicoin != null ||
+                reviewCount > 0 ||
+                task.iterations?.length ||
+                [
+                    TaskStatus.AWAITING_REVIEW,
+                    TaskStatus.INTERNAL_COMPLETED,
+                    TaskStatus.COMPLETED,
+                    TaskStatus.ACCEPTED,
+                    TaskStatus.REWORKING
+                ].includes(task.status)
+            );
+            if (executionStarted) {
+                throw this.httpError(
+                    "Không thể xóa công việc con đã phát sinh thực hiện",
+                    409
+                );
+            }
+        }
         if (
+            SUBTASK_PM_APPROVAL_ENABLED &&
             task.parentTaskId &&
             [SubtaskPlanStatus.PENDING_APPROVAL, SubtaskPlanStatus.APPROVED].includes(
                 task.parentTask?.subtaskPlanStatus as SubtaskPlanStatus
@@ -47,7 +76,6 @@ export class TaskDeletionService extends TaskBaseService {
                         { id: task.parentTaskId },
                         {
                             isRewardable: true,
-                            vinicoinBudget: null,
                             subtaskPlanStatus: null,
                             subtaskPlanReviewerId: null,
                             subtaskPlanRequesterId: null,
@@ -58,7 +86,7 @@ export class TaskDeletionService extends TaskBaseService {
                     await manager.getRepository(Tasks).update(
                         { id: task.parentTaskId },
                         {
-                            subtaskPlanStatus: SubtaskPlanStatus.DRAFT,
+                            subtaskPlanStatus: SUBTASK_PM_APPROVAL_ENABLED ? SubtaskPlanStatus.DRAFT : null,
                             subtaskPlanReviewerId: null,
                             subtaskPlanRequesterId: null,
                             subtaskPlanReviewNote: null

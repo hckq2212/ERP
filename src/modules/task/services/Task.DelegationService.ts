@@ -7,6 +7,7 @@ import { Users } from "../../user/entities/User.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { Tasks } from "../entities/Task.entity";
 import { TaskBaseService } from "./Task.BaseService";
+import { SUBTASK_PM_APPROVAL_ENABLED } from "../constants/SubtaskPlan.constants";
 
 type TaskActor = { id: string; userId?: string; role?: string };
 
@@ -67,13 +68,10 @@ export class TaskDelegationService extends TaskBaseService {
         }
     }
 
-    private allocationBasisPoints(task: Tasks, budget: number) {
+    private allocationBasisPoints(task: Tasks) {
         const percent = Number(task.allocationPercent || 0);
         if (Number.isFinite(percent) && percent > 0) return Math.round(percent * 100);
-
-        const legacyAllocation = Number(task.vinicoinAllocation || 0);
-        if (!Number.isFinite(legacyAllocation) || legacyAllocation <= 0 || budget <= 0) return 0;
-        return Math.round((legacyAllocation / budget) * 10_000);
+        return 0;
     }
 
     private assertValidSubtaskPlan(parent: Tasks, subtasks: Tasks[], requireComplete: boolean) {
@@ -81,9 +79,8 @@ export class TaskDelegationService extends TaskBaseService {
             throw this.httpError("Cần tạo ít nhất một subtask trước khi gửi duyệt", 409);
         }
 
-        const budget = Number(parent.vinicoinBudget ?? parent.job?.vinicoin ?? 0);
         const totalBasisPoints = subtasks.reduce(
-            (total, subtask) => total + this.allocationBasisPoints(subtask, budget),
+            (total, subtask) => total + this.allocationBasisPoints(subtask),
             0
         );
 
@@ -246,7 +243,7 @@ export class TaskDelegationService extends TaskBaseService {
             }
             if (!data.name?.trim()) throw this.httpError("Tên subtask không được để trống", 400);
             this.assertTaskCanBeSplit(parent);
-            if ([SubtaskPlanStatus.PENDING_APPROVAL, SubtaskPlanStatus.APPROVED].includes(parent.subtaskPlanStatus as SubtaskPlanStatus)) {
+            if (SUBTASK_PM_APPROVAL_ENABLED && [SubtaskPlanStatus.PENDING_APPROVAL, SubtaskPlanStatus.APPROVED].includes(parent.subtaskPlanStatus as SubtaskPlanStatus)) {
                 throw this.httpError("Phương án phân bổ đang chờ duyệt hoặc đã được duyệt", 409);
             }
 
@@ -266,9 +263,6 @@ export class TaskDelegationService extends TaskBaseService {
             }
 
             const existingSubtasks = await taskRepo.find({ where: { parentTaskId: parent.id } });
-            const budget = parent.vinicoinBudget === null || parent.vinicoinBudget === undefined
-                ? Number(parent.job.vinicoin || 0)
-                : Number(parent.vinicoinBudget);
             const allocatedBasisPoints = this.assertValidSubtaskPlan(parent, existingSubtasks, false);
             if (allocatedBasisPoints + Math.round(allocationPercent * 100) > 10_000) {
                 throw this.httpError("Tổng % phân bổ subtask không được vượt quá 100%", 400);
@@ -289,25 +283,22 @@ export class TaskDelegationService extends TaskBaseService {
                 assigneeId: assignee.id,
                 assignerId: actorUserId,
                 performerType: PerformerType.INTERNAL,
-                status: TaskStatus.PENDING,
+                status: SUBTASK_PM_APPROVAL_ENABLED ? TaskStatus.PENDING : TaskStatus.DOING,
                 description: data.description?.trim() || null,
                 plannedStartDate: parent.plannedStartDate,
                 plannedEndDate: parent.plannedEndDate,
                 isExtra: false,
                 isOutput: false,
-                vinicoinAllocation: 0,
                 allocationPercent,
                 rewardVinicoin: null,
-                subtaskPlanStatus: SubtaskPlanStatus.DRAFT,
-                vinicoinBudget: null,
+                subtaskPlanStatus: SUBTASK_PM_APPROVAL_ENABLED ? SubtaskPlanStatus.DRAFT : null,
                 isRewardable: true,
                 sellingPrice: 0,
                 cost: 0
             } as any) as unknown as Tasks;
 
-            parent.vinicoinBudget = budget;
             parent.isRewardable = true;
-            parent.subtaskPlanStatus = SubtaskPlanStatus.DRAFT;
+            parent.subtaskPlanStatus = SUBTASK_PM_APPROVAL_ENABLED ? SubtaskPlanStatus.DRAFT : null;
             parent.subtaskPlanReviewerId = null;
             parent.subtaskPlanRequesterId = null;
             parent.subtaskPlanReviewNote = null;
@@ -319,6 +310,18 @@ export class TaskDelegationService extends TaskBaseService {
             }
             const savedParent = await taskRepo.save(parent);
             const saved = await taskRepo.save(subtask);
+
+            if (!SUBTASK_PM_APPROVAL_ENABLED) {
+                await this.notificationService.createNotification({
+                    title: "Bạn được phân công công việc con",
+                    content: `Bạn được giao công việc ${saved.name} thuộc ${this.taskDisplayName(parent)} với ${allocationPercent.toLocaleString("vi-VN")}% phân bổ.`,
+                    type: "TASK_ASSIGNED",
+                    recipient: assignee,
+                    relatedEntityId: saved.id,
+                    relatedEntityType: "Task",
+                    link: `/tasks/${saved.id}`
+                }, manager);
+            }
 
             return { savedSubtask: saved, savedParent };
         });
@@ -335,7 +338,10 @@ export class TaskDelegationService extends TaskBaseService {
             if (!existing?.parentTaskId) throw this.httpError("Không tìm thấy subtask", 404);
 
             await this.lockTask(manager, existing.parentTaskId, "Không tìm thấy công việc gốc");
-            const subtask = await taskRepo.findOne({ where: { id: subtaskId } });
+            const subtask = await taskRepo.findOne({
+                where: { id: subtaskId },
+                relations: ["reviews", "iterations"]
+            });
             const parent = await taskRepo.findOne({
                 where: { id: existing.parentTaskId },
                 relations: [
@@ -349,7 +355,29 @@ export class TaskDelegationService extends TaskBaseService {
             });
             if (!subtask || !parent) throw this.httpError("Không tìm thấy subtask", 404);
             if (!parent.project?.team) throw this.httpError("Công việc chưa thuộc đội dự án", 400);
-            if ([SubtaskPlanStatus.PENDING_APPROVAL, SubtaskPlanStatus.APPROVED].includes(parent.subtaskPlanStatus as SubtaskPlanStatus)) {
+            const executionStarted = Boolean(
+                subtask.result ||
+                subtask.actualStartDate ||
+                subtask.actualEndDate ||
+                subtask.lastSubmittedById ||
+                subtask.rewardVinicoin != null ||
+                subtask.reviews?.length ||
+                subtask.iterations?.length ||
+                [
+                    TaskStatus.AWAITING_REVIEW,
+                    TaskStatus.INTERNAL_COMPLETED,
+                    TaskStatus.COMPLETED,
+                    TaskStatus.ACCEPTED,
+                    TaskStatus.REWORKING
+                ].includes(subtask.status)
+            );
+            if (executionStarted) {
+                throw this.httpError(
+                    "Không thể sửa phân bổ vì công việc con đã phát sinh thực hiện",
+                    409
+                );
+            }
+            if (SUBTASK_PM_APPROVAL_ENABLED && [SubtaskPlanStatus.PENDING_APPROVAL, SubtaskPlanStatus.APPROVED].includes(parent.subtaskPlanStatus as SubtaskPlanStatus)) {
                 throw this.httpError("Không thể sửa khi phương án đang chờ duyệt hoặc đã được duyệt", 409);
             }
 
@@ -380,12 +408,14 @@ export class TaskDelegationService extends TaskBaseService {
             subtask.assigneeId = assignee.id;
             subtask.description = data.description?.trim() || null as any;
             subtask.allocationPercent = allocationPercent;
-            subtask.vinicoinAllocation = 0;
             subtask.rewardVinicoin = null;
-            subtask.subtaskPlanStatus = SubtaskPlanStatus.DRAFT;
+            if (!SUBTASK_PM_APPROVAL_ENABLED && subtask.status === TaskStatus.PENDING) {
+                subtask.status = TaskStatus.DOING;
+            }
+            subtask.subtaskPlanStatus = SUBTASK_PM_APPROVAL_ENABLED ? SubtaskPlanStatus.DRAFT : null;
             const savedSubtask = await taskRepo.save(subtask);
 
-            parent.subtaskPlanStatus = SubtaskPlanStatus.DRAFT;
+            parent.subtaskPlanStatus = SUBTASK_PM_APPROVAL_ENABLED ? SubtaskPlanStatus.DRAFT : null;
             parent.subtaskPlanReviewerId = null;
             parent.subtaskPlanRequesterId = null;
             parent.subtaskPlanReviewNote = null;
@@ -399,6 +429,9 @@ export class TaskDelegationService extends TaskBaseService {
     }
 
     async submitSubtaskPlan(parentTaskId: string, actor: TaskActor) {
+        if (!SUBTASK_PM_APPROVAL_ENABLED) {
+            throw this.httpError("Chức năng PM xác nhận phương án công việc con đang tạm tắt", 409);
+        }
         const savedParent = await AppDataSource.transaction(async manager => {
             const taskRepo = manager.getRepository(Tasks);
             await this.lockTask(manager, parentTaskId, "Không tìm thấy công việc gốc");
@@ -468,6 +501,9 @@ export class TaskDelegationService extends TaskBaseService {
         note: string | undefined,
         actor: TaskActor
     ) {
+        if (!SUBTASK_PM_APPROVAL_ENABLED) {
+            throw this.httpError("Chức năng PM xác nhận phương án công việc con đang tạm tắt", 409);
+        }
         const result = await AppDataSource.transaction(async manager => {
             const taskRepo = manager.getRepository(Tasks);
             await this.lockTask(manager, parentTaskId, "Không tìm thấy công việc gốc");
