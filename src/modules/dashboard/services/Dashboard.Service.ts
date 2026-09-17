@@ -13,6 +13,7 @@ import { Between, In } from "typeorm";
 import { Violations } from "../../task/entities/Violation.entity";
 import { DashboardScopeType, selectDashboardWorkItems } from "./Dashboard.Scope";
 import { DashboardActor, DashboardScopeService } from "./DashboardScope.Service";
+import { WorkloadService } from "../../../shared/services/Workload.Service";
 
 export class DashboardService {
     private contractRepo = AppDataSource.getRepository(Contracts);
@@ -23,6 +24,7 @@ export class DashboardService {
     private opportunityRepo = AppDataSource.getRepository(Opportunities);
     private quotationRepo = AppDataSource.getRepository(Quotations);
     private scopeService = new DashboardScopeService();
+    private workloadService = new WorkloadService();
 
     async getDashboardData(
         actor: DashboardActor,
@@ -49,6 +51,7 @@ export class DashboardService {
         // 1. BOD/ADMIN Data
         if (scope.type === DashboardScopeType.SYSTEM) {
             data.admin = await this.getAdminMetrics(dateFilter, projectId);
+            data.admin.staffWorkloads = await this.workloadService.getAllStaffWorkloads(month, year);
         }
 
         // 2. Team Lead Data
@@ -426,6 +429,7 @@ export class DashboardService {
             vinicoin,
             vinicoinTotal,
             vinicoinWithdrawn,
+            workload: await this.workloadService.getWorkloadForUser(userId, month, year),
             totalTasks: workTasks.length,
             statusCounts,
             doingCount: (statusCounts[TaskStatus.DOING] || 0) + (statusCounts[TaskStatus.REWORKING] || 0) + (statusCounts[TaskStatus.REJECTED] || 0),
