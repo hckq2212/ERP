@@ -16,4 +16,12 @@ export class DebtPayments extends BaseEntity {
 
     @Column({ type: "date" })
     paymentDate: Date;
+
+    @Column({ type: "jsonb", nullable: true })
+    attachments: Array<{
+        name: string;
+        url: string;
+        type?: string;
+        size?: number;
+    }>;
 }
