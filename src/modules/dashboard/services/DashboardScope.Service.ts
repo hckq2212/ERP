@@ -133,11 +133,13 @@ export class DashboardScopeService {
             .filter((project): project is Projects => Boolean(project))
             .map(project => this.toProjectOption(project));
 
-        const availableMembers = isSystemViewer
-            ? systemUsers
-                .filter(user => resolved.memberIds.includes(user.id))
-                .map(user => this.toMemberOption(user, user.accounts?.[0]?.role || "MEMBER"))
-            : this.getManagedMemberOptions(managedProjects, resolved.memberIds, managedMemberRoles);
+        const availableMembers = resolved.canSelectMembers
+            ? (isSystemViewer
+                ? systemUsers
+                    .filter(user => resolved.memberIds.includes(user.id))
+                    .map(user => this.toMemberOption(user, user.accounts?.[0]?.role || "MEMBER"))
+                : this.getManagedMemberOptions(managedProjects, resolved.memberIds, managedMemberRoles))
+            : [];
 
         return {
             ...resolved,
@@ -150,10 +152,7 @@ export class DashboardScopeService {
 
     private async findPersonalProjects(userId: string) {
         const taskProjects = await this.taskRepo.find({
-            where: [
-                { assignee: { id: userId }, project: { status: In(ACTIVE_PROJECT_STATUSES) } },
-                { helper: { id: userId }, project: { status: In(ACTIVE_PROJECT_STATUSES) } }
-            ],
+            where: { assignee: { id: userId }, project: { status: In(ACTIVE_PROJECT_STATUSES) } },
             relations: ["project"]
         });
         const taskProjectIds = new Set(taskProjects.map(task => task.project?.id).filter(Boolean));

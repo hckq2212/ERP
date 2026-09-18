@@ -7,6 +7,7 @@ import { Assets } from "../../asset/entities/Asset.entity";
 import { Projects } from "../../project/entities/Project.entity";
 import { Accounts } from "../../account/entities/Account.entity";
 import { Tasks } from "../../task/entities/Task.entity";
+import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
 
 /**
  * Maps to: public.motion_generations
@@ -21,8 +22,11 @@ export class MotionGenerations {
     id!: number;
 
     // ── FK columns ──────────────────────────────────────────────────────────
-    @Column({ name: "project_id", type: "varchar", length: 26 })
-    projectId!: string;
+    @Column({ name: "project_id", type: "varchar", length: 26, nullable: true })
+    projectId?: string;
+
+    @Column({ name: "opportunity_id", type: "varchar", length: 26, nullable: true })
+    opportunityId?: string;
 
     @Column({ name: "task_id", type: "varchar", length: 26, nullable: true })
     taskId?: string;
@@ -116,9 +120,13 @@ export class MotionGenerations {
     updatedAt!: Date;
 
     // ── Relations ────────────────────────────────────────────────────────────
-    @ManyToOne(() => Projects)
+    @ManyToOne(() => Projects, { nullable: true })
     @JoinColumn({ name: "project_id" })
-    project!: Projects;
+    project?: Projects;
+
+    @ManyToOne(() => Opportunities, { nullable: true })
+    @JoinColumn({ name: "opportunity_id" })
+    opportunity?: Opportunities;
 
     @ManyToOne(() => Tasks, { nullable: true })
     @JoinColumn({ name: "task_id" })

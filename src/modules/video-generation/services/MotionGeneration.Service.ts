@@ -7,12 +7,14 @@ import { CloudinaryVideoAiService } from "../../cloudinary/services/CloudinaryVi
 import { KlingService } from "../../kling/services/Kling.Service";
 import { CreateMotionControlVideoDto } from "../dto/CreateVideo.dto";
 import { Tasks } from "../../task/entities/Task.entity";
+import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
 
 export class MotionGenerationService {
     private motionGenRepository = AppDataSource.getRepository(MotionGenerations);
     private modelRepository = AppDataSource.getRepository(AiModels);
     private projectRepository = AppDataSource.getRepository(Projects);
     private taskRepository = AppDataSource.getRepository(Tasks);
+    private opportunityRepository = AppDataSource.getRepository(Opportunities);
 
     private assetService = new AssetService();
     private cloudinaryVideoAiService = new CloudinaryVideoAiService();
@@ -24,18 +26,27 @@ export class MotionGenerationService {
         characterImageFile?: Express.Multer.File,
         referenceVideoFile?: Express.Multer.File,
     ) {
-        if (!dto.projectId) throw new Error("projectId là bắt buộc");
-        const project = await this.projectRepository.findOne({ where: { id: dto.projectId } });
-        if (!project) throw new Error("Không tìm thấy project");
+        if (!dto.projectId && !dto.opportunityId) throw new Error("Vui lòng chọn dự án hoặc cơ hội");
+        if (dto.projectId && dto.opportunityId) throw new Error("Chỉ được chọn một dự án hoặc một cơ hội");
+        if (dto.projectId) {
+            const project = await this.projectRepository.findOne({ where: { id: dto.projectId } });
+            if (!project) throw new Error("Không tìm thấy project");
+        }
+        if (dto.opportunityId) {
+            const opportunity = await this.opportunityRepository.findOne({ where: { id: dto.opportunityId } });
+            if (!opportunity) throw new Error("Không tìm thấy cơ hội");
+        }
 
         if (!dto.taskId) throw new Error("Vui lòng chọn công việc (task) của dự án");
         const task = await this.taskRepository.findOne({
             where: { id: dto.taskId },
-            relations: ["project"],
+            relations: ["project", "opportunity", "assignee", "assignee.accounts"],
         });
         if (!task) throw new Error("Không tìm thấy công việc");
-        if (task.project?.id !== dto.projectId) {
-            throw new Error("Công việc không thuộc dự án đã chọn");
+        if (dto.projectId && task.project?.id !== dto.projectId) throw new Error("Công việc không thuộc dự án đã chọn");
+        if (dto.opportunityId && task.opportunity?.id !== dto.opportunityId) throw new Error("Công việc không thuộc cơ hội đã chọn");
+        if (!task.assignee?.accounts?.some((account) => account.id === userId)) {
+            throw new Error("Bạn không phải người được phân công công việc này");
         }
 
         const model = await this.modelRepository.findOne({ where: { id: dto.modelId } });
@@ -44,14 +55,15 @@ export class MotionGenerationService {
             throw new Error("Model không hỗ trợ Motion Control");
         }
 
-        const baseFolder = `ai-generation/users/${userId}/projects/${dto.projectId}/motion`;
+        const contextFolder = dto.projectId ? `projects/${dto.projectId}` : `opportunities/${dto.opportunityId}`;
+        const baseFolder = `ai-generation/users/${userId}/${contextFolder}/motion`;
 
         // ── Resolve character image ──────────────────────────────────────────
         const characterAsset = await this.assetService.resolveImageAsset(
             userId, dto.characterImageAssetId, characterImageFile, `${baseFolder}/images`, "character", "image_begin",
         );
         if (!characterAsset) throw new Error("Cần cung cấp characterImage hoặc characterImageAssetId");
-        await this.assetService.attachProjectIfMissing(characterAsset.id, dto.projectId);
+        if (dto.projectId) await this.assetService.attachProjectIfMissing(characterAsset.id, dto.projectId);
 
         // ── Resolve reference video (asset có sẵn hoặc placeholder để upload nền) ──
         const { asset: referenceVideoAsset, needUpload } = await this.assetService.resolveVideoAsset(
@@ -60,6 +72,7 @@ export class MotionGenerationService {
 
         const motionGen = this.motionGenRepository.create({
             projectId: dto.projectId,
+            opportunityId: dto.opportunityId,
             taskId: dto.taskId,
             modelId: dto.modelId,
             userId,
@@ -97,6 +110,7 @@ export class MotionGenerationService {
             message: "Đang xử lý, vui lòng chờ...",
             motionGenerationId: saved.id,
             projectId: dto.projectId,
+            opportunityId: dto.opportunityId,
             taskId: dto.taskId,
             status: "queued",
             characterImageUrl: characterAsset.storedUrl,
@@ -176,7 +190,7 @@ export class MotionGenerationService {
             const motionGen = await this.motionGenRepository.findOne({ where: { id: motionGenId } });
             const cloudinaryVideoUrl = await this.cloudinaryVideoAiService.uploadVideoFromUrl(
                 videoData.url,
-                `ai-generation/users/${userId}/projects/${motionGen?.projectId}/motion/output`,
+                `ai-generation/users/${userId}/${motionGen?.projectId ? `projects/${motionGen.projectId}` : `opportunities/${motionGen?.opportunityId}`}/motion/output`,
                 `motion_${motionGenId}_${Date.now()}`,
             );
 

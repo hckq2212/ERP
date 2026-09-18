@@ -8,12 +8,14 @@ import { KlingService } from "../../kling/services/Kling.Service";
 import { ByteplusService } from "../../byteplus/services/Byteplus.Service";
 import { CreateVideoDto } from "../dto/CreateVideo.dto";
 import { Tasks } from "../../task/entities/Task.entity";
+import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
 
 export class VideoGenerationService {
     private videoGenRepository = AppDataSource.getRepository(VideoGenerations);
     private modelRepository = AppDataSource.getRepository(AiModels);
     private projectRepository = AppDataSource.getRepository(Projects);
     private taskRepository = AppDataSource.getRepository(Tasks);
+    private opportunityRepository = AppDataSource.getRepository(Opportunities);
 
     private assetService = new AssetService();
     private cloudinaryVideoAiService = new CloudinaryVideoAiService();
@@ -26,19 +28,27 @@ export class VideoGenerationService {
         startImageFile?: Express.Multer.File,
         endImageFile?: Express.Multer.File,
     ) {
-        // 1. Validate project (BẮT BUỘC là project ERP có sẵn)
-        if (!dto.projectId) throw new Error("projectId là bắt buộc");
-        const project = await this.projectRepository.findOne({ where: { id: dto.projectId } });
-        if (!project) throw new Error("Không tìm thấy project");
+        if (!dto.projectId && !dto.opportunityId) throw new Error("Vui lòng chọn dự án hoặc cơ hội");
+        if (dto.projectId && dto.opportunityId) throw new Error("Chỉ được chọn một dự án hoặc một cơ hội");
+        if (dto.projectId) {
+            const project = await this.projectRepository.findOne({ where: { id: dto.projectId } });
+            if (!project) throw new Error("Không tìm thấy project");
+        }
+        if (dto.opportunityId) {
+            const opportunity = await this.opportunityRepository.findOne({ where: { id: dto.opportunityId } });
+            if (!opportunity) throw new Error("Không tìm thấy cơ hội");
+        }
 
         if (!dto.taskId) throw new Error("Vui lòng chọn công việc (task) của dự án");
         const task = await this.taskRepository.findOne({
             where: { id: dto.taskId },
-            relations: ["project"],
+            relations: ["project", "opportunity", "assignee", "assignee.accounts"],
         });
         if (!task) throw new Error("Không tìm thấy công việc");
-        if (task.project?.id !== dto.projectId) {
-            throw new Error("Công việc không thuộc dự án đã chọn");
+        if (dto.projectId && task.project?.id !== dto.projectId) throw new Error("Công việc không thuộc dự án đã chọn");
+        if (dto.opportunityId && task.opportunity?.id !== dto.opportunityId) throw new Error("Công việc không thuộc cơ hội đã chọn");
+        if (!task.assignee?.accounts?.some((account) => account.id === userId)) {
+            throw new Error("Bạn không phải người được phân công công việc này");
         }
 
         // 2. Validate model
@@ -74,14 +84,15 @@ export class VideoGenerationService {
             if (!dto.prompt?.trim()) throw new Error("prompt là bắt buộc");
         }
 
-        const baseFolder = `ai-generation/users/${userId}/projects/${dto.projectId}/videos`;
+        const contextFolder = dto.projectId ? `projects/${dto.projectId}` : `opportunities/${dto.opportunityId}`;
+        const baseFolder = `ai-generation/users/${userId}/${contextFolder}/videos`;
 
         // 4. Resolve start image (reuse asset có sẵn hoặc upload mới)
         const beginAsset = await this.assetService.resolveImageAsset(
             userId, dto.startImageAssetId, startImageFile, baseFolder, "begin", "image_begin",
         );
         if (!beginAsset) throw new Error("Cần cung cấp startImage hoặc startImageAssetId");
-        await this.assetService.attachProjectIfMissing(beginAsset.id, dto.projectId);
+        if (dto.projectId) await this.assetService.attachProjectIfMissing(beginAsset.id, dto.projectId);
 
         // 5. Resolve end image nếu có
         let endAsset = null;
@@ -89,7 +100,7 @@ export class VideoGenerationService {
             endAsset = await this.assetService.resolveImageAsset(
                 userId, dto.endImageAssetId, endImageFile, baseFolder, "end", "image_end",
             );
-            if (endAsset) await this.assetService.attachProjectIfMissing(endAsset.id, dto.projectId);
+            if (endAsset && dto.projectId) await this.assetService.attachProjectIfMissing(endAsset.id, dto.projectId);
         }
 
         // 6. Rẽ nhánh theo provider: Kling hay BytePlus
@@ -136,6 +147,7 @@ export class VideoGenerationService {
 
         const videoGen = this.videoGenRepository.create({
             projectId: dto.projectId,
+            opportunityId: dto.opportunityId,
             taskId: dto.taskId,
             modelId: dto.modelId,
             userId,
@@ -189,6 +201,7 @@ export class VideoGenerationService {
             message: "Đang tạo video, vui lòng chờ...",
             videoGenerationId: saved.id,
             projectId: dto.projectId,
+            opportunityId: dto.opportunityId,
             taskId: dto.taskId,
             externalTaskId: externalTaskId,
             status: "queued",
@@ -220,7 +233,7 @@ export class VideoGenerationService {
             const videoGen = await this.videoGenRepository.findOne({ where: { id: videoGenId } });
             const cloudinaryVideoUrl = await this.cloudinaryVideoAiService.uploadVideoFromUrl(
                 videoData.url,
-                `ai-generation/users/${userId}/projects/${videoGen?.projectId}/videos/output`,
+                `ai-generation/users/${userId}/${videoGen?.projectId ? `projects/${videoGen.projectId}` : `opportunities/${videoGen?.opportunityId}`}/videos/output`,
                 `video_${videoGenId}_${Date.now()}`,
             );
 
@@ -263,7 +276,7 @@ export class VideoGenerationService {
             const videoGen = await this.videoGenRepository.findOne({ where: { id: videoGenId } });
             const cloudinaryVideoUrl = await this.cloudinaryVideoAiService.uploadVideoFromUrl(
                 videoUrl,
-                `ai-generation/users/${userId}/projects/${videoGen?.projectId}/videos/output`,
+                `ai-generation/users/${userId}/${videoGen?.projectId ? `projects/${videoGen.projectId}` : `opportunities/${videoGen?.opportunityId}`}/videos/output`,
                 `video_${videoGenId}_${Date.now()}`,
             );
 

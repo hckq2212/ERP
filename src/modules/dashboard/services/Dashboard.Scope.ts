@@ -52,7 +52,9 @@ const intersection = (left: string[], right: string[]) => {
 
 export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashboardScope {
     const isSystemViewer = [UserRole.ADMIN, UserRole.BOD].includes(input.viewerRole);
-    const hasManagementScope = input.viewerRole === UserRole.PM || input.managedProjectIds.length > 0;
+    const isPMViewer = input.viewerRole === UserRole.PM;
+    const hasManagementScope = isPMViewer || input.managedProjectIds.length > 0;
+    const canSelectMembers = isSystemViewer || isPMViewer;
     const requestedAnotherUser = Boolean(
         input.requestedUserId && input.requestedUserId !== input.viewerUserId
     );
@@ -77,7 +79,7 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
     }
 
     if (requestedAnotherUser) {
-        if (!memberIds.includes(input.requestedUserId!)) {
+        if (!canSelectMembers || !memberIds.includes(input.requestedUserId!)) {
             throw new DashboardScopeError("Bạn không có quyền xem dashboard của nhân sự này");
         }
 
@@ -98,6 +100,6 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         projectIds,
         memberIds,
         selectedProjectId: input.requestedProjectId,
-        canSelectMembers: isSystemViewer || hasManagementScope
+        canSelectMembers
     };
 }

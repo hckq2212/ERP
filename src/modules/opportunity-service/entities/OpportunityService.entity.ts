@@ -4,6 +4,7 @@ import { Services } from "../../service/entities/Service.entity";
 import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
 import { ContractServices } from "../../contract/entities/ContractService.entity";
 import { OpportunityPackages } from "../../opportunity/entities/OpportunityPackage.entity";
+import { OpportunityServiceJobs } from "./OpportunityServiceJob.entity";
 
 @Entity()
 export class OpportunityServices extends BaseEntity {
@@ -45,4 +46,7 @@ export class OpportunityServices extends BaseEntity {
 
     @OneToMany(() => ContractServices, (contractService) => contractService.opportunityService)
     contractServices: ContractServices[];
+
+    @OneToMany(() => OpportunityServiceJobs, (item) => item.opportunityService, { cascade: true })
+    jobs: OpportunityServiceJobs[];
 }

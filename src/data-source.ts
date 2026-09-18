@@ -13,6 +13,7 @@ import { QuotationDetails } from "./modules/quotation/entities/QuotationDetail.e
 import { Services } from "./modules/service/entities/Service.entity"
 import { Jobs } from "./modules/job/entities/Job.entity"
 import { OpportunityServices } from "./modules/opportunity-service/entities/OpportunityService.entity"
+import { OpportunityServiceJobs } from "./modules/opportunity-service/entities/OpportunityServiceJob.entity"
 import { Contracts } from "./modules/contract/entities/Contract.entity"
 import { ContractServices } from "./modules/contract/entities/ContractService.entity"
 import { Projects } from "./modules/project/entities/Project.entity"
@@ -90,6 +91,7 @@ export const AppDataSource = new DataSource({
         Services,
         Jobs,
         OpportunityServices,
+        OpportunityServiceJobs,
         Contracts,
         ContractServices,
         Projects,

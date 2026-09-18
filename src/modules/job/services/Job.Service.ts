@@ -14,6 +14,9 @@ export class JobService {
         if (Object.prototype.hasOwnProperty.call(data, "nickname")) {
             data.nickname = normalizeNickname(data.nickname);
         }
+        if (data.isBriefVideo === true) {
+            data.isQuotationItem = false;
+        }
         return data;
     }
 
