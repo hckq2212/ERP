@@ -33,7 +33,8 @@ export class ProjectServiceAddendumService extends ProjectBaseService {
         });
         if (!project) throw new Error("Không tìm thấy dự án");
         if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");
-        if (!this.canManageMonthlyWork(project, userInfo)) {
+
+        if (!this.canCreateProjectWork(userInfo)) {
             throw new Error("Bạn không có quyền bổ sung dịch vụ cho dự án này");
         }
 

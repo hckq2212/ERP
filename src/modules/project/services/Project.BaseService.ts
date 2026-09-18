@@ -60,6 +60,11 @@ export class ProjectBaseService {
         return project.team?.teamLead?.id === actorUserId;
     }
 
+    protected canCreateProjectWork(userInfo?: { id: string, role: string, userId?: string }) {
+        if (!userInfo) return false;
+        return [UserRole.ADMIN, UserRole.PM].includes(userInfo.role as UserRole);
+    }
+
     protected mapContractServiceToMonthlyItem(cs: ContractServices) {
         const opportunityPackage = cs.opportunityService?.opportunityPackage;
         const packageQuantity = Number(opportunityPackage?.quantity || 1);

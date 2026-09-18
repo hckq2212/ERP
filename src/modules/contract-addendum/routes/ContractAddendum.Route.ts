@@ -13,8 +13,8 @@ router.post("/", controller.create);
 router.post("/:id/items", controller.addItems);
 router.post("/:id/upload-signed", controller.uploadSigned);
 router.post("/:id/scale-down", controller.scaleDown);
-router.post("/:id/sale-approve", roleMiddleware(["BD", "ADMIN_SALE"]), controller.saleApprove);
-router.post("/:id/sale-reject", roleMiddleware(["BD", "ADMIN_SALE"]), controller.saleReject);
+router.post("/:id/sale-approve", roleMiddleware(["BD", "ADMIN"]), controller.saleApprove);
+router.post("/:id/sale-reject", roleMiddleware(["BD", "ADMIN"]), controller.saleReject);
 router.post("/:id/bod-approve", roleMiddleware(["BOD", "ADMIN"]), controller.bodApprove);
 router.post("/:id/bod-reject", roleMiddleware(["BOD", "ADMIN"]), controller.bodReject);
 

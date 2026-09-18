@@ -27,7 +27,7 @@ export class ProjectProductDescriptionItems extends BaseEntity {
     @Column()
     productName: string;
 
-    @Column({ type: "simple-json" })
+    @Column({ type: "simple-json", nullable: true })
     specs: ProjectProductDescriptionSpec[];
 
     @Column({ type: "text", nullable: true })

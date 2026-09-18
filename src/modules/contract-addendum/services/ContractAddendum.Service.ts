@@ -7,8 +7,12 @@ import { Services } from "../../service/entities/Service.entity";
 import { Tasks } from "../../task/entities/Task.entity";
 import { TaskStatus } from "../../../shared/entities/Enums";
 import { Users } from "../../user/entities/User.entity";
+import { Projects } from "../../project/entities/Project.entity";
+import { MemberRole } from "../../project/entities/TeamMember.entity";
 import { DebtService } from "../../debt/services/Debt.Service";
 import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
+import { NotificationService } from "../../notification/services/Notification.Service";
+import { EntityManager } from "typeorm";
 
 export class ContractAddendumService {
     private addendumRepository = AppDataSource.getRepository(ContractAddendums);
@@ -18,11 +22,46 @@ export class ContractAddendumService {
     private serviceRepository = AppDataSource.getRepository(Services);
     private taskRepository = AppDataSource.getRepository(Tasks);
     private debtService = new DebtService();
+    private notificationService = new NotificationService();
 
     private async getReviewer(userInfo?: { id?: string, userId?: string }) {
         const userId = userInfo?.userId || userInfo?.id;
         if (!userId) return undefined;
         return await AppDataSource.getRepository(Users).findOneBy({ id: userId });
+    }
+
+    private async notifyProjectManagers(
+        addendum: ContractAddendums,
+        data: { title: string, content: string },
+        manager?: EntityManager
+    ) {
+        const projectId = addendum.project?.id;
+        if (!projectId) return;
+
+        const projectRepository = manager
+            ? manager.getRepository(Projects)
+            : AppDataSource.getRepository(Projects);
+        const project = await projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["team", "team.members", "team.members.user"]
+        });
+
+        const recipients = (project?.team?.members || [])
+            .filter(member => member.role === MemberRole.PROJECT_MANAGER && member.user)
+            .map(member => member.user);
+        const uniqueRecipients = Array.from(new Map(recipients.map(user => [user.id, user])).values());
+
+        for (const recipient of uniqueRecipients) {
+            await this.notificationService.createNotification({
+                title: data.title,
+                content: data.content,
+                type: "CONTRACT_ADDENDUM_REVIEW",
+                recipient,
+                relatedEntityId: addendum.id,
+                relatedEntityType: "ContractAddendum",
+                link: `/projects/${projectId}`
+            }, manager);
+        }
     }
 
     async create(data: { contractId: string, name: string, description?: string }) {
@@ -158,7 +197,10 @@ export class ContractAddendumService {
     }
 
     async saleApprove(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {
-        const addendum = await this.addendumRepository.findOne({ where: { id } });
+        const addendum = await this.addendumRepository.findOne({
+            where: { id },
+            relations: ["contract", "project"]
+        });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
         if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
         if (addendum.status !== AddendumStatus.PENDING_SALE) throw new Error("Phụ lục không ở trạng thái chờ Sale duyệt");
@@ -167,11 +209,19 @@ export class ContractAddendumService {
         addendum.saleReviewedBy = await this.getReviewer(userInfo) as any;
         addendum.saleReviewedAt = new Date();
         addendum.saleReviewNote = note;
-        return await this.addendumRepository.save(addendum);
+        const saved = await this.addendumRepository.save(addendum);
+        await this.notifyProjectManagers(saved, {
+            title: "Phụ lục đã được duyệt bước Sale",
+            content: `Phụ lục "${saved.name}" đã được duyệt và chuyển sang bước BOD duyệt.`
+        });
+        return saved;
     }
 
     async saleReject(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {
-        const addendum = await this.addendumRepository.findOne({ where: { id } });
+        const addendum = await this.addendumRepository.findOne({
+            where: { id },
+            relations: ["contract", "project"]
+        });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
         if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
         if (addendum.status !== AddendumStatus.PENDING_SALE) throw new Error("Phụ lục không ở trạng thái chờ Sale duyệt");
@@ -180,7 +230,12 @@ export class ContractAddendumService {
         addendum.saleReviewedBy = await this.getReviewer(userInfo) as any;
         addendum.saleReviewedAt = new Date();
         addendum.saleReviewNote = note;
-        return await this.addendumRepository.save(addendum);
+        const saved = await this.addendumRepository.save(addendum);
+        await this.notifyProjectManagers(saved, {
+            title: "Phụ lục không được duyệt bước Sale",
+            content: `Phụ lục "${saved.name}" đã bị từ chối ở bước Sale${note ? `: ${note}` : "."}`
+        });
+        return saved;
     }
 
     async bodApprove(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {
@@ -270,6 +325,12 @@ export class ContractAddendumService {
             addendum.bodReviewedAt = new Date();
             addendum.bodReviewNote = note;
             const saved = await addendumRepository.save(addendum);
+            await this.notifyProjectManagers(saved, {
+                title: "Phụ lục đã được duyệt",
+                content: addendum.type === AddendumType.ADD_SERVICES
+                    ? `Phụ lục "${saved.name}" đã được duyệt và đã sinh ${createdTasks} công việc cho dịch vụ bổ sung.`
+                    : `Phụ lục "${saved.name}" đã được duyệt và đã sinh ${createdTasks} công việc tháng mới.`
+            }, manager);
             const message = addendum.type === AddendumType.ADD_SERVICES
                 ? "Đã duyệt phụ lục và sinh công việc cho dịch vụ bổ sung"
                 : "Đã duyệt phụ lục và sinh công việc tháng mới";
@@ -278,7 +339,10 @@ export class ContractAddendumService {
     }
 
     async bodReject(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {
-        const addendum = await this.addendumRepository.findOne({ where: { id } });
+        const addendum = await this.addendumRepository.findOne({
+            where: { id },
+            relations: ["contract", "project"]
+        });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
         if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
         if (addendum.status !== AddendumStatus.PENDING_BOD) throw new Error("Phụ lục không ở trạng thái chờ BOD duyệt");
@@ -287,6 +351,11 @@ export class ContractAddendumService {
         addendum.bodReviewedBy = await this.getReviewer(userInfo) as any;
         addendum.bodReviewedAt = new Date();
         addendum.bodReviewNote = note;
-        return await this.addendumRepository.save(addendum);
+        const saved = await this.addendumRepository.save(addendum);
+        await this.notifyProjectManagers(saved, {
+            title: "Phụ lục không được duyệt bước BOD",
+            content: `Phụ lục "${saved.name}" đã bị từ chối ở bước BOD${note ? `: ${note}` : "."}`
+        });
+        return saved;
     }
 }
