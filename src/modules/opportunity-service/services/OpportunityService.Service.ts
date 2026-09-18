@@ -23,7 +23,7 @@ export class OpportunityServiceService {
     async getOne(id: string) {
         const item = await this.oppServiceRepository.findOne({
             where: SecurityService.withTenant({ id }),
-            relations: ["opportunity", "service", "jobs", "jobs.job", "jobs.tasks"]
+            relations: ["opportunity", "opportunity.customer", "service", "jobs", "jobs.job", "jobs.tasks"]
         });
         if (!item) throw new Error("Không tìm thấy hạng mục dịch vụ");
         return item;
@@ -56,6 +56,11 @@ export class OpportunityServiceService {
         jobs?: { id: string, costAtSale?: number, briefVideo?: string }[]
     }) {
         const item = await this.getOne(id);
+        const updatesCost = data.costAtSale !== undefined || data.jobs?.some(job => job.costAtSale !== undefined);
+
+        if (updatesCost && !item.opportunity.customer && !item.opportunity.leadName?.trim()) {
+            throw new Error("Vui lòng chọn khách hàng trước khi cập nhật giá vốn dịch vụ");
+        }
 
         if (data.quantity !== undefined) item.quantity = data.quantity;
         if (data.costAtSale !== undefined) item.costAtSale = data.costAtSale;

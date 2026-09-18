@@ -1,4 +1,5 @@
 import { isManagementRole, isStaffRole, UserRole } from "../../modules/account/entities/Account.entity";
+import { IsNull, Not } from "typeorm";
 
 type ActorInfo = { id: string, role: string, userId?: string, companyId?: string };
 
@@ -227,18 +228,25 @@ export class SecurityService {
             return SecurityService.getTenantWhere(userInfo);
         }
 
-        // PM only sees tasks that belong to projects they explicitly manage.
+        // PM sees tasks in projects they manage and the shared queue of
+        // opportunity-level Video AI demo tasks that PMs are notified to assign.
         if (role === UserRole.PM) {
-            return SecurityService.withTenant({
-                project: {
-                    team: {
-                        members: {
-                            user: { id: userId || "__UNLINKED_PM__" },
-                            role: "PROJECT_MANAGER"
+            return SecurityService.withTenant([
+                {
+                    project: {
+                        team: {
+                            members: {
+                                user: { id: userId || "__UNLINKED_PM__" },
+                                role: "PROJECT_MANAGER"
+                            }
                         }
                     }
+                },
+                {
+                    opportunityId: Not(IsNull()),
+                    opportunityServiceJob: { isBriefVideo: true }
                 }
-            }, userInfo);
+            ], userInfo);
         }
 
         // Business Development (BD) can see tasks related to their contracts or customers
