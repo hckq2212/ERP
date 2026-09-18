@@ -77,6 +77,8 @@ export class TaskService {
         return this.supportService.requestSupport(id, note);
     }
 
+    /*
+    // Deprecated cross-team support delegation
     assignSupportTeam(id: string, teamId: string) {
         return this.supportService.assignSupportTeam(id, teamId);
     }
@@ -92,6 +94,7 @@ export class TaskService {
     requestReturnSupport(id: string, note: string) {
         return this.supportService.requestReturnSupport(id, note);
     }
+    */
 
     assessExtraTask(id: string, data: { isBillable: boolean, isRejected?: boolean, sellingPrice?: number, serviceId?: string }) {
         return this.pricingService.assessExtraTask(id, data);

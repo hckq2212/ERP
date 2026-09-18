@@ -262,6 +262,10 @@ export class TaskAssignmentService extends TaskBaseService {
 
                     if (task.status === TaskStatus.PENDING || task.status === TaskStatus.AWAITING_SUPPORT) {
                         task.status = TaskStatus.DOING;
+                        task.isSupportRequested = false;
+                        task.isSupportAccepted = false;
+                        task.supportLeadId = null as any;
+                        task.supportRequestType = null;
                     }
                 }
 
@@ -488,6 +492,9 @@ export class TaskAssignmentService extends TaskBaseService {
             }
 
             // Clear support fields when reassigning the main performer
+            if (task.status === TaskStatus.AWAITING_SUPPORT) {
+                task.status = TaskStatus.DOING;
+            }
             task.isSupportRequested = false;
             task.isSupportAccepted = false;
             task.supportTeamId = null as any;

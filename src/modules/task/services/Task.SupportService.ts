@@ -51,6 +51,8 @@ export class TaskSupportService extends TaskBaseService {
         return savedTask;
     }
 
+    /*
+    // NOTE: Deprecated cross-team support flow - kept for reference
     async assignSupportTeam(id: string, teamId: string) {
         const task = await this.getOne(id);
         const team = await this.teamRepository.findOne({
@@ -190,4 +192,5 @@ export class TaskSupportService extends TaskBaseService {
         taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
         return savedTask;
     }
+    */
 }

@@ -234,6 +234,8 @@ export class TaskController {
         }
     }
 
+    /*
+    // Deprecated cross-team support handlers
     respondToSupport = async (req: Request, res: Response) => {
         try {
             const user = (req as any).user;
@@ -270,6 +272,7 @@ export class TaskController {
             res.status(500).json({ message: error.message });
         }
     }
+    */
 
     rework = async (req: Request, res: Response) => {
         try {

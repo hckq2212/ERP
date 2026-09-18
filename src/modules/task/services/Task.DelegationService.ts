@@ -23,7 +23,8 @@ export class TaskDelegationService extends TaskBaseService {
         TaskStatus.PENDING,
         TaskStatus.DOING,
         TaskStatus.REWORKING,
-        TaskStatus.OVERDUE
+        TaskStatus.OVERDUE,
+        TaskStatus.AWAITING_SUPPORT
     ];
 
     private async lockTask(manager: EntityManager, taskId: string, notFoundMessage: string) {
@@ -302,7 +303,10 @@ export class TaskDelegationService extends TaskBaseService {
             parent.subtaskPlanReviewerId = null;
             parent.subtaskPlanRequesterId = null;
             parent.subtaskPlanReviewNote = null;
-            if (parent.supportRequestType === "STAFFING" && parent.isSupportAccepted) {
+            if (parent.status === TaskStatus.AWAITING_SUPPORT) {
+                parent.status = TaskStatus.DOING;
+            }
+            if (parent.isSupportRequested || (parent.supportRequestType === "STAFFING" && parent.isSupportAccepted)) {
                 parent.isSupportRequested = false;
                 parent.isSupportAccepted = false;
                 parent.supportLeadId = null as any;

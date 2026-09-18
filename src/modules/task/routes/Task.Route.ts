@@ -36,10 +36,11 @@ router.delete("/:id", taskController.delete);
 router.patch("/:id/reassign", taskController.reassign);
 router.post("/:id/pricing", taskController.assessExtraTask);
 router.post('/:id/request-support', taskController.requestSupport);
-router.post('/:id/respond-support', taskController.respondToSupport);
-router.post('/:id/return-support', taskController.returnSupport);
-router.post('/:id/request-return-support', taskController.requestReturnSupport);
-router.post('/:id/assign-support-team', taskController.assignSupportTeam);
+// Deprecated cross-team support routes
+// router.post('/:id/respond-support', taskController.respondToSupport);
+// router.post('/:id/return-support', taskController.returnSupport);
+// router.post('/:id/request-return-support', taskController.requestReturnSupport);
+// router.post('/:id/assign-support-team', taskController.assignSupportTeam);
 router.patch("/:id/rework", taskController.rework);
 router.patch("/:id/customer-approve", taskController.approveByCustomer);
 router.post("/:id/remind", taskController.sendReminder);
