@@ -8,7 +8,7 @@ export class DebtPaymentService {
     private debtRepository = AppDataSource.getRepository(Debts);
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
 
-    async create(data: { debtId: string, amount: number, paymentDate: Date, note?: string }) {
+    async create(data: { debtId: string, amount: number, paymentDate: Date, note?: string, attachments?: any[] }) {
         const debt = await this.debtRepository.findOne({
             where: { id: data.debtId },
             relations: ["milestone", "payments"]
@@ -21,7 +21,8 @@ export class DebtPaymentService {
             debt,
             amount: data.amount,
             paymentDate: data.paymentDate,
-            note: data.note
+            note: data.note,
+            attachments: data.attachments || null
         });
         const savedPayment = await this.paymentRepository.save(payment);
 
