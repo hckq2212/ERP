@@ -162,6 +162,10 @@ export class Tasks extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, nullable: true })
     rewardVinicoin: number | null;
 
+    /** Final customer outcome for opportunity demo work. */
+    @Column({ type: "varchar", length: 30, nullable: true })
+    customerDecision: "APPROVED" | "NOT_PURCHASED" | null;
+
     /** Approval state of the complete subtask allocation plan (parent tasks only). */
     @Column({ type: "varchar", length: 30, nullable: true })
     subtaskPlanStatus: SubtaskPlanStatus | null;

@@ -76,9 +76,8 @@ export class ProjectBaseService {
             ? new Set(opportunityJobs.map(item => item.jobId))
             : null;
         const serviceJobs = (cs.service?.serviceJobs || []).filter(serviceJob =>
-            selectedJobIds
-                ? selectedJobIds.has(serviceJob.jobId)
-                : !serviceJob.job?.isBriefVideo
+            !serviceJob.job?.isBriefVideo &&
+            (!selectedJobIds || selectedJobIds.has(serviceJob.jobId))
         );
 
         return {
@@ -185,9 +184,8 @@ export class ProjectBaseService {
                 ? new Set(opportunityJobs.map(item => item.jobId))
                 : null;
             const serviceJobs = cs.service.serviceJobs.filter(serviceJob =>
-                selectedJobIds
-                    ? selectedJobIds.has(serviceJob.jobId)
-                    : !serviceJob.job?.isBriefVideo
+                !serviceJob.job?.isBriefVideo &&
+                (!selectedJobIds || selectedJobIds.has(serviceJob.jobId))
             );
 
             for (const sj of serviceJobs) {
