@@ -48,6 +48,10 @@ export class DashboardService {
             availableMembers: scope.availableMembers
         };
 
+        if (scope.canSelectMembers) {
+            data.staffWorkloads = await this.workloadService.getAllStaffWorkloads(month, year);
+        }
+
         // 1. BOD/ADMIN Data
         if (scope.type === DashboardScopeType.SYSTEM) {
             data.admin = await this.getAdminMetrics(dateFilter, projectId);
@@ -224,7 +228,7 @@ export class DashboardService {
 
         const rawRoleTasks = await this.taskRepo.find({
             where: taskWhereConditions,
-            relations: ["project", "project.contract", "project.contract.customer", "project.contract.services", "assignee", "helper"],
+            relations: ["project", "project.contract", "project.contract.customer", "project.contract.services", "assignee"],
             select: {
                 id: true,
                 name: true,
