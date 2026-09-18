@@ -25,6 +25,7 @@ import { DebtPayments } from "./modules/debt/entities/DebtPayment.entity"
 import { Notifications } from "./modules/notification/entities/Notification.entity"
 import { Announcements } from "./modules/announcement/entities/Announcement.entity"
 import { AnnouncementRecipients } from "./modules/announcement/entities/AnnouncementRecipient.entity"
+import { AnnouncementComments } from "./modules/announcement/entities/AnnouncementComment.entity"
 import { ContractAddendums } from "./modules/contract-addendum/entities/ContractAddendum.entity"
 import { TaskReviews } from "./modules/task/entities/TaskReview.entity"
 import { JobCriterias } from "./modules/job-criteria/entities/JobCriteria.entity"
@@ -104,6 +105,7 @@ export const AppDataSource = new DataSource({
         Notifications,
         Announcements,
         AnnouncementRecipients,
+        AnnouncementComments,
         VendorJobs,
         ContractAddendums,
         TaskReviews,

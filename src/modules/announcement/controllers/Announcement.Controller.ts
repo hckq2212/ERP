@@ -64,4 +64,37 @@ export class AnnouncementController {
             res.status(400).json({ message: error.message })
         }
     }
+
+    getComments = async (req: AuthRequest, res: Response) => {
+        try {
+            const userId = req.user?.userId || req.user?.id
+            const role = req.user?.role as string
+            const result = await this.announcementService.getComments(req.params.id as string, { userId: userId as string, role })
+            res.status(200).json(result)
+        } catch (error: any) {
+            res.status(400).json({ message: error.message })
+        }
+    }
+
+    addComment = async (req: AuthRequest, res: Response) => {
+        try {
+            const userId = req.user?.userId || req.user?.id
+            const role = req.user?.role as string
+            const result = await this.announcementService.addComment(req.params.id as string, { userId: userId as string, role }, req.body.content)
+            res.status(201).json(result)
+        } catch (error: any) {
+            res.status(400).json({ message: error.message })
+        }
+    }
+
+    deleteComment = async (req: AuthRequest, res: Response) => {
+        try {
+            const userId = req.user?.userId || req.user?.id
+            const role = req.user?.role as string
+            const result = await this.announcementService.deleteComment(req.params.id as string, req.params.commentId as string, { userId: userId as string, role })
+            res.status(200).json(result)
+        } catch (error: any) {
+            res.status(400).json({ message: error.message })
+        }
+    }
 }

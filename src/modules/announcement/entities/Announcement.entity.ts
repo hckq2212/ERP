@@ -75,6 +75,12 @@ export class Announcements extends BaseEntity {
     @Column({ nullable: true })
     attachmentUrl: string
 
+    @Column({ type: "simple-json", nullable: true })
+    mediaUrls: { url: string; type: "image" | "video"; name?: string }[]
+
+    @Column({ type: "simple-array", nullable: true })
+    ccUserIds: string[]
+
     @Column({ type: "enum", enum: AnnouncementStatus, default: AnnouncementStatus.SENT })
     status: AnnouncementStatus
 

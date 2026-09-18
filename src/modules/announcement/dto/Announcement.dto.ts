@@ -54,6 +54,14 @@ export class CreateAnnouncementDTO {
     @IsOptional()
     attachmentUrl?: string
 
+    @IsArray()
+    @IsOptional()
+    mediaUrls?: { url: string; type: "image" | "video"; name?: string }[]
+
+    @IsArray()
+    @IsOptional()
+    ccUserIds?: string[]
+
     @IsEnum(AnnouncementStatus)
     @IsOptional()
     status?: AnnouncementStatus
@@ -115,6 +123,14 @@ export class UpdateAnnouncementDTO {
     @IsString()
     @IsOptional()
     attachmentUrl?: string
+
+    @IsArray()
+    @IsOptional()
+    mediaUrls?: { url: string; type: "image" | "video"; name?: string }[]
+
+    @IsArray()
+    @IsOptional()
+    ccUserIds?: string[]
 
     @IsEnum(AnnouncementStatus)
     @IsOptional()

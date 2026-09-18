@@ -1,23 +1,24 @@
 import { AppDataSource } from "../../../data-source"
 import { Announcements, AnnouncementScopeType, AnnouncementStatus } from "../entities/Announcement.entity"
 import { AnnouncementRecipients } from "../entities/AnnouncementRecipient.entity"
+import { AnnouncementComments } from "../entities/AnnouncementComment.entity"
 import { Users } from "../../user/entities/User.entity"
 import { TeamMembers } from "../../project/entities/TeamMember.entity"
 import { In, Brackets } from "typeorm"
-import { NotificationService } from "../../notification/services/Notification.Service"
 
 export class AnnouncementService {
     private announcementRepository = AppDataSource.getRepository(Announcements)
     private recipientRepository = AppDataSource.getRepository(AnnouncementRecipients)
+    private commentRepository = AppDataSource.getRepository(AnnouncementComments)
     private userRepository = AppDataSource.getRepository(Users)
     private teamMemberRepository = AppDataSource.getRepository(TeamMembers)
-    private notificationService = new NotificationService()
 
     private async resolveRecipients(data: {
         scopeType: AnnouncementScopeType
         targetRoles?: string[]
         targetTeamIds?: string[]
         targetUserIds?: string[]
+        ccUserIds?: string[]
     }, excludeUserId?: string): Promise<Users[]> {
         let users: Users[] = []
 
@@ -52,6 +53,17 @@ export class AnnouncementService {
             })
         }
 
+        if (data.ccUserIds && data.ccUserIds.length > 0) {
+            const ccUsers = await this.userRepository.find({
+                where: { id: In(data.ccUserIds) },
+                relations: ["accounts"]
+            })
+            const mergedMap = new Map<string, Users>()
+            users.forEach(user => mergedMap.set(user.id, user))
+            ccUsers.forEach(user => mergedMap.set(user.id, user))
+            users = Array.from(mergedMap.values())
+        }
+
         // Người tạo thông báo không tính là người nhận, không tham gia vào số liệu đã xem/chưa xem
         return excludeUserId ? users.filter(user => user.id !== excludeUserId) : users
     }
@@ -61,9 +73,7 @@ export class AnnouncementService {
             throw new Error("Ngày kết thúc không được trước ngày bắt đầu")
         }
 
-        let pendingNotifications: { recipientId: string, notification: any }[] = []
-
-        const savedAnnouncement = await AppDataSource.transaction(async (manager) => {
+        return await AppDataSource.transaction(async (manager) => {
             const createdBy = await manager.getRepository(Users).findOne({ where: { id: createdById } })
 
             const status = data.status || AnnouncementStatus.SENT
@@ -82,6 +92,8 @@ export class AnnouncementService {
                 eventLocation: data.eventLocation,
                 link: data.link,
                 attachmentUrl: data.attachmentUrl,
+                mediaUrls: data.mediaUrls,
+                ccUserIds: data.ccUserIds,
                 status,
                 scheduledAt: data.scheduledAt ? new Date(data.scheduledAt) : null,
                 createdBy: createdBy as any
@@ -104,33 +116,10 @@ export class AnnouncementService {
 
                 savedAnnouncement.recipientCount = recipients.length
                 await manager.getRepository(Announcements).save(savedAnnouncement)
-
-                for (const user of recipients) {
-                    // emit: false -> tránh báo SSE trước khi transaction commit (client refetch sẽ không thấy dữ liệu mới, phải F5 mới thấy)
-                    const savedNotification = await this.notificationService.createNotification({
-                        title: savedAnnouncement.title,
-                        content: savedAnnouncement.content,
-                        type: savedAnnouncement.category,
-                        recipient: user,
-                        sender: createdBy as any,
-                        link: savedAnnouncement.link,
-                        relatedEntityId: savedAnnouncement.id,
-                        relatedEntityType: "ANNOUNCEMENT"
-                    }, manager, { emit: false })
-
-                    pendingNotifications.push({ recipientId: user.id, notification: savedNotification })
-                }
             }
 
             return savedAnnouncement
         })
-
-        // Transaction đã commit xong, giờ mới báo real-time cho các client đang mở SSE
-        for (const { recipientId, notification } of pendingNotifications) {
-            this.notificationService.emitNewNotification(recipientId, notification)
-        }
-
-        return savedAnnouncement
     }
 
     async getAll(query: any, requester: { userId: string, role: string }) {
@@ -187,8 +176,28 @@ export class AnnouncementService {
 
         const [data, total] = await qb.skip(skip).take(limit).getManyAndCount()
 
+        const ids = data.map(item => item.id)
+        const readMap = new Map<string, boolean>()
+
+        if (ids.length > 0) {
+            const recipientRows = await this.recipientRepository
+                .createQueryBuilder("recipient")
+                .select("recipient.announcementId", "announcementId")
+                .addSelect("recipient.isRead", "isRead")
+                .where("recipient.announcementId IN (:...ids)", { ids })
+                .andWhere("recipient.recipientId = :userId", { userId: requester.userId })
+                .getRawMany()
+
+            recipientRows.forEach(row => readMap.set(row.announcementId, row.isRead))
+        }
+
+        const dataWithReadStatus = data.map(item => ({
+            ...item,
+            isRead: readMap.has(item.id) ? readMap.get(item.id) : true
+        }))
+
         return {
-            data,
+            data: dataWithReadStatus,
             total,
             page,
             limit,
@@ -295,6 +304,63 @@ export class AnnouncementService {
         }
 
         await this.announcementRepository.remove(announcement)
+        return { success: true }
+    }
+
+    private async ensureAccess(id: string, requester: { userId: string, role: string }) {
+        const isManager = ["BOD", "ADMIN"].includes(requester.role)
+        if (isManager) return
+
+        const ownRecipient = await this.recipientRepository.findOne({
+            where: { announcement: { id }, recipient: { id: requester.userId } }
+        })
+        if (!ownRecipient) throw new Error("Bạn không có quyền truy cập thông báo này")
+    }
+
+    async getComments(id: string, requester: { userId: string, role: string }) {
+        const announcement = await this.announcementRepository.findOne({ where: { id } })
+        if (!announcement) throw new Error("Không tìm thấy thông báo")
+
+        await this.ensureAccess(id, requester)
+
+        return await this.commentRepository.find({
+            where: { announcement: { id } },
+            relations: ["author"],
+            order: { createdAt: "ASC" }
+        })
+    }
+
+    async addComment(id: string, requester: { userId: string, role: string }, content: string) {
+        const announcement = await this.announcementRepository.findOne({ where: { id } })
+        if (!announcement) throw new Error("Không tìm thấy thông báo")
+
+        await this.ensureAccess(id, requester)
+
+        const author = await this.userRepository.findOne({ where: { id: requester.userId } })
+        if (!author) throw new Error("Không tìm thấy người dùng")
+
+        const comment = this.commentRepository.create({
+            announcement,
+            author,
+            content
+        }) as unknown as AnnouncementComments
+
+        return await this.commentRepository.save(comment)
+    }
+
+    async deleteComment(id: string, commentId: string, requester: { userId: string, role: string }) {
+        const comment = await this.commentRepository.findOne({
+            where: { id: commentId, announcement: { id } },
+            relations: ["author"]
+        })
+        if (!comment) throw new Error("Không tìm thấy bình luận")
+
+        const isManager = ["BOD", "ADMIN"].includes(requester.role)
+        if (!isManager && comment.author?.id !== requester.userId) {
+            throw new Error("Bạn không có quyền xoá bình luận này")
+        }
+
+        await this.commentRepository.remove(comment)
         return { success: true }
     }
 }
