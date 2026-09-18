@@ -13,6 +13,7 @@ import { DebtService } from "../../debt/services/Debt.Service";
 import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { EntityManager } from "typeorm";
+import { UserRole } from "../../account/entities/Account.entity";
 
 export class ContractAddendumService {
     private addendumRepository = AppDataSource.getRepository(ContractAddendums);
@@ -196,7 +197,40 @@ export class ContractAddendumService {
         return await this.addendumRepository.save(addendum);
     }
 
-    async saleApprove(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {
+    private applySaleSelectedItems(addendum: ContractAddendums, selectedItems?: any[]) {
+        if (!selectedItems) return;
+        const currentItems = Array.isArray(addendum.selectedItems) ? addendum.selectedItems : [];
+        if (selectedItems.length !== currentItems.length) {
+            throw new Error("Danh sách dịch vụ cập nhật không hợp lệ");
+        }
+
+        addendum.selectedItems = selectedItems.map((item, index) => {
+            const currentItem = currentItems[index];
+            if (String(item.serviceId || "") !== String(currentItem.serviceId || "")) {
+                throw new Error("Danh sách dịch vụ cập nhật không hợp lệ");
+            }
+
+            const sellingPrice = Number(item.sellingPrice || 0);
+            if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+                throw new Error("Đơn giá dịch vụ không hợp lệ");
+            }
+
+            return {
+                ...currentItem,
+                sellingPrice
+            };
+        });
+        addendum.sellingPrice = addendum.selectedItems.reduce((sum, item) =>
+            sum + Number(item.sellingPrice || 0) * Number(item.quantity || 1), 0) as any;
+    }
+
+    private assertCanResubmit(userInfo?: { role?: string }) {
+        if (![UserRole.PM, UserRole.ADMIN].includes(userInfo?.role as UserRole)) {
+            throw new Error("Bạn không có quyền gửi lại phụ lục");
+        }
+    }
+
+    async saleApprove(id: string, userInfo?: { id?: string, userId?: string }, note?: string, selectedItems?: any[]) {
         const addendum = await this.addendumRepository.findOne({
             where: { id },
             relations: ["contract", "project"]
@@ -205,6 +239,7 @@ export class ContractAddendumService {
         if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
         if (addendum.status !== AddendumStatus.PENDING_SALE) throw new Error("Phụ lục không ở trạng thái chờ Sale duyệt");
 
+        this.applySaleSelectedItems(addendum, selectedItems);
         addendum.status = AddendumStatus.PENDING_BOD;
         addendum.saleReviewedBy = await this.getReviewer(userInfo) as any;
         addendum.saleReviewedAt = new Date();
@@ -215,6 +250,42 @@ export class ContractAddendumService {
             content: `Phụ lục "${saved.name}" đã được duyệt và chuyển sang bước BOD duyệt.`
         });
         return saved;
+    }
+
+    async resubmit(
+        id: string,
+        userInfo?: { id?: string, userId?: string, role?: string },
+        data: { selectedItems?: any[], name?: string, description?: string } = {}
+    ) {
+        this.assertCanResubmit(userInfo);
+
+        const addendum = await this.addendumRepository.findOne({
+            where: { id },
+            relations: ["contract", "project"]
+        });
+        if (!addendum) throw new Error("Không tìm thấy phụ lục");
+        if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng gửi lại");
+        if (![AddendumStatus.SALE_REJECTED, AddendumStatus.BOD_REJECTED].includes(addendum.status)) {
+            throw new Error("Chỉ có thể gửi lại phụ lục đã bị từ chối");
+        }
+
+        if (typeof data.name === "string" && data.name.trim()) {
+            addendum.name = data.name.trim();
+        }
+        if (typeof data.description === "string") {
+            addendum.description = data.description;
+        }
+
+        this.applySaleSelectedItems(addendum, data.selectedItems);
+        addendum.status = AddendumStatus.PENDING_SALE;
+        addendum.saleReviewedBy = null as any;
+        addendum.saleReviewedAt = null as any;
+        addendum.saleReviewNote = null as any;
+        addendum.bodReviewedBy = null as any;
+        addendum.bodReviewedAt = null as any;
+        addendum.bodReviewNote = null as any;
+
+        return await this.addendumRepository.save(addendum);
     }
 
     async saleReject(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {

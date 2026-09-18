@@ -41,11 +41,11 @@ export class ProjectServiceAddendumService extends ProjectBaseService {
         const requestedItems = data.items || [];
         if (requestedItems.length === 0) throw new Error("Vui lòng chọn ít nhất một dịch vụ");
 
-        const serviceIds = Array.from(new Set(requestedItems.map(item => item.serviceId).filter(Boolean))) as string[];
-        if (serviceIds.length !== requestedItems.length) {
+        if (requestedItems.some(item => !item.serviceId)) {
             throw new Error("Danh sách dịch vụ bổ sung không hợp lệ");
         }
 
+        const serviceIds = Array.from(new Set(requestedItems.map(item => item.serviceId))) as string[];
         const services = await AppDataSource.getRepository(Services).find({
             where: serviceIds.map(serviceId => SecurityService.withTenant({ id: serviceId }, userInfo) as any),
             relations: ["serviceJobs", "serviceJobs.job"]
