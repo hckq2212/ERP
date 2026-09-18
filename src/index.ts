@@ -20,6 +20,7 @@ import opportunityServiceRoute from "./modules/opportunity-service/routes/Opport
 import userRoute from "./modules/user/routes/User.Route"
 import projectTeamRoute from "./modules/project/routes/ProjectTeam.Route"
 import notificationRoute from "./modules/notification/routes/Notification.Route"
+import announcementRoute from "./modules/announcement/routes/Announcement.Route"
 import dashboardRoute from "./modules/dashboard/routes/Dashboard.Route";
 import customerRoute from "./modules/customer/routes/Customer.Route"
 import vendorRoute from "./modules/vendor/routes/Vendor.Route"
@@ -102,6 +103,7 @@ app.use("/api/opportunity-services", authMiddleware, writeRateLimitMiddleware, o
 app.use("/api/users", authMiddleware, writeRateLimitMiddleware, userRoute)
 app.use("/api/teams", authMiddleware, writeRateLimitMiddleware, projectTeamRoute)
 app.use("/api/notifications", authMiddleware, writeRateLimitMiddleware, notificationRoute)
+app.use("/api/announcements", authMiddleware, writeRateLimitMiddleware, announcementRoute)
 app.use("/api/dashboard", authMiddleware, writeRateLimitMiddleware, dashboardRoute);
 app.use("/api/customers", authMiddleware, writeRateLimitMiddleware, customerRoute)
 app.use("/api/vendors", authMiddleware, writeRateLimitMiddleware, vendorRoute)
