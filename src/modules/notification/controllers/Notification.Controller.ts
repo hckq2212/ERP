@@ -16,6 +16,7 @@ streamNotifications = async (req: AuthRequest, res: Response) => {
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no"); // Chống Nginx/proxy buffer, để dữ liệu đẩy realtime
         res.flushHeaders(); 
 
         // Keep-alive heartbeat every 30 seconds
