@@ -52,6 +52,8 @@ import { MotionGenerations } from "./modules/video-generation/entities/MotionGen
 import { AiElements } from "./modules/ai-element/entities/AiElement.entity"
 import { AiElementImages } from "./modules/ai-element/entities/AiElementImage.entity"
 import { AiElementVideos } from "./modules/ai-element/entities/AiElementVideo.entity"
+import { Documents } from "./modules/document-library/entities/Document.entity"
+import { DocumentVersions } from "./modules/document-library/entities/DocumentVersion.entity"
 
 import * as dotenv from "dotenv"
 dotenv.config()
@@ -126,6 +128,8 @@ export const AppDataSource = new DataSource({
         AiProviders,
         AiModels,
         Assets,
+        DocumentVersions,
+        Documents,
         VideoGenerations,
         MotionGenerations,
         AiElements,
