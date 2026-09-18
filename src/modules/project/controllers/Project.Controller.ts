@@ -206,15 +206,41 @@ export class ProjectController {
     // }
 
     getMyProjects = async (req: AuthRequest, res: Response) => {
-    try {
-        const result = await this.projectService.getMyProjects({
-            id: req.user!.id,
-            userId: req.user!.userId,
-            role: req.user!.role,
-        });
-        res.status(200).json(result);
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
-    }
-};
+        try {
+            const result = await this.projectService.getMyProjects({
+                id: req.user!.id,
+                userId: req.user!.userId,
+                role: req.user!.role,
+            });
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    };
+
+    pauseProject = async (req: AuthRequest, res: Response) => {
+        try {
+            const { reason } = req.body;
+            const result = await this.projectService.pauseProject(
+                req.params.id as string,
+                reason,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    resumeProject = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.resumeProject(
+                req.params.id as string,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
 }

@@ -163,6 +163,9 @@ export class TaskAssignmentService extends TaskBaseService {
                     relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunity", "opportunityServiceJob", "job"]
                 });
                 if (!task) continue;
+                if (task.status === TaskStatus.ON_HOLD || task.project?.status === ProjectStatus.ON_HOLD) {
+                    throw this.httpError("Công việc hoặc dự án đang tạm dừng, không thể phân công", 400);
+                }
                 await assertSubtaskPlanApproved(
                     transactionalEntityManager.getRepository(Tasks),
                     task,
@@ -457,6 +460,9 @@ export class TaskAssignmentService extends TaskBaseService {
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
+        if (task.status === TaskStatus.ON_HOLD || task.project?.status === ProjectStatus.ON_HOLD) {
+            throw this.httpError("Công việc hoặc dự án đang tạm dừng, không thể phân công lại", 400);
+        }
 
         // Identify old performer info for notification
         let oldPerformerName = "";

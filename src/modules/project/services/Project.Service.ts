@@ -61,4 +61,12 @@ export class ProjectService {
     confirm(id: string, actor: { id: string; userId?: string; role: string }) {
         return this.lifecycleService.confirm(id, actor);
     }
+
+    pauseProject(id: string, reason: string, actor: { id: string; userId?: string; role: string }) {
+        return this.lifecycleService.pauseProject(id, reason, actor);
+    }
+
+    resumeProject(id: string, actor: { id: string; userId?: string; role: string }) {
+        return this.lifecycleService.resumeProject(id, actor);
+    }
 }

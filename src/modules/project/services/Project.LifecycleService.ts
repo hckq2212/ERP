@@ -121,33 +121,178 @@ export class ProjectLifecycleService extends ProjectBaseService {
         return savedProject;
     }
 
+    private assertCanPauseOrResumeProject(project: Projects, actor: ActorInfo, actorUser: Users) {
+        if ([UserRole.ADMIN, UserRole.BOD].includes(actor.role as UserRole)) {
+            return;
+        }
+        if (actor.role === UserRole.BD) {
+            const isContractCreator = project.contract?.createdBy?.id === actorUser.id;
+            const isCustomerCreator = (project.contract as any)?.customer?.createdBy?.id === actorUser.id;
+            if (isContractCreator || isCustomerCreator) {
+                return;
+            }
+        }
+        throw this.httpError("Chỉ BD phụ trách dự án hoặc Ban Giám đốc mới có quyền tạm ngừng/tiếp tục dự án", 403);
+    }
 
-    // async start(id: string) {
-    //     const project = await this.getOne(id);
+    async pauseProject(id: string, reason: string, actor: ActorInfo) {
+        if (!reason || !reason.trim()) {
+            throw this.httpError("Vui lòng nhập lý do tạm ngừng dự án", 400);
+        }
+        const userActing = await this.resolveActorUser(actor);
+        const project = await this.projectRepository.findOne({
+            where: SecurityService.withTenant({ id }),
+            relations: ["contract", "contract.createdBy", "contract.customer", "team", "team.teamLead", "team.members", "team.members.user"]
+        });
+        if (!project) throw this.httpError("Không tìm thấy dự án", 404);
 
-    //     // Requirement: Only transition to IN_PROGRESS if Team Lead has already accepted (CONFIRMED)
-    //     if (project.status !== ProjectStatus.CONFIRMED) {
-    //         console.log(`[ProjectService] Project ${id} is not in CONFIRMED state (current: ${project.status}). Skipping automatic IN_PROGRESS transition.`);
-    //         return project;
-    //     }
+        this.assertCanPauseOrResumeProject(project, actor, userActing);
 
-    //     // Check contract signed
-    //     const contract = await this.contractRepository.findOneBy({ id: project.contract.id });
-    //     if (contract?.status !== ContractStatus.SIGNED) {
-    //         throw new Error("Hợp đồng chưa được ký (Signed), không thể bắt đầu dự án");
-    //     }
+        if (![ProjectStatus.CONFIRMED, ProjectStatus.IN_PROGRESS].includes(project.status)) {
+            throw this.httpError(`Dự án đang ở trạng thái ${project.status}, không thể tạm ngừng`, 400);
+        }
 
-    //     project.status = ProjectStatus.IN_PROGRESS;
-    //     project.actualStartDate = new Date();
+        const result = await AppDataSource.transaction(async manager => {
+            const pRepo = manager.getRepository(Projects);
+            const tRepo = manager.getRepository(Tasks);
 
-    //     // Update Opportunity Status
-    //     const fullContract = await this.contractRepository.findOne({ where: { id: project.contract.id }, relations: ["opportunity"] });
-    //     if (fullContract?.opportunity) {
-    //         const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
-    //         fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
-    //         await oppRepo.save(fullContract.opportunity);
-    //     }
+            project.status = ProjectStatus.ON_HOLD;
+            project.pausedAt = new Date();
+            project.pauseReason = reason.trim();
+            project.pausedById = userActing.id;
 
-    //     return await this.projectRepository.save(project);
-    // }
+            const savedProject = await pRepo.save(project);
+
+            // Find all uncompleted tasks of this project
+            const uncompletedTasks = await tRepo.find({
+                where: {
+                    project: { id: project.id },
+                    status: Not(In([TaskStatus.COMPLETED, TaskStatus.ACCEPTED, TaskStatus.ON_HOLD]))
+                }
+            });
+
+            for (const task of uncompletedTasks) {
+                task.previousStatus = task.status;
+                task.status = TaskStatus.ON_HOLD;
+                await tRepo.save(task);
+            }
+
+            return { savedProject, uncompletedTasks };
+        });
+
+        // Notify teamLead and projectManager (if any)
+        const recipientSet = new Set<string>();
+        if (project.team?.teamLead && project.team.teamLead.id !== userActing.id) {
+            recipientSet.add(project.team.teamLead.id);
+            await this.notificationService.createNotification({
+                title: "Dự án đã tạm ngừng",
+                content: `BD ${userActing.fullName} đã tạm ngừng dự án ${project.name}. Lý do: ${reason.trim()}. Các công việc dở dang đã được chuyển sang tạm dừng.`,
+                type: "PROJECT_CONFIRMED",
+                recipient: project.team.teamLead,
+                relatedEntityId: project.id,
+                relatedEntityType: "Project",
+                link: `/projects/${project.id}`
+            });
+        }
+
+        const pmMember = project.team?.members?.find(m => m.role === "PROJECT_MANAGER" && m.user?.id);
+        if (pmMember?.user && !recipientSet.has(pmMember.user.id) && pmMember.user.id !== userActing.id) {
+            await this.notificationService.createNotification({
+                title: "Dự án đã tạm ngừng",
+                content: `BD ${userActing.fullName} đã tạm ngừng dự án ${project.name}. Lý do: ${reason.trim()}. Các công việc dở dang đã được chuyển sang tạm dừng.`,
+                type: "PROJECT_CONFIRMED",
+                recipient: pmMember.user,
+                relatedEntityId: project.id,
+                relatedEntityType: "Project",
+                link: `/projects/${project.id}`
+            });
+        }
+
+        projectEmitter.emit(PROJECT_EVENTS.UPDATED, result.savedProject);
+        return result.savedProject;
+    }
+
+    async resumeProject(id: string, actor: ActorInfo) {
+        const userActing = await this.resolveActorUser(actor);
+        const project = await this.projectRepository.findOne({
+            where: SecurityService.withTenant({ id }),
+            relations: ["contract", "contract.createdBy", "contract.customer", "team", "team.teamLead", "team.members", "team.members.user"]
+        });
+        if (!project) throw this.httpError("Không tìm thấy dự án", 404);
+
+        this.assertCanPauseOrResumeProject(project, actor, userActing);
+
+        if (project.status !== ProjectStatus.ON_HOLD) {
+            throw this.httpError(`Dự án không ở trạng thái tạm ngừng (hiện tại: ${project.status})`, 400);
+        }
+
+        const result = await AppDataSource.transaction(async manager => {
+            const pRepo = manager.getRepository(Projects);
+            const tRepo = manager.getRepository(Tasks);
+
+            project.status = ProjectStatus.IN_PROGRESS;
+            project.pausedAt = null as any;
+            project.pauseReason = null as any;
+            project.pausedById = null as any;
+
+            const savedProject = await pRepo.save(project);
+
+            // Find all ON_HOLD tasks of this project to restore
+            const onHoldTasks = await tRepo.find({
+                where: {
+                    project: { id: project.id },
+                    status: TaskStatus.ON_HOLD
+                }
+            });
+
+            for (const task of onHoldTasks) {
+                if (task.previousStatus) {
+                    if (task.previousStatus === TaskStatus.OVERDUE) {
+                        task.status = TaskStatus.DOING;
+                    } else {
+                        task.status = task.previousStatus as TaskStatus;
+                    }
+                } else {
+                    task.status = task.assigneeId ? TaskStatus.DOING : TaskStatus.PENDING;
+                }
+                // Clear previousStatus and clear old plannedEndDate so task won't be overdue immediately
+                task.previousStatus = null as any;
+                task.plannedEndDate = null as any;
+                await tRepo.save(task);
+            }
+
+            return { savedProject, onHoldTasks };
+        });
+
+        // Notify teamLead and projectManager (if any)
+        const recipientSet = new Set<string>();
+        if (project.team?.teamLead && project.team.teamLead.id !== userActing.id) {
+            recipientSet.add(project.team.teamLead.id);
+            await this.notificationService.createNotification({
+                title: "Dự án tiếp tục hoạt động",
+                content: `Dự án ${project.name} đã được tiếp tục thực hiện. Vui lòng kiểm tra và cập nhật lại deadline cho các công việc dở dang.`,
+                type: "PROJECT_CONFIRMED",
+                recipient: project.team.teamLead,
+                relatedEntityId: project.id,
+                relatedEntityType: "Project",
+                link: `/projects/${project.id}`
+            });
+        }
+
+        const pmMember = project.team?.members?.find(m => m.role === "PROJECT_MANAGER" && m.user?.id);
+        if (pmMember?.user && !recipientSet.has(pmMember.user.id) && pmMember.user.id !== userActing.id) {
+            await this.notificationService.createNotification({
+                title: "Dự án tiếp tục hoạt động",
+                content: `Dự án ${project.name} đã được tiếp tục thực hiện. Vui lòng kiểm tra và cập nhật lại deadline cho các công việc dở dang.`,
+                type: "PROJECT_CONFIRMED",
+                recipient: pmMember.user,
+                relatedEntityId: project.id,
+                relatedEntityType: "Project",
+                link: `/projects/${project.id}`
+            });
+        }
+
+        projectEmitter.emit(PROJECT_EVENTS.UPDATED, result.savedProject);
+        return result.savedProject;
+    }
 }

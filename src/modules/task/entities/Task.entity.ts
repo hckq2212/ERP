@@ -97,6 +97,9 @@ export class Tasks extends BaseEntity {
     })
     status: TaskStatus;
 
+    @Column({ type: "varchar", length: 50, nullable: true })
+    previousStatus: string | null;
+
     @Column({ type: "json", nullable: true })
     result: {
         type: string,

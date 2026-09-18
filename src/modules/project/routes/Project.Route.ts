@@ -16,6 +16,8 @@ router.get("/:id/monthly-work-template", projectController.getMonthlyWorkTemplat
 
 router.post("/assign", validationMiddleware(AssignTeamDTO), projectController.assign);
 router.post("/:id/confirm", projectController.confirm);
+router.post("/:id/pause", projectController.pauseProject);
+router.post("/:id/resume", projectController.resumeProject);
 router.post("/:id/monthly-work-addendums", projectController.createMonthlyWorkAddendum);
 router.post("/:id/service-addendums", projectController.createServiceAddendum);
 router.get("/:id/product-descriptions", projectController.getProductDescriptions);

@@ -8,6 +8,7 @@ import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { Tasks } from "../entities/Task.entity";
 import { TaskBaseService } from "./Task.BaseService";
 import { SUBTASK_PM_APPROVAL_ENABLED } from "../constants/SubtaskPlan.constants";
+import { ProjectStatus } from "../../project/entities/Project.entity";
 
 type TaskActor = { id: string; userId?: string; role?: string };
 
@@ -58,6 +59,9 @@ export class TaskDelegationService extends TaskBaseService {
     }
 
     private assertTaskCanBeSplit(task: Tasks) {
+        if (task.project?.status === ProjectStatus.ON_HOLD) {
+            throw this.httpError("Dự án đang tạm dừng, không thể chia subtask", 400);
+        }
         if (task.performerType !== PerformerType.INTERNAL) {
             throw this.httpError("Chỉ công việc nội bộ mới được chia subtask và phân bổ Vinicoin", 409);
         }

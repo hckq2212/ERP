@@ -10,7 +10,8 @@ export enum ProjectStatus {
     CONFIRMED = "CONFIRMED", // Team Lead đã nhận
     IN_PROGRESS = "IN_PROGRESS", // Đang thực hiện (sau khi upload hợp đồng đã ký)
     COMPLETED = "COMPLETED",
-    CANCELLED = "CANCELLED"
+    CANCELLED = "CANCELLED",
+    ON_HOLD = "ON_HOLD" // Tạm ngừng
 }
 
 export enum GoogleSheetStatus {
@@ -39,6 +40,15 @@ export class Projects extends BaseEntity {
         default: ProjectStatus.PENDING_CONFIRMATION
     })
     status: ProjectStatus;
+
+    @Column({ type: "timestamptz", nullable: true })
+    pausedAt: Date;
+
+    @Column({ type: "text", nullable: true })
+    pauseReason: string;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    pausedById: string;
 
     @Column({ type: "date", nullable: true })
     plannedStartDate: Date;

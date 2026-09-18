@@ -254,6 +254,9 @@ export class ProjectBaseService {
             where: rbacWhere,
             relations: [
                 "contract",
+                "contract.createdBy",
+                "contract.customer",
+                "contract.customer.createdBy",
                 "team",
                 "team.teamLead",
                 "team.members",
@@ -266,6 +269,9 @@ export class ProjectBaseService {
                 status: true,
                 plannedStartDate: true,
                 plannedEndDate: true,
+                pausedAt: true,
+                pauseReason: true,
+                pausedById: true,
                 googleSheetId: true,
                 googleSheetUrl: true,
                 googleSheetStatus: true,
@@ -277,7 +283,19 @@ export class ProjectBaseService {
                     contractCode: true,
                     attachments: true,
                     status: true,
-                    description: true
+                    description: true,
+                    createdBy: {
+                        id: true,
+                        fullName: true
+                    },
+                    customer: {
+                        id: true,
+                        name: true,
+                        createdBy: {
+                            id: true,
+                            fullName: true
+                        }
+                    }
                 },
                 team: {
                     id: true,

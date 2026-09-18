@@ -28,6 +28,9 @@ export class TaskReminderService extends TaskBaseService {
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
+        if (task.status === TaskStatus.ON_HOLD || task.project?.status === ProjectStatus.ON_HOLD) {
+            throw this.httpError("Công việc hoặc dự án đang tạm dừng, không thể gửi nhắc nhở", 400);
+        }
         const canSendReminder = isProjectManagementRole(currentUser?.role) ||
             this.isProjectOperatorFromTeam(task.project?.team, currentUser);
         if (!canSendReminder) {
