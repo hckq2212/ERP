@@ -18,9 +18,10 @@ export class MotionGenerationController {
             const characterImageAssetId = body.characterImageAssetId ? Number(body.characterImageAssetId) : undefined;
             const referenceVideoAssetId = body.referenceVideoAssetId ? Number(body.referenceVideoAssetId) : undefined;
 
-            if (!body.projectId) {
-                return res.status(400).json({ message: "projectId là bắt buộc" });
+            if (!body.projectId && !body.opportunityId) {
+                return res.status(400).json({ message: "projectId hoặc opportunityId là bắt buộc" });
             }
+            if (!body.taskId) return res.status(400).json({ message: "taskId là bắt buộc" });
             if (!body.modelId) {
                 return res.status(400).json({ message: "modelId là bắt buộc" });
             }
@@ -33,6 +34,7 @@ export class MotionGenerationController {
 
             const dto: CreateMotionControlVideoDto = {
                 projectId: body.projectId,
+                opportunityId: body.opportunityId,
                 taskId: body.taskId,
                 modelId: body.modelId,
                 prompt: body.prompt,

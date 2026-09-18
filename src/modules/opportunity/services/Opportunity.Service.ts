@@ -7,7 +7,7 @@ import { ReferralPartners } from "../../referral-partner/entities/ReferralPartne
 import { Users } from "../../user/entities/User.entity";
 import { OpportunityPackages } from "../entities/OpportunityPackage.entity";
 import { ServicePackages } from "../../service-package/entities/ServicePackage.entity";
-import { Like, In } from "typeorm";
+import { Like, In, IsNull } from "typeorm";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { UserRole } from "../../account/entities/Account.entity";
@@ -15,6 +15,10 @@ import { Not } from "typeorm";
 import { validateLeadData } from "../../customer/validations/Customer.Validation";
 import { RedisService } from "../../../shared/services/Redis.Service";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../events/OpportunityEmitter";
+import { OpportunityServiceJobs } from "../../opportunity-service/entities/OpportunityServiceJob.entity";
+import { calculateRecommendedSellingPrice } from "../../../shared/helpers/Pricing.helper";
+import { Tasks } from "../../task/entities/Task.entity";
+import { TaskStatus } from "../../../shared/entities/Enums";
 
 export class OpportunityService {
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
@@ -23,6 +27,8 @@ export class OpportunityService {
     private userRepository = AppDataSource.getRepository(Users);
     private opportunityPackageRepository = AppDataSource.getRepository(OpportunityPackages);
     private opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
+    private opportunityServiceJobRepository = AppDataSource.getRepository(OpportunityServiceJobs);
+    private taskRepository = AppDataSource.getRepository(Tasks);
     private serviceRepository = AppDataSource.getRepository(Services);
     private packageRepository = AppDataSource.getRepository(ServicePackages);
     private notificationService = new NotificationService();
@@ -191,9 +197,15 @@ export class OpportunityService {
                     "referralPartner",
                     "services",
                     "services.service",
+                    "services.jobs",
+                    "services.jobs.job",
+                    "services.jobs.tasks",
                     "packages",
                     "packages.services",
                     "packages.services.service",
+                    "packages.services.jobs",
+                    "packages.services.jobs.job",
+                    "packages.services.jobs.tasks",
                     "quotations",
                     "contracts",
                     "createdBy", "createdBy.accounts"
@@ -310,6 +322,7 @@ export class OpportunityService {
             }
         }
 
+        await this.validateVideoBriefs(services, packages);
         const savedOpportunity = await this.opportunityRepository.save(opportunity);
 
         // Handle service and package selection
@@ -421,6 +434,10 @@ export class OpportunityService {
             updateObj.referralPartner = null;
         }
 
+        if ((services && Array.isArray(services)) || (packages && Array.isArray(packages))) {
+            await this.validateVideoBriefs(services, packages);
+        }
+
         // 4. Save main entity using the update object
         const savedOpportunity = await this.opportunityRepository.save(updateObj);
 
@@ -444,9 +461,13 @@ export class OpportunityService {
                 "referralPartner",
                 "services",
                 "services.service",
+                "services.jobs",
+                "services.jobs.job",
                 "packages",
                 "packages.services",
                 "packages.services.service",
+                "packages.services.jobs",
+                "packages.services.jobs.job",
                 "quotations",
                 "contracts",
                 "createdBy", "createdBy.accounts"
@@ -511,6 +532,17 @@ export class OpportunityService {
     }
 
     private async syncServicesAndPackages(opportunity: Opportunities, services: any[], packages: any[]) {
+        const existingAiTasks = await this.taskRepository.find({
+            where: { opportunityId: opportunity.id, opportunityServiceJobId: Not(IsNull()) }
+        });
+        const taskInProgress = existingAiTasks.some((task) => task.assigneeId || task.status !== TaskStatus.PENDING);
+        if (taskInProgress) {
+            throw new Error("Không thể thay đổi danh sách dịch vụ AI sau khi công việc đã được phân công hoặc bắt đầu");
+        }
+        if (existingAiTasks.length > 0) {
+            await this.taskRepository.remove(existingAiTasks);
+        }
+
         // Clear existing services and packages
         await this.opportunityServiceRepository.delete(SecurityService.withTenant({ opportunity: { id: opportunity.id } }));
         await this.opportunityPackageRepository.delete(SecurityService.withTenant({ opportunity: { id: opportunity.id } }));
@@ -537,7 +569,10 @@ export class OpportunityService {
                             continue;
                         }
 
-                        const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }) });
+                        const service = await this.serviceRepository.findOne({
+                            where: SecurityService.withTenant({ id: serviceId }),
+                            relations: ["serviceJobs", "serviceJobs.job"]
+                        });
                         if (!service) {
                             console.warn(`[OpportunityService] Service not found for ID: ${serviceId}`);
                             continue;
@@ -556,7 +591,8 @@ export class OpportunityService {
                             isPackageService: true,
                             ...SecurityService.getTenantWhere()
                         } as any) as any;
-                        await this.opportunityServiceRepository.save(oppService);
+                        const savedOppService = await this.opportunityServiceRepository.save(oppService);
+                        await this.createOpportunityServiceJobs(savedOppService, service, s.jobs);
                     }
                 }
             }
@@ -569,7 +605,10 @@ export class OpportunityService {
                 const quantity = typeof item === 'object' ? (item.quantity || 1) : 1;
                 const sellingPrice = typeof item === 'object' ? item.sellingPrice : undefined;
 
-                const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }) });
+                const service = await this.serviceRepository.findOne({
+                    where: SecurityService.withTenant({ id: serviceId }),
+                    relations: ["serviceJobs", "serviceJobs.job"]
+                });
                 if (!service) {
                     throw new Error(`Không tìm thấy dịch vụ với ID: ${serviceId}.`);
                 }
@@ -585,8 +624,136 @@ export class OpportunityService {
                     isPackageService: false,
                     ...SecurityService.getTenantWhere()
                 } as any) as any;
-                await this.opportunityServiceRepository.save(oppService);
+                const savedOppService = await this.opportunityServiceRepository.save(oppService);
+                await this.createOpportunityServiceJobs(savedOppService, service, typeof item === "object" ? item.jobs : undefined);
             }
         }
+    }
+
+    private async validateVideoBriefs(services: any[] = [], packages: any[] = []) {
+        const selections = [
+            ...(Array.isArray(services) ? services.map((item) => ({
+                serviceId: typeof item === "string" ? item : (item.serviceId || item.id),
+                jobs: typeof item === "object" ? item.jobs : []
+            })) : []),
+            ...(Array.isArray(packages) ? packages.flatMap((pkg) => (pkg.services || []).map((item: any) => ({
+                serviceId: item.serviceId || item.id,
+                jobs: item.jobs || []
+            }))) : [])
+        ];
+
+        for (const selection of selections) {
+            const service = await this.serviceRepository.findOne({
+                where: SecurityService.withTenant({ id: selection.serviceId }),
+                relations: ["serviceJobs", "serviceJobs.job"]
+            });
+            if (!service) continue;
+            const inputByJobId = new Map((selection.jobs || []).map((item: any) => [String(item.jobId), item]));
+            for (const serviceJob of service.serviceJobs || []) {
+                if (serviceJob.job?.isBriefVideo) {
+                    const input: any = inputByJobId.get(String(serviceJob.job.id));
+                    if (input?.included === true && !input?.briefVideo?.trim()) {
+                        throw new Error(`Vui lòng nhập brief cho hạng mục ${serviceJob.job.name}`);
+                    }
+                }
+            }
+        }
+    }
+
+    private async createOpportunityServiceJobs(
+        opportunityService: OpportunityServices,
+        service: Services,
+        inputJobs?: { jobId?: string; included?: boolean; briefVideo?: string }[]
+    ) {
+        const inputByJobId = new Map(
+            (inputJobs || []).map((item) => [String(item.jobId), item])
+        );
+
+        const snapshots = (service.serviceJobs || []).filter((serviceJob) => {
+            if (!serviceJob.job.isBriefVideo) return true;
+            const input = inputByJobId.get(String(serviceJob.job.id));
+            return input?.included === true;
+        }).map((serviceJob) => {
+            const job = serviceJob.job;
+            const input = inputByJobId.get(String(job.id));
+            const briefVideo = input?.briefVideo?.trim() || null;
+
+            if (job.isBriefVideo && !briefVideo) {
+                throw new Error(`Vui lòng nhập brief cho hạng mục ${job.name}`);
+            }
+
+            return this.opportunityServiceJobRepository.create({
+                opportunityServiceId: opportunityService.id,
+                opportunityService,
+                serviceJobId: serviceJob.id,
+                serviceJob,
+                jobId: job.id,
+                job,
+                name: job.name,
+                quantity: Number(serviceJob.quantity || 1),
+                briefVideo,
+                costAtSale: Number(job.costPrice || 0),
+                isBriefVideo: Boolean(job.isBriefVideo),
+                isQuotationItem: !job.isBriefVideo && job.isQuotationItem !== false,
+                ...SecurityService.getTenantWhere()
+            } as any) as unknown as OpportunityServiceJobs;
+        });
+
+        if (snapshots.length > 0) {
+            const savedSnapshots = await this.opportunityServiceJobRepository.save(snapshots);
+            for (const snapshot of savedSnapshots.filter((item) => item.isBriefVideo)) {
+                const sequence = String(await this.taskRepository.count({
+                    where: { opportunityId: opportunityService.opportunity.id }
+                }) + 1).padStart(2, "0");
+                const task = this.taskRepository.create({
+                    code: `${opportunityService.opportunity.opportunityCode}-${snapshot.job.code || "VIDEO"}-${sequence}`,
+                    name: snapshot.name,
+                    nickname: snapshot.job.nickname,
+                    opportunity: opportunityService.opportunity,
+                    opportunityId: opportunityService.opportunity.id,
+                    opportunityServiceJob: snapshot,
+                    opportunityServiceJobId: snapshot.id,
+                    job: snapshot.job,
+                    description: snapshot.briefVideo,
+                    status: TaskStatus.PENDING
+                });
+                const savedTask = await this.taskRepository.save(task);
+
+                const projectManagers = await this.userRepository.find({
+                    where: { accounts: { role: UserRole.PM } },
+                    relations: ["accounts"]
+                });
+                for (const manager of projectManagers) {
+                    await this.notificationService.createNotification({
+                        title: "Yêu cầu Video AI demo mới",
+                        content: `Cơ hội ${opportunityService.opportunity.opportunityCode} có hạng mục ${snapshot.name} cần phân công.`,
+                        type: "TASK_ASSIGNED",
+                        recipient: manager,
+                        relatedEntityId: savedTask.id,
+                        relatedEntityType: "Task",
+                        link: `/tasks/${savedTask.id}`
+                    });
+                }
+            }
+        }
+
+        await this.recalculateOpportunityServicePrices(opportunityService.id);
+    }
+
+    private async recalculateOpportunityServicePrices(opportunityServiceId: string) {
+        const jobs = (await this.opportunityServiceJobRepository.find({
+            where: SecurityService.withTenant({ opportunityServiceId })
+        })).filter((job) => job.isQuotationItem && !job.isBriefVideo);
+
+        const costAtSale = jobs.reduce(
+            (sum, job) => sum + Number(job.costAtSale || 0) * Number(job.quantity || 1),
+            0
+        );
+        const sellingPrice = calculateRecommendedSellingPrice(costAtSale);
+
+        await this.opportunityServiceRepository.update(
+            SecurityService.withTenant({ id: opportunityServiceId }),
+            { costAtSale, sellingPrice }
+        );
     }
 }

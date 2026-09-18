@@ -18,6 +18,8 @@ import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
+import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
+import { OpportunityServiceJobs } from "../../opportunity-service/entities/OpportunityServiceJob.entity";
 
 import { TaskBaseService } from "./Task.BaseService";
 
@@ -104,6 +106,8 @@ export class TaskCreationService extends TaskBaseService {
 
     async create(data: {
         projectId?: string,
+        opportunityId?: string,
+        opportunityServiceJobId?: string,
         jobId: string,
         assigneeId?: string,
         performerType?: PerformerType,
@@ -116,6 +120,10 @@ export class TaskCreationService extends TaskBaseService {
         let project = null;
         let taskCode = null;
         let taskSequenceNumber: number | null = null;
+
+        if (!data.projectId && !data.opportunityId) {
+            throw new Error("Vui lòng chọn dự án hoặc cơ hội");
+        }
 
         const job = await this.jobRepository.findOne({ where: { id: data.jobId } });
         if (!job) throw new Error("Không tìm thấy công việc (Job)");
@@ -145,6 +153,35 @@ export class TaskCreationService extends TaskBaseService {
             const sequence = taskSequenceNumber.toString().padStart(2, '0');
             taskCode = `${contractCode}-${jobCode}-${sequence}`;
         }
+
+        let opportunity: Opportunities | null = null;
+        let opportunityServiceJob: OpportunityServiceJobs | null = null;
+        if (data.opportunityId) {
+            opportunity = await AppDataSource.getRepository(Opportunities).findOne({
+                where: SecurityService.withTenant({ id: data.opportunityId })
+            });
+            if (!opportunity) throw new Error("Không tìm thấy cơ hội");
+
+            if (!data.opportunityServiceJobId) {
+                throw new Error("Vui lòng chọn hạng mục công việc của cơ hội");
+            }
+            opportunityServiceJob = await AppDataSource.getRepository(OpportunityServiceJobs).findOne({
+                where: { id: data.opportunityServiceJobId },
+                relations: ["opportunityService", "opportunityService.opportunity", "job"]
+            });
+            if (!opportunityServiceJob || opportunityServiceJob.opportunityService?.opportunity?.id !== opportunity.id) {
+                throw new Error("Hạng mục công việc không thuộc cơ hội đã chọn");
+            }
+            if (opportunityServiceJob.jobId !== job.id) {
+                throw new Error("Job của task không khớp hạng mục công việc của cơ hội");
+            }
+
+            const count = await this.taskRepository.count({
+                where: { opportunityServiceJobId: opportunityServiceJob.id }
+            });
+            taskSequenceNumber = count + 1;
+            taskCode = `${opportunity.opportunityCode}-${job.code || `JOB${job.id}`}-${String(taskSequenceNumber).padStart(2, "0")}`;
+        }
         const assignerId = await this.resolveActorUserId(currentUser);
         const taskNickname = taskSequenceNumber
             ? buildDefaultTaskNickname(job, taskSequenceNumber)
@@ -155,8 +192,16 @@ export class TaskCreationService extends TaskBaseService {
             name: job.name,
             nickname: taskNickname,
             project: project,
+            opportunity,
+            opportunityId: opportunity?.id || null,
+            opportunityServiceJob,
+            opportunityServiceJobId: opportunityServiceJob?.id || null,
             job: job,
-            status: data.isExtra ? TaskStatus.AWAITING_PRICING : TaskStatus.PENDING,
+            status: data.isExtra
+                ? TaskStatus.AWAITING_PRICING
+                : data.assigneeId
+                    ? TaskStatus.DOING
+                    : TaskStatus.PENDING,
             performerType: data.performerType || job.defaultPerformerType,
             description: data.description,
             plannedStartDate: data.plannedStartDate,

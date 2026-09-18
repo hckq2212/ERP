@@ -8,8 +8,16 @@ export class CreateTaskDTO {
     name: string;
 
     @IsString()
-    @IsNotEmpty({ message: "ID dự án không được để trống" })
-    projectId: string;
+    @IsOptional()
+    projectId?: string;
+
+    @IsString()
+    @IsOptional()
+    opportunityId?: string;
+
+    @IsString()
+    @IsOptional()
+    opportunityServiceJobId?: string;
 
     @IsString()
     @IsOptional()
