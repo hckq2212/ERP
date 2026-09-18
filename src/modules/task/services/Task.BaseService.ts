@@ -149,7 +149,12 @@ export class TaskBaseService {
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
-        if (actor?.role === UserRole.PM && !this.isProjectOperatorFromTeam(task.project?.team, actor)) {
+        const isOpportunityVideoDemo = Boolean(
+            task.opportunityId && task.opportunityServiceJob?.isBriefVideo
+        );
+        if (actor?.role === UserRole.PM &&
+            !isOpportunityVideoDemo &&
+            !this.isProjectOperatorFromTeam(task.project?.team, actor)) {
             throw this.httpError("Bạn không có quyền xem công việc ngoài dự án được phân công", 403);
         }
         return task;

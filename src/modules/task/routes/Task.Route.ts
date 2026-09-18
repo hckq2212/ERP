@@ -43,6 +43,7 @@ router.post('/:id/request-support', taskController.requestSupport);
 // router.post('/:id/assign-support-team', taskController.assignSupportTeam);
 router.patch("/:id/rework", taskController.rework);
 router.patch("/:id/customer-approve", taskController.approveByCustomer);
+router.patch("/:id/customer-not-purchase", taskController.customerDoesNotPurchase);
 router.post("/:id/remind", taskController.sendReminder);
 router.post("/:id/request-staffing", validationMiddleware(RequestTaskStaffingDTO), taskController.requestStaffing);
 router.patch("/:id/respond-staffing", validationMiddleware(RespondTaskStaffingDTO), taskController.respondStaffingRequest);

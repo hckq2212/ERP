@@ -86,10 +86,33 @@ export class QuotationService {
 
         const opportunity = await this.opportunityRepository.findOne({
             where: { id: opportunityId },
-            relations: ["services", "services.service", "packages", "packages.services", "packages.services.service"]
+            relations: [
+                "services",
+                "services.service",
+                "services.jobs",
+                "services.jobs.job",
+                "packages",
+                "packages.services",
+                "packages.services.service"
+            ]
         });
 
         if (!opportunity) throw new Error("Không tìm thấy cơ hội kinh doanh");
+
+        const incompleteAiJobs = (opportunity.services || []).flatMap(opportunityService => {
+            if (!opportunityService.service?.isAI) return [];
+
+            return (opportunityService.jobs || []).filter(job =>
+                job.isQuotationItem &&
+                !job.isBriefVideo &&
+                Number(job.costAtSale || 0) <= 0
+            );
+        });
+
+        if (incompleteAiJobs.length > 0) {
+            const jobNames = Array.from(new Set(incompleteAiJobs.map(job => job.name))).join(", ");
+            throw new Error(`Vui lòng điền đầy đủ giá vốn công việc AI trước khi tạo báo giá`);
+        }
 
         // Determine version
         const count = await this.quotationRepository.count({

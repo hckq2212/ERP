@@ -294,6 +294,16 @@ export class TaskController {
         }
     }
 
+    customerDoesNotPurchase = async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const result = await this.taskService.customerDoesNotPurchase(req.params.id as string, user);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     bulkAssign = async (req: Request, res: Response) => {
         try {
             const { taskIds, attachments: bodyAttachments = [], links = [] } = req.body;

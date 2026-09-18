@@ -15,6 +15,7 @@ import { Jobs } from "../../job/entities/Job.entity";
 import { PerformerType } from "../../../shared/entities/Enums";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
+import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
 
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { isManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
@@ -29,6 +30,7 @@ export class ProjectBaseService {
     protected teamRepository = AppDataSource.getRepository(ProjectTeams);
     protected memberRepository = AppDataSource.getRepository(TeamMembers);
     protected contractServiceRepository = AppDataSource.getRepository(ContractServices);
+    protected opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
     protected addendumRepository = AppDataSource.getRepository(ContractAddendums);
     protected taskRepository = AppDataSource.getRepository(Tasks);
     protected userRepository = AppDataSource.getRepository(Users);
@@ -69,6 +71,14 @@ export class ProjectBaseService {
         const opportunityPackage = cs.opportunityService?.opportunityPackage;
         const packageQuantity = Number(opportunityPackage?.quantity || 1);
         const serviceQuantity = Number(cs.opportunityService?.quantity || 1);
+        const opportunityJobs = cs.opportunityService?.jobs || [];
+        const selectedJobIds = opportunityJobs.length > 0
+            ? new Set(opportunityJobs.map(item => item.jobId))
+            : null;
+        const serviceJobs = (cs.service?.serviceJobs || []).filter(serviceJob =>
+            !serviceJob.job?.isBriefVideo &&
+            (!selectedJobIds || selectedJobIds.has(serviceJob.jobId))
+        );
 
         return {
             contractServiceId: cs.id,
@@ -84,7 +94,7 @@ export class ProjectBaseService {
             cost: Number(cs.service?.costPrice || 0),
             unit: cs.service?.unit || "",
             description: cs.service?.description,
-            jobs: (cs.service?.serviceJobs || []).map(sj => ({
+            jobs: serviceJobs.map(sj => ({
                 jobId: sj.job?.id,
                 jobName: sj.job?.name,
                 quantity: Number(sj.quantity || 1),
@@ -135,19 +145,50 @@ export class ProjectBaseService {
         }
 
         const contract = await this.contractRepository.findOne({
-            where: { id: project.contract.id }
+            where: { id: project.contract.id },
+            relations: ["opportunity"]
         });
         if (!contract) throw new Error("KhÃ´ng tÃ¬m tháº¥y há»£p Ä‘á»“ng");
 
+        const opportunityServices = contract.opportunity
+            ? await this.opportunityServiceRepository.find({
+                where: { opportunity: { id: contract.opportunity.id } },
+                relations: ["jobs", "jobs.job"]
+            })
+            : [];
+
         const contractServices = await this.contractServiceRepository.find({
             where: { contract: { id: contract.id } },
-            relations: ["service", "service.serviceJobs", "service.serviceJobs.job", "tasks", "tasks.job"]
+            relations: [
+                "service",
+                "service.serviceJobs",
+                "service.serviceJobs.job",
+                "opportunityService",
+                "opportunityService.jobs",
+                "opportunityService.jobs.job",
+                "tasks",
+                "tasks.job"
+            ]
         });
 
         for (const cs of contractServices) {
             if (!cs.service?.serviceJobs?.length) continue;
 
-            for (const sj of cs.service.serviceJobs) {
+            const opportunityService = cs.opportunityService || opportunityServices.find(item =>
+                item.serviceId === cs.serviceId &&
+                item.isPackageService === cs.isPackageService &&
+                (!cs.isPackageService || item.packageName === cs.packageName)
+            );
+            const opportunityJobs = opportunityService?.jobs || [];
+            const selectedJobIds = opportunityJobs.length > 0
+                ? new Set(opportunityJobs.map(item => item.jobId))
+                : null;
+            const serviceJobs = cs.service.serviceJobs.filter(serviceJob =>
+                !serviceJob.job?.isBriefVideo &&
+                (!selectedJobIds || selectedJobIds.has(serviceJob.jobId))
+            );
+
+            for (const sj of serviceJobs) {
                 const job = sj.job;
                 if (!job) continue;
 

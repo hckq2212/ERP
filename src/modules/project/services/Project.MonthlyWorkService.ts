@@ -47,6 +47,8 @@ export class ProjectMonthlyWorkService extends ProjectBaseService {
                 "service.serviceJobs",
                 "service.serviceJobs.job",
                 "opportunityService",
+                "opportunityService.jobs",
+                "opportunityService.jobs.job",
                 "opportunityService.opportunityPackage"
             ],
             order: { packageName: "ASC", createdAt: "ASC" } as any

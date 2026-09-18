@@ -73,6 +73,10 @@ export class TaskService {
         return this.resultService.approveByCustomer(id, currentUser);
     }
 
+    customerDoesNotPurchase(id: string, currentUser?: { id: string; userId?: string; role: string }) {
+        return this.resultService.customerDoesNotPurchase(id, currentUser);
+    }
+
     requestSupport(id: string, note: string) {
         return this.supportService.requestSupport(id, note);
     }

@@ -434,13 +434,20 @@ export class ContractService {
         if (opportunity) {
             if (approvedQuotationDetails.length > 0) {
                 for (const detail of approvedQuotationDetails) {
+                    const detailServiceId = detail.service?.id || detail.serviceId;
+                    const opportunityService = opportunity.services?.find(item =>
+                        item.serviceId === detailServiceId &&
+                        item.isPackageService === Boolean(detail.isPackageService) &&
+                        (!detail.isPackageService || item.packageName === detail.packageName)
+                    );
                     const qty = Number(detail.quantity || 1);
                     for (let i = 0; i < qty; i++) {
                         const cs = this.contractServiceRepository.create({
                             contract: savedContract,
                             service: detail.service,
-                            serviceId: detail.service?.id || detail.serviceId,
+                            serviceId: detailServiceId,
                             sellingPrice: detail.sellingPrice,
+                            opportunityService,
                             name: detail.name || detail.service?.name,
                             packageName: detail.packageName,
                             isPackageService: detail.isPackageService,

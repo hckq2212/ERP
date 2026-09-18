@@ -23,6 +23,7 @@ import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper
 import { TaskResultChecks } from "../entities/TaskResultCheck.entity";
 import { buildCheckSummary } from "./TaskResultCheck.Service";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { VinicoinService } from "../../../shared/services/Vinicoin.Service";
 
 import { TaskBaseService } from "./Task.BaseService";
 
@@ -46,6 +47,7 @@ function buildSubmissionDetails(sheetNames?: string[], scenarioLabels?: string[]
 
 export class TaskResultService extends TaskBaseService {
     private resultCheckService = new TaskResultCheckService();
+    private vinicoinService = new VinicoinService();
 
     async submitResult(id: string, data: SubmitResultData, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
@@ -264,8 +266,23 @@ export class TaskResultService extends TaskBaseService {
         id: string,
         currentUser?: { id: string; userId?: string; role: string }
     ) {
+        return this.completeCustomerDecision(id, "APPROVED", currentUser);
+    }
+
+    async customerDoesNotPurchase(
+        id: string,
+        currentUser?: { id: string; userId?: string; role: string }
+    ) {
+        return this.completeCustomerDecision(id, "NOT_PURCHASED", currentUser);
+    }
+
+    private async completeCustomerDecision(
+        id: string,
+        decision: "APPROVED" | "NOT_PURCHASED",
+        currentUser?: { id: string; userId?: string; role: string }
+    ) {
         const currentUserId = currentUser?.userId || currentUser?.id;
-        if (!currentUserId) throw this.httpError("Bạn cần đăng nhập để duyệt công việc", 401);
+        if (!currentUserId) throw this.httpError("Bạn cần đăng nhập để xác nhận công việc", 401);
 
         const savedTask = await AppDataSource.transaction(async (manager) => {
             const lockedTask = await manager.createQueryBuilder(Tasks, "task")
@@ -277,9 +294,27 @@ export class TaskResultService extends TaskBaseService {
 
             const task = await manager.getRepository(Tasks).findOne({
                 where: { id },
-                relations: ["assignee", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
+                relations: [
+                    "assignee",
+                    "assignee.accounts",
+                    "job",
+                    "opportunityServiceJob",
+                    "opportunityServiceJob.opportunityService",
+                    "project",
+                    "project.team",
+                    "project.team.teamLead",
+                    "project.team.members",
+                    "project.team.members.user"
+                ]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+
+            const isOpportunityDemo = Boolean(
+                task.opportunityId && task.opportunityServiceJob?.isBriefVideo
+            );
+            if (decision === "NOT_PURCHASED" && !isOpportunityDemo) {
+                throw this.httpError("Chỉ công việc Video AI demo mới có thể xác nhận khách hàng không mua", 409);
+            }
 
             const isAdminOrBod = isProjectManagementRole(currentUser.role);
             const isProjectLead = this.isProjectOperatorFromTeam(task.project?.team, currentUser);
@@ -291,16 +326,46 @@ export class TaskResultService extends TaskBaseService {
             }
             await assertSubtasksCompleted(manager.getRepository(Tasks), task, "hoàn thành");
 
-            task.status = TaskStatus.COMPLETED;
+            if (isOpportunityDemo) {
+                task.customerDecision = decision;
+                task.status = TaskStatus.ACCEPTED;
+
+                const rewardAmount = Number(task.job?.vinicoin || 0);
+                const assigneeAccount = task.assignee?.accounts?.find(account => account.isActive)
+                    || task.assignee?.accounts?.[0];
+                if (
+                    task.performerType === PerformerType.INTERNAL &&
+                    assigneeAccount?.id &&
+                    rewardAmount > 0
+                ) {
+                    await this.vinicoinService.rewardForTask(
+                        assigneeAccount.id,
+                        rewardAmount,
+                        task.id,
+                        task.opportunityServiceJob!.opportunityServiceId,
+                        manager
+                    );
+                    task.rewardVinicoin = rewardAmount;
+                }
+            } else {
+                task.status = TaskStatus.COMPLETED;
+            }
+
             const saved = await manager.save(task);
             if (task.assignee) {
+                const customerMessage = decision === "NOT_PURCHASED"
+                    ? "Khách hàng không mua; demo đã được nghiệm thu 0 đồng và Vinicoin đã được ghi nhận."
+                    : isOpportunityDemo
+                        ? "Khách hàng đã duyệt; demo đã được nghiệm thu 0 đồng và Vinicoin đã được ghi nhận."
+                        : "Khách hàng đã duyệt công việc. Trạng thái: Hoàn thành.";
                 await this.notificationService.createNotification({
-                    title: "Khách hàng đã duyệt",
-                    content: `Khách hàng đã duyệt công việc: ${this.taskDisplayName(task)}. Trạng thái: Hoàn thành.`,
+                    title: decision === "NOT_PURCHASED" ? "Khách hàng không mua" : "Khách hàng đã duyệt",
+                    content: `${customerMessage} Công việc: ${this.taskDisplayName(task)}.`,
                     type: "TASK_COMPLETED",
                     recipient: task.assignee,
                     relatedEntityId: task.id.toString(),
                     relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
                 }, manager);
             }
             return saved;
