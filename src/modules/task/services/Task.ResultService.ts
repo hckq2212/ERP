@@ -24,6 +24,7 @@ import { TaskResultChecks } from "../entities/TaskResultCheck.entity";
 import { buildCheckSummary } from "./TaskResultCheck.Service";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
 import { VinicoinService } from "../../../shared/services/Vinicoin.Service";
+import { RedisService } from "../../../shared/services/Redis.Service";
 
 import { TaskBaseService } from "./Task.BaseService";
 
@@ -145,14 +146,20 @@ export class TaskResultService extends TaskBaseService {
         return await AppDataSource.transaction(async (transactionalEntityManager) => {
             const task = await transactionalEntityManager.findOne(Tasks, {
                 where: { id },
-                relations: ["assignee", "contractService", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
+                relations: ["assignee", "contractService", "opportunity", "opportunity.createdBy", "opportunityServiceJob", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
             });
 
             if (!task) throw new Error("Không tìm thấy công việc");
             const currentUserId = await this.resolveActorUserId(currentUser, transactionalEntityManager);
-            const canRequestRework = isProjectManagementRole(currentUser?.role) ||
-                this.isProjectOperatorFromTeam(task.project?.team, currentUser) ||
-                task.assignerId === currentUserId;
+            const isOpportunityDemo = Boolean(task.opportunityId && task.opportunityServiceJob?.isBriefVideo);
+            const isDemoSalesOwner = [UserRole.BD, UserRole.ADMIN_SALE].includes(currentUser?.role as UserRole) &&
+                task.opportunity?.createdBy?.id === currentUserId;
+            const isDemoAdmin = [UserRole.ADMIN, UserRole.BOD].includes(currentUser?.role as UserRole);
+            const canRequestRework = isOpportunityDemo
+                ? isDemoSalesOwner || isDemoAdmin
+                : isProjectManagementRole(currentUser?.role) ||
+                    this.isProjectOperatorFromTeam(task.project?.team, currentUser) ||
+                    task.assignerId === currentUserId;
             if (!canRequestRework) {
                 throw this.httpError("Bạn không có quyền yêu cầu làm lại công việc này", 403);
             }
@@ -236,6 +243,7 @@ export class TaskResultService extends TaskBaseService {
 
             // 2. Update Task
             task.status = TaskStatus.REWORKING;
+            task.customerDecision = null;
             task.plannedEndDate = data.deadlineAt;
             task.result = null as any;
 
@@ -300,6 +308,8 @@ export class TaskResultService extends TaskBaseService {
                     "job",
                     "opportunityServiceJob",
                     "opportunityServiceJob.opportunityService",
+                    "opportunity",
+                    "opportunity.createdBy",
                     "project",
                     "project.team",
                     "project.team.teamLead",
@@ -316,10 +326,19 @@ export class TaskResultService extends TaskBaseService {
                 throw this.httpError("Chỉ công việc Video AI demo mới có thể xác nhận khách hàng không mua", 409);
             }
 
-            const isAdminOrBod = isProjectManagementRole(currentUser.role);
+            const isAdminOrBod = [UserRole.ADMIN, UserRole.BOD].includes(currentUser.role as UserRole);
+            const isProjectManager = isProjectManagementRole(currentUser.role);
+            const isSalesOwner = [UserRole.BD, UserRole.ADMIN_SALE].includes(currentUser.role as UserRole) &&
+                task.opportunity?.createdBy?.id === currentUserId;
             const isProjectLead = this.isProjectOperatorFromTeam(task.project?.team, currentUser);
-            if (!isAdminOrBod && !isProjectLead) {
-                throw this.httpError("Bạn không có quyền xác nhận khách hàng duyệt công việc này", 403);
+            const canDecide = isOpportunityDemo ? (isSalesOwner || isAdminOrBod) : (isProjectManager || isProjectLead);
+            if (!canDecide) {
+                throw this.httpError(
+                    isOpportunityDemo
+                        ? "Chỉ BD phụ trách cơ hội mới có quyền ghi nhận quyết định của khách hàng"
+                        : "Bạn không có quyền xác nhận khách hàng duyệt công việc này",
+                    403
+                );
             }
             if (task.status !== TaskStatus.INTERNAL_COMPLETED) {
                 throw this.httpError(`Công việc chưa ở trạng thái Hoàn thành nội bộ (Hiện tại: ${task.status})`, 409);
@@ -372,6 +391,9 @@ export class TaskResultService extends TaskBaseService {
         });
 
         taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, savedTask);
+        if (savedTask.opportunityId) {
+            await RedisService.deleteCache(`opportunities:*:detail:${savedTask.opportunityId}*`);
+        }
         return savedTask;
     }
 }

@@ -276,7 +276,7 @@ export class TaskReviewService {
 
         if (outcome.task) taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, outcome.task);
         if (outcome.task?.opportunityServiceJob?.opportunityService?.opportunity?.id) {
-            await RedisService.deleteCache(`opportunities:detail:${outcome.task.opportunityServiceJob.opportunityService.opportunity.id}*`);
+            await RedisService.deleteCache(`opportunities:*:detail:${outcome.task.opportunityServiceJob.opportunityService.opportunity.id}*`);
         }
         taskReviewEmitter.emit(TASK_REVIEW_EVENTS.UPDATED, { taskId });
         return outcome.result;
