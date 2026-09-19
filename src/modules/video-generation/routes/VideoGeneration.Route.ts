@@ -19,6 +19,7 @@ router.post(
     videoGenerationController.create,
 );
 router.get("/history", videoGenerationController.getHistory);
+router.get("/tasks/:taskId/budget", videoGenerationController.getTaskBudget);
 router.get("/:id/status", videoGenerationController.getStatus);
 
 // ── Motion control (Kling only) ────────────────────────────────────────────

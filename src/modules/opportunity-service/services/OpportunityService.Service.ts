@@ -62,6 +62,13 @@ export class OpportunityServiceService {
             throw new Error("Vui lòng chọn khách hàng trước khi cập nhật giá vốn dịch vụ");
         }
 
+        const demoTasks = (item.jobs || [])
+            .filter(job => job.isBriefVideo)
+            .flatMap(job => job.tasks || []);
+        if (updatesCost && demoTasks.length > 0 && !demoTasks.some(task => task.customerDecision === "APPROVED")) {
+            throw new Error("Chỉ được nhập giá vốn sau khi BD xác nhận khách hàng duyệt mua");
+        }
+
         if (data.quantity !== undefined) item.quantity = data.quantity;
         if (data.costAtSale !== undefined) item.costAtSale = data.costAtSale;
 
@@ -98,7 +105,7 @@ export class OpportunityServiceService {
 
         await this.oppServiceRepository.save(item);
         await this.recalculateRevenue(item.opportunity.id);
-        await RedisService.deleteCache(`opportunities:detail:${item.opportunity.id}*`);
+        await RedisService.deleteCache(`opportunities:*:detail:${item.opportunity.id}*`);
         await RedisService.deleteCache("opportunities:all*");
         return await this.getOne(id);
     }
