@@ -57,6 +57,14 @@ export class TaskResultService extends TaskBaseService {
         const currentId = await this.resolveActorUserId(currentUser);
         if (!currentId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để nộp kết quả", 401);
         const isTeamLead = this.isProjectOperatorFromTeam(task.project?.team, currentUser);
+        // Nếu Lead là assignee/helper của chính task này → không tự duyệt
+        const isOwnTask =
+            task.assigneeId === currentId ||
+            task.assignee?.id === currentId ||
+            task.helperId === currentId ||
+            task.helper?.id === currentId;
+        // Chỉ auto-approve khi Lead đang quản lý task người khác, không phải nộp bài của chính mình
+        const shouldAutoApprove = isTeamLead && !isOwnTask;
 
         const resultType = data.result?.type;
         if (!data.result || ((resultType === "FILE" || resultType === "LINK") && !data.result.url)) {
@@ -81,12 +89,12 @@ export class TaskResultService extends TaskBaseService {
             });
         }
 
-        if (isTeamLead) {
-            // Auto-pass reviews and finalize (syncs to contract service, etc.)
+        if (shouldAutoApprove) {
+            // Lead quản lý task của người khác → auto duyệt
             await this.reviewService.initializeReviews(task.id, true);
             await this.reviewService.checkAndFinalize(task.id, undefined, undefined, currentUser);
         } else {
-            // Standard review flow
+            // Lead nộp task của chính mình / nhân viên thường → phải chờ review
             await this.reviewService.initializeReviews(task.id);
         }
 
@@ -116,7 +124,7 @@ export class TaskResultService extends TaskBaseService {
             }
         }
 
-        const responseTask = isTeamLead
+        const responseTask = shouldAutoApprove
             ? await this.taskRepository.findOne({ where: { id: task.id } }) || savedTask
             : savedTask;
         taskEmitter.emit(TASK_EVENTS.STATUS_CHANGED, responseTask);
