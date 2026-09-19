@@ -9,6 +9,7 @@ import { ByteplusService } from "../../byteplus/services/Byteplus.Service";
 import { CreateVideoDto } from "../dto/CreateVideo.dto";
 import { Tasks } from "../../task/entities/Task.entity";
 import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
+import { GenerationBudgetService } from "./GenerationBudget.Service";
 
 export class VideoGenerationService {
     private videoGenRepository = AppDataSource.getRepository(VideoGenerations);
@@ -16,6 +17,7 @@ export class VideoGenerationService {
     private projectRepository = AppDataSource.getRepository(Projects);
     private taskRepository = AppDataSource.getRepository(Tasks);
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
+    private generationBudgetService = new GenerationBudgetService();
 
     private assetService = new AssetService();
     private cloudinaryVideoAiService = new CloudinaryVideoAiService();
@@ -103,88 +105,103 @@ export class VideoGenerationService {
             if (endAsset && dto.projectId) await this.assetService.attachProjectIfMissing(endAsset.id, dto.projectId);
         }
 
-        // 6. Rẽ nhánh theo provider: Kling hay BytePlus
+        // 6. Giữ ngân sách trước khi gọi provider. Bản ghi pending là khoản giữ
+        // ngân sách để các request đồng thời không thể cùng vượt hạn mức.
+        const storedPrompt = this.buildStoredPrompt(dto, isByteplus);
+        const { reservation: saved, budget } = await this.generationBudgetService.reserve(
+            dto.taskId,
+            dto.cost ?? 0,
+            async (manager) => manager.getRepository(VideoGenerations).save(
+                manager.getRepository(VideoGenerations).create({
+                    projectId: dto.projectId,
+                    opportunityId: dto.opportunityId,
+                    taskId: dto.taskId,
+                    modelId: dto.modelId,
+                    userId,
+                    imageBeginAssetId: beginAsset.id,
+                    imageEndAssetId: endAsset?.id,
+                    motionPrompt: storedPrompt,
+                    negativePrompt: dto.negativePrompt,
+                    status: "pending",
+                    durationSeconds: Number(dto.duration || 5),
+                    generationMode: isByteplus ? (dto.resolution || "720p") : (dto.mode || "std"),
+                    generationRatio: isByteplus ? dto.ratio : undefined,
+                    generationSound: dto.sound === "on",
+                    cost: dto.cost,
+                    params: {
+                        resolution: dto.resolution,
+                        ratio: dto.ratio,
+                        mode: dto.mode,
+                        multiShot: dto.multiShot ?? false,
+                        shotType: dto.shotType,
+                    },
+                    requestPayload: {
+                        modelName: model.code,
+                        prompt: dto.prompt,
+                        duration: dto.duration,
+                        mode: dto.mode,
+                        ratio: dto.ratio,
+                        sound: dto.sound,
+                        multiShot: dto.multiShot ?? false,
+                        shotType: dto.shotType,
+                        multiPrompt: dto.multiPrompt,
+                    },
+                    responsePayload: {},
+                    startedAt: new Date(),
+                }),
+            ),
+        );
+
+        // 7. Rẽ nhánh theo provider: Kling hay BytePlus
         let externalTaskId: string;
         let responsePayloadRaw: any;
+        try {
+            if (isByteplus) {
+                const bytePlusCreate = await this.byteplusService.createVideoTask({
+                    modelCode: model.code,
+                    prompt: dto.prompt,
+                    imageUrl: beginAsset.storedUrl,
+                    imageTailUrl: endAsset?.storedUrl,
+                    resolution: dto.resolution,
+                    ratio: dto.ratio,
+                    duration: Number(dto.duration || 5),
+                    generateAudio: dto.sound === "on",
+                });
+                externalTaskId = bytePlusCreate.id;
+                responsePayloadRaw = bytePlusCreate;
+            } else {
+                const klingCreate = await this.klingService.createImageToVideo({
+                    modelName: model.code,
+                    imageUrl: beginAsset.storedUrl,
+                    imageTailUrl: endAsset?.storedUrl,
+                    prompt: dto.prompt,
+                    sound: dto.sound || "off",
+                    negativePrompt: dto.negativePrompt,
+                    duration: dto.duration || "5",
+                    mode: (dto.mode as "std" | "pro" | "4k") || "pro",
+                    multiShot: dto.multiShot,
+                    shotType: dto.shotType,
+                    multiPrompt: dto.multiPrompt,
+                });
 
-        if (isByteplus) {
-            const bytePlusCreate = await this.byteplusService.createVideoTask({
-                modelCode: model.code,
-                prompt: dto.prompt,
-                imageUrl: beginAsset.storedUrl,
-                imageTailUrl: endAsset?.storedUrl,
-                resolution: dto.resolution,
-                ratio: dto.ratio,
-                duration: Number(dto.duration || 5),
-                generateAudio: dto.sound === "on",
-            });
-            externalTaskId = bytePlusCreate.id;
-            responsePayloadRaw = bytePlusCreate;
-        } else {
-            const klingCreate = await this.klingService.createImageToVideo({
-                modelName: model.code,
-                imageUrl: beginAsset.storedUrl,
-                imageTailUrl: endAsset?.storedUrl,
-                prompt: dto.prompt,
-                sound: dto.sound || "off",
-                negativePrompt: dto.negativePrompt,
-                duration: dto.duration || "5",
-                mode: (dto.mode as "std" | "pro" | "4k") || "pro",
-                multiShot: dto.multiShot,
-                shotType: dto.shotType,
-                multiPrompt: dto.multiPrompt,
-            });
-
-            if (klingCreate.code !== 0) {
-                throw new Error(`Kling error: ${klingCreate.message}`);
+                if (klingCreate.code !== 0) throw new Error(`Kling error: ${klingCreate.message}`);
+                externalTaskId = klingCreate.data.task_id;
+                responsePayloadRaw = klingCreate;
             }
-            externalTaskId = klingCreate.data.task_id;
-            responsePayloadRaw = klingCreate;
+
+            await this.videoGenRepository.update(saved.id, {
+                status: "queued",
+                externalTaskId,
+                responsePayload: responsePayloadRaw,
+            });
+        } catch (error: any) {
+            await this.videoGenRepository.update(saved.id, {
+                status: "failed",
+                errorMessage: error.message,
+                completedAt: new Date(),
+            });
+            throw error;
         }
-
-        // 7. Lưu video_generations
-        const storedPrompt = this.buildStoredPrompt(dto, isByteplus);
-
-        const videoGen = this.videoGenRepository.create({
-            projectId: dto.projectId,
-            opportunityId: dto.opportunityId,
-            taskId: dto.taskId,
-            modelId: dto.modelId,
-            userId,
-            imageBeginAssetId: beginAsset.id,
-            imageEndAssetId: endAsset?.id,
-            motionPrompt: storedPrompt,
-            negativePrompt: dto.negativePrompt,
-            status: "queued",
-            externalTaskId,
-            durationSeconds: Number(dto.duration || 5),
-            generationMode: isByteplus ? (dto.resolution || "720p") : (dto.mode || "std"),
-            generationRatio: isByteplus ? dto.ratio : undefined,
-            generationSound: dto.sound === "on",
-            cost: dto.cost ?? 0,
-            params: {
-                resolution: dto.resolution,
-                ratio: dto.ratio,
-                mode: dto.mode,
-                multiShot: dto.multiShot ?? false,
-                shotType: dto.shotType,
-            },
-            requestPayload: {
-                modelName: model.code,
-                prompt: dto.prompt,
-                duration: dto.duration,
-                mode: dto.mode,
-                ratio: dto.ratio,
-                sound: dto.sound,
-                multiShot: dto.multiShot ?? false,
-                shotType: dto.shotType,
-                multiPrompt: dto.multiPrompt,
-            },
-            responsePayload: responsePayloadRaw,
-            startedAt: new Date(),
-        });
-
-        const saved = await this.videoGenRepository.save(videoGen);
 
         // 8. Polling ngầm — chọn theo provider
         if (isByteplus) {
@@ -213,6 +230,9 @@ export class VideoGenerationService {
             multiShot: !isByteplus && (dto.multiShot ?? false),
             shotType: dto.shotType,
             cost: dto.cost ?? 0,
+            budgetLimit: budget.limit,
+            budgetUsed: budget.used,
+            budgetRemaining: budget.remaining,
         };
     }
 

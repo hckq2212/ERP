@@ -8,6 +8,7 @@ import { KlingService } from "../../kling/services/Kling.Service";
 import { CreateMotionControlVideoDto } from "../dto/CreateVideo.dto";
 import { Tasks } from "../../task/entities/Task.entity";
 import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
+import { GenerationBudgetService } from "./GenerationBudget.Service";
 
 export class MotionGenerationService {
     private motionGenRepository = AppDataSource.getRepository(MotionGenerations);
@@ -15,6 +16,7 @@ export class MotionGenerationService {
     private projectRepository = AppDataSource.getRepository(Projects);
     private taskRepository = AppDataSource.getRepository(Tasks);
     private opportunityRepository = AppDataSource.getRepository(Opportunities);
+    private generationBudgetService = new GenerationBudgetService();
 
     private assetService = new AssetService();
     private cloudinaryVideoAiService = new CloudinaryVideoAiService();
@@ -70,30 +72,34 @@ export class MotionGenerationService {
             userId, dto.projectId, dto.referenceVideoAssetId, referenceVideoFile,
         );
 
-        const motionGen = this.motionGenRepository.create({
-            projectId: dto.projectId,
-            opportunityId: dto.opportunityId,
-            taskId: dto.taskId,
-            modelId: dto.modelId,
-            userId,
-            characterImageAssetId: characterAsset.id,
-            motionReferenceAssetId: referenceVideoAsset.id,
-            motionPrompt: dto.prompt || "",
-            negativePrompt: dto.negativePrompt,
-            status: "queued",
-            externalTaskId: "",
-            durationSeconds: 5,
-            characterOrientation: dto.characterOrientation,
-            generationSound: dto.keepOriginalSound === "yes",
-            generationMode: dto.mode || "pro",
-            cost: dto.cost ?? 0,
-            params: { mode: dto.mode, characterOrientation: dto.characterOrientation },
-            requestPayload: {},
-            responsePayload: {},
-            startedAt: new Date(),
-        });
-
-        const saved = await this.motionGenRepository.save(motionGen);
+        const { reservation: saved, budget } = await this.generationBudgetService.reserve(
+            dto.taskId,
+            dto.cost ?? 0,
+            async (manager) => manager.getRepository(MotionGenerations).save(
+                manager.getRepository(MotionGenerations).create({
+                    projectId: dto.projectId,
+                    opportunityId: dto.opportunityId,
+                    taskId: dto.taskId,
+                    modelId: dto.modelId,
+                    userId,
+                    characterImageAssetId: characterAsset.id,
+                    motionReferenceAssetId: referenceVideoAsset.id,
+                    motionPrompt: dto.prompt || "",
+                    negativePrompt: dto.negativePrompt,
+                    status: "queued",
+                    externalTaskId: "",
+                    durationSeconds: 5,
+                    characterOrientation: dto.characterOrientation,
+                    generationSound: dto.keepOriginalSound === "yes",
+                    generationMode: dto.mode || "pro",
+                    cost: dto.cost,
+                    params: { mode: dto.mode, characterOrientation: dto.characterOrientation },
+                    requestPayload: {},
+                    responsePayload: {},
+                    startedAt: new Date(),
+                }),
+            ),
+        );
 
         this.runMotionControlInBackground({
             motionGen: saved,
@@ -119,6 +125,9 @@ export class MotionGenerationService {
             modelName: model.name,
             generationMode: dto.mode || "pro",
             cost: dto.cost ?? 0,
+            budgetLimit: budget.limit,
+            budgetUsed: budget.used,
+            budgetRemaining: budget.remaining,
         };
     }
 

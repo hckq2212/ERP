@@ -1,9 +1,20 @@
 import { Response } from "express";
 import { VideoGenerationService } from "../services/VideoGeneration.Service";
 import { CreateVideoDto } from "../dto/CreateVideo.dto";
+import { GenerationBudgetService } from "../services/GenerationBudget.Service";
 
 export class VideoGenerationController {
     private videoGenerationService = new VideoGenerationService();
+    private generationBudgetService = new GenerationBudgetService();
+
+    getTaskBudget = async (req: any, res: Response) => {
+        try {
+            const result = await this.generationBudgetService.getSnapshot(req.params.taskId, req.user.id);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    };
 
     create = async (req: any, res: Response) => {
         try {
