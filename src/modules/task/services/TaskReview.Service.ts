@@ -242,6 +242,14 @@ export class TaskReviewService {
             if (task.isOutput && task.contractService) {
                 const contractService = task.contractService;
                 if (!contractService.results) contractService.results = [];
+
+                const taskResults = contractService.results.filter(r => r.taskId === task.id);
+                const latestResult = taskResults.length > 0 ? taskResults[taskResults.length - 1] : null;
+
+                const currentMaxVersion = taskResults.reduce((max, r) => Math.max(max, Number(r.version || 1)), 0);
+                const isNewIteration = latestResult && latestResult.status !== 'PENDING';
+                const nextVersion = isNewIteration ? currentMaxVersion + 1 : (currentMaxVersion || 1);
+
                 const newResult = {
                     taskId: task.id,
                     type: task.result?.type || 'file',
@@ -249,11 +257,23 @@ export class TaskReviewService {
                     url: task.result?.url,
                     note: task.result?.note,
                     checklist: task.result?.checklist,
-                    status: 'PENDING' as const
+                    status: 'PENDING' as const,
+                    version: nextVersion,
+                    submittedAt: new Date().toISOString()
                 };
-                const existingResultIndex = contractService.results.findIndex(result => result.taskId === task.id);
-                if (existingResultIndex >= 0) contractService.results[existingResultIndex] = newResult;
-                else contractService.results.push(newResult);
+
+                if (latestResult && latestResult.status === 'PENDING') {
+                    // Update current pending result in place if it hasn't been reviewed by customer/BOD yet
+                    const existingIndex = contractService.results.lastIndexOf(latestResult);
+                    if (existingIndex >= 0) {
+                        contractService.results[existingIndex] = newResult;
+                    } else {
+                        contractService.results.push(newResult);
+                    }
+                } else {
+                    // Previous result was already REJECTED or APPROVED -> append as a new version, preserving previous history
+                    contractService.results.push(newResult);
+                }
                 await manager.getRepository(ContractServices).save(contractService);
             }
 

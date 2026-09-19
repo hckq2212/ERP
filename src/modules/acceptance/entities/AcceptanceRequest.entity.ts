@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, ManyToMany, JoinTable } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { Users } from "../../user/entities/User.entity";
 import { ContractServices } from "../../contract/entities/ContractService.entity";
@@ -42,6 +42,11 @@ export class AcceptanceRequests extends BaseEntity {
     @Column({ type: "text", nullable: true })
     feedback: string;
 
-    @OneToMany(() => ContractServices, (service) => service.acceptanceRequest)
+    @ManyToMany(() => ContractServices, (service) => service.acceptanceRequests)
+    @JoinTable({
+        name: "acceptance_request_services",
+        joinColumn: { name: "acceptanceRequestId", referencedColumnName: "id" },
+        inverseJoinColumn: { name: "contractServiceId", referencedColumnName: "id" }
+    })
     services: ContractServices[];
 }

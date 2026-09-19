@@ -192,7 +192,13 @@ export class AcceptanceService {
     // Update services status
     for (const s of services) {
       s.status = ContractServiceStatus.AWAITING_ACCEPTANCE;
-      s.acceptanceRequest = savedRequest;
+      if (s.results) {
+        for (const r of s.results) {
+          if (r.status === "PENDING" && !r.acceptanceRequestId) {
+            r.acceptanceRequestId = savedRequest.id;
+          }
+        }
+      }
       await this.serviceRepo.save(s);
     }
 
@@ -252,10 +258,18 @@ export class AcceptanceService {
       for (const service of request.services) {
         this.assertSubtaskPlansApproved(service.tasks || []);
         if (service.results)
-          service.results = service.results.map((result) => ({
-            ...result,
-            status: "APPROVED",
-          }));
+          service.results = service.results.map((result) => {
+            // Chỉ cập nhật result thuộc request hiện tại, giữ nguyên lịch sử cũ
+            const belongsToCurrentRequest =
+              result.acceptanceRequestId === request.id ||
+              !result.acceptanceRequestId;
+            if (!belongsToCurrentRequest) return result;
+            return {
+              ...result,
+              status: "APPROVED",
+              acceptanceRequestId: request.id,
+            };
+          });
         service.status = ContractServiceStatus.COMPLETED;
         await manager.save(service);
         await manager.update(
@@ -311,11 +325,19 @@ export class AcceptanceService {
       await manager.save(request);
       for (const service of request.services) {
         if (service.results)
-          service.results = service.results.map((result) => ({
-            ...result,
-            status: "REJECTED",
-            feedback,
-          }));
+          service.results = service.results.map((result) => {
+            // Chỉ cập nhật result thuộc request hiện tại, giữ nguyên lịch sử cũ
+            const belongsToCurrentRequest =
+              result.acceptanceRequestId === request.id ||
+              !result.acceptanceRequestId;
+            if (!belongsToCurrentRequest) return result;
+            return {
+              ...result,
+              status: "REJECTED",
+              feedback,
+              acceptanceRequestId: request.id,
+            };
+          });
         service.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
         service.feedback = feedback;
         await manager.save(service);
@@ -392,6 +414,7 @@ export class AcceptanceService {
                 // Because result is a reference to the object in the original array, mutating it here works.
                 result.status = rd.status;
                 result.feedback = rd.feedback;
+                result.acceptanceRequestId = request.id;
 
                 // If rejected, find the specific task and reset it for rework
                 if (rd.status === "REJECTED") {
@@ -445,18 +468,26 @@ export class AcceptanceService {
           // Traditional batch approval/rejection for the whole service
           if (decision.status === "APPROVED") {
             if (service.results) {
-              service.results = service.results.map((r) => ({
-                ...r,
-                status: "APPROVED",
-              }));
+              service.results = service.results.map((r) => {
+                const belongsToCurrentRequest =
+                  r.acceptanceRequestId === request.id || !r.acceptanceRequestId;
+                if (!belongsToCurrentRequest) return r;
+                return { ...r, status: "APPROVED", acceptanceRequestId: request.id };
+              });
             }
           } else {
             if (service.results) {
-              service.results = service.results.map((r) => ({
-                ...r,
-                status: "REJECTED",
-                feedback: decision.feedback,
-              }));
+              service.results = service.results.map((r) => {
+                const belongsToCurrentRequest =
+                  r.acceptanceRequestId === request.id || !r.acceptanceRequestId;
+                if (!belongsToCurrentRequest) return r;
+                return {
+                  ...r,
+                  status: "REJECTED",
+                  feedback: decision.feedback,
+                  acceptanceRequestId: request.id,
+                };
+              });
             }
           }
         }
@@ -535,7 +566,7 @@ export class AcceptanceService {
   }
 
   async getRequest(id: string) {
-    return await this.acceptanceRepo.findOne({
+    const request = await this.acceptanceRepo.findOne({
       where: { id },
       order: { createdAt: "DESC" },
       relations: [
@@ -546,6 +577,44 @@ export class AcceptanceService {
         "project",
       ],
     });
+
+    if (request && request.services) {
+      request.services = request.services.map((service: any) => {
+        if (!service.results || service.results.length === 0) return service;
+
+        // Lọc chính xác theo acceptanceRequestId của request này
+        const requestResults = service.results.filter(
+          (r: any) => r.acceptanceRequestId === request.id,
+        );
+
+        if (requestResults.length > 0) {
+          return { ...service, results: requestResults };
+        }
+
+        // Fallback thông minh cho data cũ chưa được tag acceptanceRequestId:
+        // Lấy kết quả có status khớp với trạng thái request
+        // (REJECTED request → kết quả REJECTED, APPROVED → APPROVED, PENDING → PENDING)
+        const statusMap: Record<string, string[]> = {
+          [AcceptanceStatus.REJECTED]: ["REJECTED"],
+          [AcceptanceStatus.APPROVED]: ["APPROVED"],
+          [AcceptanceStatus.PENDING]: ["PENDING"],
+          [AcceptanceStatus.PROCESSED]: ["APPROVED", "REJECTED"],
+        };
+        const matchingStatuses = statusMap[request.status] || [];
+        const untaggedResults = service.results.filter(
+          (r: any) => !r.acceptanceRequestId && matchingStatuses.includes(r.status),
+        );
+
+        if (untaggedResults.length > 0) {
+          return { ...service, results: untaggedResults };
+        }
+
+        // Không tìm thấy gì → trả mảng rỗng
+        return { ...service, results: [] };
+      });
+    }
+
+    return request;
   }
 
   async getAllRequests(

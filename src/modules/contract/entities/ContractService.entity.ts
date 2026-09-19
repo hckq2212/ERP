@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany, ManyToMany, JoinColumn } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { Services } from "../../service/entities/Service.entity";
 import { Jobs } from "../../job/entities/Job.entity";
@@ -6,6 +6,7 @@ import { Contracts } from "./Contract.entity";
 import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
 import { Tasks } from "../../task/entities/Task.entity";
 import { ContractAddendums } from "../../contract-addendum/entities/ContractAddendum.entity";
+import { AcceptanceRequests } from "../../acceptance/entities/AcceptanceRequest.entity";
 
 export enum ContractServiceStatus {
     ACTIVE = "ACTIVE",
@@ -57,8 +58,8 @@ export class ContractServices extends BaseEntity {
     })
     status: ContractServiceStatus;
 
-    @ManyToOne("AcceptanceRequests", "services", { nullable: true })
-    acceptanceRequest: any;
+    @ManyToMany(() => AcceptanceRequests, (acceptance) => acceptance.services)
+    acceptanceRequests: AcceptanceRequests[];
 
     @Column({ type: "jsonb", nullable: true, default: [] })
     results: {
@@ -69,7 +70,10 @@ export class ContractServices extends BaseEntity {
         status: 'PENDING' | 'APPROVED' | 'REJECTED',
         feedback?: string,
         note?: string,
-        checklist?: { criteriaId?: string, label: string, description?: string, checked: boolean }[]
+        checklist?: { criteriaId?: string, label: string, description?: string, checked: boolean }[],
+        version?: number,
+        acceptanceRequestId?: string,
+        submittedAt?: string
     }[];
 
     @Column({ nullable: true })
