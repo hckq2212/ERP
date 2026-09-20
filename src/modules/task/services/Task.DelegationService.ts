@@ -5,6 +5,7 @@ import { UserRole } from "../../account/entities/Account.entity";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
 import { Users } from "../../user/entities/User.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
+import { projectEmitter, PROJECT_EVENTS } from "../../project/events/ProjectEmitter";
 import { Tasks } from "../entities/Task.entity";
 import { TaskBaseService } from "./Task.BaseService";
 import { SUBTASK_PM_APPROVAL_ENABLED } from "../constants/SubtaskPlan.constants";
@@ -158,6 +159,10 @@ export class TaskDelegationService extends TaskBaseService {
         });
 
         taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
+        const projectId = (savedTask as any)?.projectId || savedTask.project?.id;
+        if (projectId) {
+            projectEmitter.emit(PROJECT_EVENTS.UPDATED, { id: projectId });
+        }
         return savedTask;
     }
 
@@ -214,6 +219,10 @@ export class TaskDelegationService extends TaskBaseService {
         });
 
         taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
+        const projectId = (savedTask as any)?.projectId || savedTask.project?.id;
+        if (projectId) {
+            projectEmitter.emit(PROJECT_EVENTS.UPDATED, { id: projectId });
+        }
         return savedTask;
     }
 
