@@ -18,6 +18,8 @@ import { OpportunityServiceJobs } from "../../opportunity-service/entities/Oppor
 import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
 import { RedisService } from "../../../shared/services/Redis.Service";
 import { calculateRecommendedSellingPrice } from "../../../shared/helpers/Pricing.helper";
+import { TaskResultChecks } from "../entities/TaskResultCheck.entity";
+import { buildCheckSummary } from "../../../shared/helpers/CheckSummary.helper";
 
 type ReviewActor = { id?: string; userId?: string; role?: string };
 
@@ -278,9 +280,18 @@ export class TaskReviewService {
             }
 
             if (task.assignee) {
+                const approvedCheck = await manager.getRepository(TaskResultChecks).findOne({ where: { taskId: task.id } });
+                const approvedSpellErrors = approvedCheck?.finalizedAt
+                    ? (approvedCheck.reviewedSpellErrors || []).filter(e => e.confirmed)
+                    : [];
+                const approvedQcMismatches = approvedCheck?.finalizedAt
+                    ? (approvedCheck.reviewedQcMismatches || []).filter(m => m.status !== "unresolved" && m.confirmed)
+                    : [];
+                const approvedSummary = buildCheckSummary(approvedSpellErrors, approvedQcMismatches);
+                const approvedContent = `Công việc "${task.nickname || task.name || task.code}" của dự án ${task.project?.name} đã được duyệt nội bộ.`;
                 await this.notificationService.createNotification({
                     title: "Công việc đã được duyệt",
-                    content: `Công việc "${task.nickname || task.name || task.code}" của dự án ${task.project?.name} đã được duyệt nội bộ.`,
+                    content: approvedSummary ? `${approvedContent}\nLỗi đã chốt:\n${approvedSummary}` : approvedContent,
                     type: "TASK_COMPLETED",
                     recipient: task.assignee,
                     relatedEntityId: task.id.toString(),
@@ -397,6 +408,13 @@ export class TaskReviewService {
         const iterationCount = await iterationRepository.count({
             where: { taskId: task.id }
         });
+        const resultCheck = await AppDataSource.getRepository(TaskResultChecks).findOne({ where: { taskId: task.id } });
+        const confirmedSpellErrors = resultCheck?.finalizedAt
+            ? (resultCheck.reviewedSpellErrors || []).filter(e => e.confirmed)
+            : [];
+        const confirmedQcMismatches = resultCheck?.finalizedAt
+            ? (resultCheck.reviewedQcMismatches || []).filter(m => m.status !== "unresolved" && m.confirmed)
+            : [];
         const iteration = iterationRepository.create({
             task,
             version: iterationCount + 1,
@@ -404,7 +422,9 @@ export class TaskReviewService {
             leadFeedback: reviewNote,
             feedbackAttachments: null as any,
             deadlineAt: null as any,
-            submittedById: task.lastSubmittedById
+            submittedById: task.lastSubmittedById,
+            confirmedSpellErrors,
+            confirmedQcMismatches
         });
         await iterationRepository.save(iteration);
 
@@ -414,9 +434,11 @@ export class TaskReviewService {
 
         // Notify assignee
         if (task.assignee) {
+            const rejectSummary = buildCheckSummary(confirmedSpellErrors, confirmedQcMismatches);
+            const rejectContent = `Công việc "${task.nickname || task.name}" của dự án ${task.project?.name} bị từ chối/yêu cầu sửa lại. Lý do: ${reviewNote}`;
             await this.notificationService.createNotification({
                 title: "Công việc cần sửa lại",
-                content: `Công việc "${task.nickname || task.name}" của dự án ${task.project?.name} bị từ chối/yêu cầu sửa lại. Lý do: ${reviewNote}`,
+                content: rejectSummary ? `${rejectContent}\nLỗi đã chốt:\n${rejectSummary}` : rejectContent,
                 type: "TASK_REJECTED",
                 recipient: task.assignee,
                 relatedEntityId: task.id.toString(),

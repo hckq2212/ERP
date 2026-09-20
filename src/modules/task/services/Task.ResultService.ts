@@ -21,7 +21,7 @@ import { TaskResultCheckService } from "./TaskResultCheck.Service";
 import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
 import { TaskResultChecks } from "../entities/TaskResultCheck.entity";
-import { buildCheckSummary } from "./TaskResultCheck.Service";
+import { buildCheckSummary } from "../../../shared/helpers/CheckSummary.helper";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
 import { VinicoinService } from "../../../shared/services/Vinicoin.Service";
 import { RedisService } from "../../../shared/services/Redis.Service";

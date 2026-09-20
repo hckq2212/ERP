@@ -134,9 +134,11 @@ export class AnnouncementService {
             .orderBy("announcement.createdAt", "DESC")
 
         if (!isManager) {
-            qb.innerJoin(AnnouncementRecipients, "recipient", "recipient.announcementId = announcement.id")
-                .andWhere("recipient.recipientId = :userId", { userId: requester.userId })
-                .andWhere("announcement.status = :sentStatus", { sentStatus: AnnouncementStatus.SENT })
+            qb.leftJoin(AnnouncementRecipients, "recipient", "recipient.announcementId = announcement.id AND recipient.recipientId = :viewerId", { viewerId: requester.userId })
+                .andWhere(new Brackets(scopeQb => {
+                    scopeQb.where("recipient.id IS NOT NULL AND announcement.status = :sentStatus", { sentStatus: AnnouncementStatus.SENT })
+                        .orWhere("createdBy.id = :viewerId", { viewerId: requester.userId })
+                }))
         }
 
         if (query.search) {
@@ -212,7 +214,7 @@ export class AnnouncementService {
         })
         if (!announcement) throw new Error("Không tìm thấy thông báo")
 
-        const isManager = ["BOD", "ADMIN"].includes(requester.role)
+        const isManager = ["BOD", "ADMIN"].includes(requester.role) || announcement.createdBy?.id === requester.userId
 
         if (!isManager) {
             const ownRecipient = await this.recipientRepository.findOne({
@@ -310,6 +312,11 @@ export class AnnouncementService {
     private async ensureAccess(id: string, requester: { userId: string, role: string }) {
         const isManager = ["BOD", "ADMIN"].includes(requester.role)
         if (isManager) return
+
+        const ownAnnouncement = await this.announcementRepository.findOne({
+            where: { id, createdBy: { id: requester.userId } }
+        })
+        if (ownAnnouncement) return
 
         const ownRecipient = await this.recipientRepository.findOne({
             where: { announcement: { id }, recipient: { id: requester.userId } }
