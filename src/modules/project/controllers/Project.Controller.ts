@@ -217,4 +217,17 @@ export class ProjectController {
         res.status(500).json({ message: error.message });
     }
 };
+
+    requestStaffing = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.requestStaffing(
+                req.params.id as string,
+                req.body?.note,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
 }

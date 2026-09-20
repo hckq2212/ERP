@@ -181,4 +181,69 @@ export class ProjectAssignmentService extends ProjectBaseService {
         projectEmitter.emit(PROJECT_EVENTS.CREATED, project);
         return project;
     }
+
+    async requestStaffing(projectId: string, note: string | undefined, actor?: { id: string; role: string; userId?: string }) {
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: [
+                "team",
+                "team.teamLead",
+                "team.members",
+                "team.members.user"
+            ]
+        });
+
+        if (!project) {
+            const error: any = new Error("Không tìm thấy dự án");
+            error.statusCode = 404;
+            throw error;
+        }
+        if (!project.team) {
+            const error: any = new Error("Dự án chưa có đội dự án");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const actorUserId = actor?.userId || actor?.id;
+        const isLead = project.team.teamLead?.id === actorUserId;
+        const isAdmin = actor?.role === "ADMIN" || actor?.role === "BOD";
+
+        if (!isLead && !isAdmin) {
+            const error: any = new Error("Chỉ Team Lead của dự án mới có quyền yêu cầu thêm nhân sự");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const projectManagerMember = project.team.members?.find(
+            m => m.role === MemberRole.PROJECT_MANAGER && m.user
+        );
+        const pmUser = projectManagerMember?.user;
+        console.log("pmUser: ",pmUser)
+        if (!pmUser) {
+            const error: any = new Error("Dự án chưa có PM phụ trách để nhận yêu cầu");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const requester = await AppDataSource.getRepository(Users).findOneBy({ id: actorUserId });
+        const requesterName = requester?.fullName || "Team Lead";
+
+        await this.notificationService.createNotification({
+            title: "Yêu cầu bổ sung nhân sự cho dự án",
+            content: `${requesterName} yêu cầu bổ sung nhân sự cho dự án "${project.name}".${note?.trim() ? ` Ghi chú: ${note.trim()}` : ""}`,
+            type: "TASK_STAFFING_REQUEST",
+            recipient: pmUser,
+            sender: requester || undefined,
+            relatedEntityId: project.id,
+            relatedEntityType: "Project",
+            link: `/projects/${project.id}`
+        });
+
+        projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
+
+        return {
+            success: true,
+            message: "Đã gửi yêu cầu bổ sung nhân sự cho PM"
+        };
+    }
 }
