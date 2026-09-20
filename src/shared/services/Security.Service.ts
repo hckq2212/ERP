@@ -121,14 +121,12 @@ export class SecurityService {
 
         // PM only sees projects where they are explicitly assigned as PROJECT_MANAGER.
         if (role === UserRole.PM) {
-            return SecurityService.withTenant({
-                team: {
-                    members: {
-                        user: { id: userInfo.userId || "__UNLINKED_PM__" },
-                        role: "PROJECT_MANAGER"
-                    }
-                }
-            }, userInfo);
+            const uid = userInfo.userId || "__UNLINKED_PM__";
+            return SecurityService.withTenant([
+                { team: { members: { user: { id: uid } } } },   // là thành viên bất kỳ
+                { tasks: { helper: { id: uid } } },
+                { tasks: { supportLeadId: uid } }
+            ], userInfo);
         }
 
         // Business Development (BD) can see projects related to their contracts or customers

@@ -363,7 +363,7 @@ export class ProjectBaseService {
         if (project.contract) {
             project.contract.services = await this.contractServiceRepository.find({
                 where: { contract: { id: project.contract.id } },
-                relations: ["service", "tasks", "tasks.job"],
+                relations: ["service", "tasks", "tasks.job", "tasks.assignee", "tasks.helper"],
                 select: {
                     id: true,
                     sellingPrice: true,
@@ -383,7 +383,18 @@ export class ProjectBaseService {
                         status: true,
                         result: true,
                         code: true,
-                        isOutput: true
+                        isOutput: true,
+                        assigneeId: true,
+                        helperId: true,
+                        plannedEndDate: true,
+                        assignee: {
+                            id: true,
+                            fullName: true
+                        },
+                        helper: {
+                            id: true,
+                            fullName: true
+                        }
                     }
                 }
             });
@@ -417,6 +428,31 @@ export class ProjectBaseService {
                         });
                     }
                 }
+            }
+        }
+
+        // Filter contract service tasks for non-lead / non-PM users of this project
+        if (userInfo && project.contract?.services) {
+            const isAdminOrBod = userInfo.role === UserRole.ADMIN || userInfo.role === UserRole.BOD;
+            const isProjectLead = project.team?.teamLead?.id === userInfo.userId;
+            const isProjectManager = project.team?.members?.some(
+                m => m.role === MemberRole.PROJECT_MANAGER && m.user?.id === userInfo.userId
+            );
+
+            if (!isAdminOrBod && !isProjectLead && !isProjectManager) {
+                project.contract.services.forEach(s => {
+                    if (Array.isArray(s.tasks)) {
+                        s.tasks = s.tasks.filter(t =>
+                            t.assigneeId === userInfo.userId ||
+                            t.helperId === userInfo.userId ||
+                            t.assignee?.id === userInfo.userId ||
+                            t.helper?.id === userInfo.userId
+                        );
+                    }
+                });
+                project.contract.services = project.contract.services.filter(
+                    s => Array.isArray(s.tasks) && s.tasks.length > 0
+                );
             }
         }
 
