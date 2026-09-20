@@ -61,4 +61,8 @@ export class ProjectService {
     confirm(id: string, actor: { id: string; userId?: string; role: string }) {
         return this.lifecycleService.confirm(id, actor);
     }
+
+    requestStaffing(id: string, note: string | undefined, actor?: { id: string, role: string, userId?: string }) {
+        return this.assignmentService.requestStaffing(id, note, actor);
+    }
 }

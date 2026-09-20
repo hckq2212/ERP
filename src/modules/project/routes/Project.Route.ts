@@ -44,6 +44,7 @@ router.post(
     roleMiddleware(["ADMIN", "PM"]),
     projectController.syncServiceJobs
 );
+router.post("/:id/request-staffing", projectController.requestStaffing);
 router.get("/:id", projectController.getOne);
 // router.post("/:id/start", projectController.start);
 
