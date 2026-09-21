@@ -3,8 +3,8 @@ import jwt from "jsonwebtoken";
 import { Server, Socket } from "socket.io";
 import { AppDataSource } from "./data-source";
 import { Accounts } from "./modules/account/entities/Account.entity";
-import { ChatMessages } from "./modules/chat-room/entities/ChatMessage.entity";
 import { ChatParticipants } from "./modules/chat-room/entities/ChatParticipant.entity";
+import { ChatRoomService } from "./modules/chat-room/services/ChatRoom.Service";
 
 interface AuthenticatedSocket extends Socket {
     user?: {
@@ -14,7 +14,13 @@ interface AuthenticatedSocket extends Socket {
     };
 }
 
-const onlineUsers = new Map<string, string>();
+const onlineUsers = new Map<string, Set<string>>();
+
+function getOnlineUserIds() {
+    return Array.from(onlineUsers.entries())
+        .filter(([, socketIds]) => socketIds.size > 0)
+        .map(([userId]) => userId);
+}
 
 function parseCookie(cookieString: string): Record<string, string> {
     const cookies: Record<string, string> = {};
@@ -98,8 +104,10 @@ export function initSocket(httpServer: HttpServer) {
     io.on("connection", (socket: AuthenticatedSocket) => {
         const userId = socket.user?.userId;
         if (userId) {
-            onlineUsers.set(userId, socket.id);
-            io.emit("online_users", Array.from(onlineUsers.keys()));
+            const socketIds = onlineUsers.get(userId) || new Set<string>();
+            socketIds.add(socket.id);
+            onlineUsers.set(userId, socketIds);
+            io.emit("online_users", getOnlineUserIds());
         }
 
         console.log(`User connected to Socket.io: ${socket.user?.username} (${socket.id})`);
@@ -127,56 +135,46 @@ export function initSocket(httpServer: HttpServer) {
             });
         });
 
-        socket.on("send_message", async (data: { roomId: string; content: string; attachments?: any[] }) => {
+        socket.on("send_message", async (
+            data: { roomId: string; content: string; attachments?: any[] },
+            ack?: (response: { ok: boolean; message?: any; error?: string }) => void
+        ) => {
             try {
                 const { roomId, content, attachments } = data;
                 const senderUserId = socket.user?.userId;
-                if (!roomId || !content?.trim() || !senderUserId) return;
-
-                const participantRepo = AppDataSource.getRepository(ChatParticipants);
-                const isParticipant = await participantRepo.findOne({
-                    where: { roomId, userId: senderUserId }
-                });
-
-                if (!isParticipant) {
-                    socket.emit("error", { message: "Bạn không thuộc phòng chat này" });
+                if (!roomId || !content?.trim() || !senderUserId) {
+                    ack?.({ ok: false, error: "Tin nhắn không hợp lệ" });
                     return;
                 }
 
+                const participantRepo = AppDataSource.getRepository(ChatParticipants);
                 const allParticipants = await participantRepo.find({ where: { roomId } });
-                const messageRepo = AppDataSource.getRepository(ChatMessages);
-                const newMessage = messageRepo.create({
-                    roomId,
-                    senderId: senderUserId,
-                    content: content.trim(),
-                    attachments: attachments || []
-                });
-
-                await messageRepo.save(newMessage);
-
-                const populatedMessage = await messageRepo.findOne({
-                    where: { id: newMessage.id },
-                    relations: ["sender"]
-                });
+                const populatedMessage = await ChatRoomService.createMessage(roomId, senderUserId, content, attachments || []);
 
                 if (populatedMessage) {
                     allParticipants.forEach((participant) => {
-                        const socketId = onlineUsers.get(participant.userId);
-                        if (socketId) {
+                        const socketIds = onlineUsers.get(participant.userId);
+                        socketIds?.forEach((socketId) => {
                             io.to(socketId).emit("receive_message", populatedMessage);
-                        }
+                        });
                     });
+                    ack?.({ ok: true, message: populatedMessage });
                 }
-            } catch (error) {
+            } catch (error: any) {
                 console.error("Error in send_message socket event:", error);
                 socket.emit("error", { message: "Không thể gửi tin nhắn" });
+                ack?.({ ok: false, error: error.message || "Không thể gửi tin nhắn" });
             }
         });
 
         socket.on("disconnect", () => {
             if (userId) {
-                onlineUsers.delete(userId);
-                io.emit("online_users", Array.from(onlineUsers.keys()));
+                const socketIds = onlineUsers.get(userId);
+                socketIds?.delete(socket.id);
+                if (!socketIds || socketIds.size === 0) {
+                    onlineUsers.delete(userId);
+                }
+                io.emit("online_users", getOnlineUserIds());
             }
             console.log(`User disconnected from Socket.io: ${socket.user?.username} (${socket.id})`);
         });

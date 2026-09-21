@@ -82,6 +82,23 @@ export class ChatRoomController {
         }
     };
 
+    sendMessage = async (req: AuthRequest, res: Response) => {
+        try {
+            const userId = req.user?.userId;
+            const roomId = String(req.params.roomId || "");
+            const { content, attachments } = req.body;
+
+            if (!userId) return res.status(401).json({ message: "Unauthorized" });
+            if (!roomId) return res.status(400).json({ message: "Mã phòng không hợp lệ" });
+            if (!content?.trim()) return res.status(400).json({ message: "Tin nhắn không được để trống" });
+
+            const message = await ChatRoomService.createMessage(roomId, userId, content, attachments || []);
+            res.status(201).json(message);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
     markRoomAsRead = async (req: AuthRequest, res: Response) => {
         try {
             const userId = req.user?.userId;

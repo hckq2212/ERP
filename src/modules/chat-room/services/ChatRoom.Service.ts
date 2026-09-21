@@ -1,4 +1,4 @@
-import { In, LessThan } from "typeorm";
+import { In, LessThan, MoreThan, Not } from "typeorm";
 import { AppDataSource } from "../../../data-source";
 import { Accounts } from "../../account/entities/Account.entity";
 import { Users } from "../../user/entities/User.entity";
@@ -58,15 +58,20 @@ export class ChatRoomService {
 
             const myParticipant = participants.find((participant) => participant.userId === userId);
             const lastReadAt = myParticipant?.lastReadAt;
-            const unread = latestMessage
-                ? latestMessage.senderId !== userId && (!lastReadAt || latestMessage.createdAt > lastReadAt)
-                : false;
+            const unreadCount = await messageRepo.count({
+                where: {
+                    roomId: room.id,
+                    senderId: Not(userId),
+                    ...(lastReadAt ? { createdAt: MoreThan(lastReadAt) } : {})
+                }
+            });
 
             return {
                 ...room,
                 participants,
                 latestMessage,
-                unread
+                unread: unreadCount > 0,
+                unreadCount
             };
         }));
 
@@ -208,6 +213,30 @@ export class ChatRoomService {
         });
 
         return messages.reverse();
+    }
+
+    static async createMessage(roomId: string, senderUserId: string, content: string, attachments: any[] = []) {
+        const isParticipant = await this.isParticipant(roomId, senderUserId);
+        if (!isParticipant) {
+            const error: any = new Error("Bạn không thuộc phòng chat này");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const messageRepo = AppDataSource.getRepository(ChatMessages);
+        const newMessage = messageRepo.create({
+            roomId,
+            senderId: senderUserId,
+            content: content.trim(),
+            attachments
+        });
+
+        await messageRepo.save(newMessage);
+
+        return messageRepo.findOne({
+            where: { id: newMessage.id },
+            relations: ["sender"]
+        });
     }
 
     static async isParticipant(roomId: string, userId: string) {
