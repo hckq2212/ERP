@@ -557,7 +557,14 @@ export class ContractService {
             dueDate: new Date(new Date().setDate(new Date().getDate() + 30)), // Default 30 days
             ...SecurityService.getTenantWhere(userInfo)
         } as any);
-        await this.milestoneRepository.save(defaultMilestone);
+        const savedDefaultMilestone: any = await this.milestoneRepository.save(defaultMilestone);
+
+        // Auto create debt for default milestone
+        try {
+            await this.debtService.createFromMilestone(savedDefaultMilestone.id);
+        } catch (debtErr) {
+            console.error("Error auto-creating debt for default milestone:", debtErr);
+        }
 
         // Invalidate contract caches before returning the freshly loaded detail
         await RedisService.deleteCache('contracts:all*');
