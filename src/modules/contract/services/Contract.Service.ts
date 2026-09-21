@@ -342,7 +342,7 @@ export class ContractService {
                     0
                 );
                 if (finalSellingPrice === undefined || finalSellingPrice === null || finalSellingPrice === 0) {
-                    finalSellingPrice = quotationSellingPrice;
+                    finalSellingPrice = quotationSellingPrice * 1.08;
                 }
                 if (finalCost === undefined || finalCost === null || finalCost === 0) {
                     finalCost = quotationCost;
@@ -356,7 +356,7 @@ export class ContractService {
                     // Price Priority 2: Sum of Opportunity Services
                     const serviceSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.sellingPrice) * (os.quantity || 1)), 0);
                     if (serviceSum > 0) {
-                        finalSellingPrice = serviceSum;
+                        finalSellingPrice = serviceSum * 1.08;
                     }
                 }
 

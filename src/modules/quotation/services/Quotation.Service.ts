@@ -200,7 +200,7 @@ export class QuotationService {
             }
         }
 
-        savedQuotation.totalAmount = total;
+        savedQuotation.totalAmount = total * 1.08;
 
         // Update Opportunity Status to QUOTATION_DRAFTING if it's new
         if (opportunity.status === OpportunityStatus.PENDING_OPP_APPROVAL) {
@@ -306,7 +306,7 @@ export class QuotationService {
             total += Number(detail.sellingPrice);
         }
 
-        savedQuotation.totalAmount = total;
+        savedQuotation.totalAmount = total * 1.08;
         savedQuotation.tasks = tasks; // Link tasks to quotation
         const saved = await this.quotationRepository.save(savedQuotation);
 
@@ -371,7 +371,7 @@ export class QuotationService {
                 // Keep in memory for the final return
                 quotation.details.push(detail);
             }
-            quotation.totalAmount = total;
+            quotation.totalAmount = total * 1.08;
         }
 
         const saved = await this.quotationRepository.save(quotation);
@@ -451,8 +451,9 @@ export class QuotationService {
             0
         );
 
-        // 4. Update Opportunity Totals & Status
-        opportunity.expectedRevenue = totalRevenue;
+        // 4. Update Opportunity Totals & Status (inclusive of 8% VAT)
+        const finalApprovedPrice = quotation.totalAmount ? Number(quotation.totalAmount) : (totalRevenue * 1.08);
+        opportunity.expectedRevenue = finalApprovedPrice;
         opportunity.status = OpportunityStatus.QUOTE_APPROVED;
 
         await this.opportunityRepository.save(opportunity);
@@ -471,7 +472,7 @@ export class QuotationService {
             opportunityId: opportunity.id,
             quotationId: quotation.id,
             quotationDetails: quotation.details,
-            sellingPrice: quotation.totalAmount || totalRevenue,
+            sellingPrice: finalApprovedPrice,
             cost: quotation.details.reduce(
                 (sum, detail) => sum + (Number(detail.costAtSale || 0) * (detail.quantity || 1)),
                 0
