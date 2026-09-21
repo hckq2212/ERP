@@ -13,6 +13,8 @@ export class AiDashboardController {
                 actor,
                 req.query.userId as string | undefined,
                 req.query.projectId as string | undefined,
+                req.query.opportunityId as string | undefined,
+                req.query.taskId as string | undefined,
                 month,
                 year,
             );

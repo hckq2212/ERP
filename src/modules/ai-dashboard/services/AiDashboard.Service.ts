@@ -1,7 +1,8 @@
-import { In } from "typeorm";
 import { AppDataSource } from "../../../data-source";
 import { Accounts, UserRole } from "../../account/entities/Account.entity";
+import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
 import { Projects } from "../../project/entities/Project.entity";
+import { Tasks } from "../../task/entities/Task.entity";
 import { MotionGenerations } from "../../video-generation/entities/MotionGeneration.entity";
 import { VideoGenerations } from "../../video-generation/entities/VideoGeneration.entity";
 
@@ -34,6 +35,8 @@ const MEMBER_VIEW_ROLES = new Set<string>([
 export class AiDashboardService {
     private accountRepository = AppDataSource.getRepository(Accounts);
     private projectRepository = AppDataSource.getRepository(Projects);
+    private opportunityRepository = AppDataSource.getRepository(Opportunities);
+    private taskRepository = AppDataSource.getRepository(Tasks);
     private videoRepository = AppDataSource.getRepository(VideoGenerations);
     private motionRepository = AppDataSource.getRepository(MotionGenerations);
 
@@ -41,10 +44,15 @@ export class AiDashboardService {
         actor: DashboardActor,
         requestedUserId?: string,
         projectId?: string,
+        opportunityId?: string,
+        taskId?: string,
         month = new Date().getMonth() + 1,
         year = new Date().getFullYear(),
     ) {
         this.validatePeriod(month, year);
+        if (projectId && opportunityId) {
+            throw this.httpError("Chỉ được chọn dự án hoặc cơ hội tại một thời điểm", 400);
+        }
 
         const canViewMembers = MEMBER_VIEW_ROLES.has(actor.role);
         const targetUserId = canViewMembers ? requestedUserId : actor.userId;
@@ -55,20 +63,30 @@ export class AiDashboardService {
 
         const targetAccountIds = await this.resolveAccountIds(targetUserId, actor);
         const availableMembers = canViewMembers ? await this.getAvailableMembers() : [];
-        const availableProjects = await this.getAvailableProjects(
-            canViewMembers,
-            canViewMembers ? undefined : [actor.id],
-        );
+        const availableProjects = await this.getAvailableProjects(targetUserId);
+        const availableOpportunities = await this.getAvailableOpportunities(targetUserId);
 
         if (projectId && !availableProjects.some((project) => project.id === projectId)) {
             throw this.httpError("Dự án không thuộc phạm vi thống kê AI được phép xem", 403);
         }
 
+        if (opportunityId && !availableOpportunities.some((opportunity) => opportunity.id === opportunityId)) {
+            throw this.httpError("Cơ hội không thuộc phạm vi thống kê AI được phép xem", 403);
+        }
+
+        const availableTasks = projectId || opportunityId
+            ? await this.getAvailableTasks(projectId, opportunityId)
+            : [];
+
+        if (taskId && (!(projectId || opportunityId) || !availableTasks.some((task) => task.id === taskId))) {
+            throw this.httpError("Công việc không thuộc dự án hoặc cơ hội đã chọn", 403);
+        }
+
         const [videoStats, motionStats, videoDaily, motionDaily] = await Promise.all([
-            this.getAggregate(this.videoRepository, targetAccountIds, projectId),
-            this.getAggregate(this.motionRepository, targetAccountIds, projectId),
-            this.getDaily(this.videoRepository, targetAccountIds, projectId, month, year),
-            this.getDaily(this.motionRepository, targetAccountIds, projectId, month, year),
+            this.getAggregate(this.videoRepository, targetAccountIds, projectId, opportunityId, taskId),
+            this.getAggregate(this.motionRepository, targetAccountIds, projectId, opportunityId, taskId),
+            this.getDaily(this.videoRepository, targetAccountIds, projectId, opportunityId, taskId, month, year),
+            this.getDaily(this.motionRepository, targetAccountIds, projectId, opportunityId, taskId, month, year),
         ]);
 
         const daysInMonth = new Date(year, month, 0).getDate();
@@ -112,8 +130,12 @@ export class AiDashboardService {
                 canViewMembers,
                 availableMembers,
                 availableProjects,
+                availableOpportunities,
+                availableTasks,
                 selectedUserId: targetUserId || null,
                 selectedProjectId: projectId || null,
+                selectedOpportunityId: opportunityId || null,
+                selectedTaskId: taskId || null,
                 month,
                 year,
             },
@@ -168,45 +190,77 @@ export class AiDashboardService {
         return Array.from(members.values());
     }
 
-    private async getAvailableProjects(canViewAll: boolean, accountIds?: string[]) {
-        if (canViewAll) {
-            const projects = await this.projectRepository.find({
-                select: { id: true, name: true },
-                order: { name: "ASC" },
-            });
-            return projects.map(({ id, name }) => ({ id, name }));
+    private async getAvailableProjects(targetUserId?: string) {
+        const query = this.projectRepository.createQueryBuilder("project")
+            .leftJoin("project.team", "team")
+            .leftJoin("team.teamLead", "teamLead")
+            .leftJoin("team.members", "teamMember")
+            .leftJoin("teamMember.user", "teamUser")
+            .leftJoin("project.tasks", "task")
+            .select(["project.id", "project.name"])
+            .distinct(true)
+            .orderBy("project.name", "ASC");
+
+        if (targetUserId) {
+            query.where(
+                "teamLead.id = :targetUserId OR teamUser.id = :targetUserId OR task.assigneeId = :targetUserId OR task.helperId = :targetUserId",
+                { targetUserId },
+            );
         }
 
-        const projectIds = new Set<string>();
-        if (accountIds?.length) {
-            const [videoRows, motionRows] = await Promise.all([
-                this.videoRepository.find({
-                    where: { userId: In(accountIds) },
-                    select: { projectId: true },
-                }),
-                this.motionRepository.find({
-                    where: { userId: In(accountIds) },
-                    select: { projectId: true },
-                }),
-            ]);
-            for (const row of [...videoRows, ...motionRows]) {
-                if (row.projectId) projectIds.add(row.projectId);
-            }
-        }
-
-        if (!projectIds.size) return [];
-        const projects = await this.projectRepository.find({
-            where: { id: In(Array.from(projectIds)) },
-            select: { id: true, name: true },
-            order: { name: "ASC" },
-        });
+        const projects = await query.getMany();
         return projects.map(({ id, name }) => ({ id, name }));
+    }
+
+    private async getAvailableOpportunities(targetUserId?: string) {
+        const query = this.opportunityRepository.createQueryBuilder("opportunity")
+            .leftJoin("opportunity.createdBy", "createdBy")
+            .leftJoin(Tasks, "task", "task.opportunityId = opportunity.id")
+            .select(["opportunity.id", "opportunity.opportunityCode", "opportunity.name"])
+            .distinct(true)
+            .orderBy("opportunity.opportunityCode", "ASC")
+            .addOrderBy("opportunity.name", "ASC");
+
+        if (targetUserId) {
+            query.where(
+                "createdBy.id = :targetUserId OR task.assigneeId = :targetUserId OR task.helperId = :targetUserId",
+                { targetUserId },
+            );
+        }
+
+        const opportunities = await query.getMany();
+        return opportunities.map(({ id, opportunityCode, name }) => ({ id, opportunityCode, name }));
+    }
+
+    private async getAvailableTasks(projectId?: string, opportunityId?: string) {
+        const query = this.taskRepository.createQueryBuilder("task")
+            .select(["task.id", "task.code", "task.name", "task.nickname"])
+            .orderBy("task.code", "ASC")
+            .addOrderBy("task.name", "ASC");
+
+        if (projectId) {
+            query.innerJoin("task.project", "project")
+                .where("project.id = :projectId", { projectId });
+        } else if (opportunityId) {
+            query.where("task.opportunityId = :opportunityId", { opportunityId });
+        } else {
+            return [];
+        }
+
+        const tasks = await query.getMany();
+        return tasks.map((task) => ({
+            id: task.id,
+            code: task.code,
+            name: task.nickname || task.name,
+        }));
     }
 
     private async getAggregate(
         repository: typeof this.videoRepository | typeof this.motionRepository,
         accountIds?: string[],
         projectId?: string,
+        opportunityId?: string,
+        taskId?: string,
     ): Promise<AggregateRow> {
         const query = repository.createQueryBuilder("generation")
             .select("SUM(CASE WHEN NULLIF(BTRIM(generation.motionPrompt), '') IS NOT NULL THEN 1 ELSE 0 END)", "totalPrompts")
@@ -214,7 +268,7 @@ export class AiDashboardService {
             .addSelect("COALESCE(SUM(generation.cost), 0)", "totalCost")
             .where("generation.status = :status", { status: "succeeded" });
 
-        this.applyFilters(query, accountIds, projectId);
+        this.applyFilters(query, accountIds, projectId, opportunityId, taskId);
         return query.getRawOne<AggregateRow>() as Promise<AggregateRow>;
     }
 
@@ -222,6 +276,8 @@ export class AiDashboardService {
         repository: typeof this.videoRepository | typeof this.motionRepository,
         accountIds: string[] | undefined,
         projectId: string | undefined,
+        opportunityId: string | undefined,
+        taskId: string | undefined,
         month: number,
         year: number,
     ): Promise<DailyRow[]> {
@@ -236,16 +292,28 @@ export class AiDashboardService {
             .groupBy("EXTRACT(DAY FROM generation.createdAt AT TIME ZONE 'Asia/Ho_Chi_Minh')")
             .orderBy("EXTRACT(DAY FROM generation.createdAt AT TIME ZONE 'Asia/Ho_Chi_Minh')", "ASC");
 
-        this.applyFilters(query, accountIds, projectId);
+        this.applyFilters(query, accountIds, projectId, opportunityId, taskId);
         return query.getRawMany<DailyRow>();
     }
 
-    private applyFilters(query: any, accountIds?: string[], projectId?: string) {
+    private applyFilters(
+        query: any,
+        accountIds?: string[],
+        projectId?: string,
+        opportunityId?: string,
+        taskId?: string,
+    ) {
         if (accountIds) {
             query.andWhere("generation.userId IN (:...accountIds)", { accountIds });
         }
         if (projectId) {
             query.andWhere("generation.projectId = :projectId", { projectId });
+        }
+        if (opportunityId) {
+            query.andWhere("generation.opportunityId = :opportunityId", { opportunityId });
+        }
+        if (taskId) {
+            query.andWhere("generation.taskId = :taskId", { taskId });
         }
     }
 
