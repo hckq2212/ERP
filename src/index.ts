@@ -50,6 +50,7 @@ import assetRoute from "./modules/asset/routes/Asset.Route"
 import videoGenerationRoute from "./modules/video-generation/routes/VideoGeneration.Route"
 import aiElementRoute from "./modules/ai-element/routes/AiElement.Route"
 import documentLibraryRoute from "./modules/document-library/routes/DocumentLibrary.Route"
+import aiDashboardRoute from "./modules/ai-dashboard/routes/AiDashboard.Route"
 
 const app = express()
 app.set('trust proxy', 1)
@@ -129,6 +130,7 @@ app.use("/api/assets", authMiddleware, writeRateLimitMiddleware, assetRoute)
 app.use("/api/video-generations", authMiddleware, writeRateLimitMiddleware, videoGenerationRoute)
 app.use("/api/elements", authMiddleware, writeRateLimitMiddleware, aiElementRoute)
 app.use("/api/document-library", authMiddleware, writeRateLimitMiddleware, documentLibraryRoute)
+app.use("/api/ai-dashboard", authMiddleware, writeRateLimitMiddleware, aiDashboardRoute)
 
 app.use("/api/me", profileRoute)
 
