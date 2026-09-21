@@ -3,7 +3,7 @@ import { ProjectProductDescriptionService } from "../../project/services/Project
 import { ProjectProductDescriptionStatus } from "../../project/entities/ProjectProductDescriptionSubmission.entity";
 import { SettingService } from "../../setting/services/Setting.Service";
 import {
-    AI_SERVICE_URL,
+    assertAiServiceUrl,
     AI_SERVICE_MAX_FETCH_BYTES as MAX_FETCH_BYTES,
     AI_SERVICE_REQUEST_TIMEOUT_MS as REQUEST_TIMEOUT_MS,
     AI_SERVICE_POLL_INTERVAL_MS,
@@ -25,7 +25,8 @@ function flattenSpecValue(spec: any): string {
 }
 
 async function submitAndPollQcJob(formData: FormData) {
-    const submitRes = await axios.post(`${AI_SERVICE_URL}/qc/run`, formData, {
+    const aiServiceUrl = assertAiServiceUrl();
+    const submitRes = await axios.post(`${aiServiceUrl}/qc/run`, formData, {
         timeout: REQUEST_TIMEOUT_MS,
         maxBodyLength: MAX_FETCH_BYTES,
         maxContentLength: MAX_FETCH_BYTES,
@@ -34,7 +35,7 @@ async function submitAndPollQcJob(formData: FormData) {
     const start = Date.now();
 
     while (true) {
-        const statusRes = await axios.get(`${AI_SERVICE_URL}/qc/run/${jobId}`, { timeout: 10000 });
+        const statusRes = await axios.get(`${aiServiceUrl}/qc/run/${jobId}`, { timeout: 10000 });
         const job = statusRes.data;
         if (job.status === "done") {
             return job;

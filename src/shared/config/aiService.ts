@@ -1,10 +1,18 @@
 const rawUrl = process.env.AI_SERVICE_URL;
+const trimmedUrl = rawUrl && rawUrl.trim() ? rawUrl.trim().replace(/\/$/, "") : "";
 
-if (!rawUrl || !rawUrl.trim()) {
-    throw new Error("Thiếu cấu hình AI_SERVICE_URL trong .env");
+export const AI_SERVICE_URL = trimmedUrl;
+
+export const isAiServiceConfigured = Boolean(trimmedUrl);
+
+export function assertAiServiceUrl(): string {
+    if (!trimmedUrl) {
+        const error = new Error("Chức năng này cần AI service nhưng hệ thống chưa cấu hình AI_SERVICE_URL") as Error & { statusCode?: number };
+        error.statusCode = 503;
+        throw error;
+    }
+    return trimmedUrl;
 }
-
-export const AI_SERVICE_URL = rawUrl.trim().replace(/\/$/, "");
 
 export const AI_SERVICE_MAX_FETCH_BYTES = 500 * 1024 * 1024;
 
