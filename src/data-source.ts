@@ -54,6 +54,7 @@ import { AiElementImages } from "./modules/ai-element/entities/AiElementImage.en
 import { AiElementVideos } from "./modules/ai-element/entities/AiElementVideo.entity"
 import { Documents } from "./modules/document-library/entities/Document.entity"
 import { DocumentVersions } from "./modules/document-library/entities/DocumentVersion.entity"
+import { SystemSettings } from "./modules/setting/entities/SystemSetting.entity"
 
 import * as dotenv from "dotenv"
 dotenv.config()
@@ -135,6 +136,7 @@ export const AppDataSource = new DataSource({
         AiElements,
         AiElementImages,
         AiElementVideos,
+        SystemSettings,
     ],
 
     migrations: [],

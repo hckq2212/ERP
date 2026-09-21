@@ -38,6 +38,7 @@ import accountRoute from "./modules/account/routes/Account.Route"
 import profileRoute from "./modules/profile/routes/Profile.Route"
 import spellingCheckRoute from "./modules/spelling-check/routes/SpellingCheck.Route"
 import qcRoute from "./modules/qc/routes/Qc.Route"
+import settingRoute from "./modules/setting/routes/Setting.Route"
 import projectSpellCheckWhitelistRoute from "./modules/spelling-whitelist/routes/ProjectSpellCheckWhitelist.Route"
 import { loggingMiddleware } from "./shared/middlewares/Logging.Middleware";
 import { authMiddleware } from "./shared/middlewares/Auth.Middleware";
@@ -120,6 +121,7 @@ app.use("/api/service-packages", authMiddleware, writeRateLimitMiddleware, servi
 app.use("/api/chat", authMiddleware, writeRateLimitMiddleware, chatRoute)
 app.use("/api/spelling-check", authMiddleware, writeRateLimitMiddleware, spellingCheckRoute)
 app.use("/api/qc", authMiddleware, writeRateLimitMiddleware, qcRoute)
+app.use("/api/settings", authMiddleware, writeRateLimitMiddleware, settingRoute)
 app.use("/api/projects/:projectId/spelling-whitelist", authMiddleware, writeRateLimitMiddleware, projectSpellCheckWhitelistRoute)
 app.use("/api/accounts", authMiddleware, writeRateLimitMiddleware, accountRoute)
 

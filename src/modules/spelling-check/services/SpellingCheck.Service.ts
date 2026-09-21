@@ -1,8 +1,5 @@
 import axios from "axios";
-
-const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || process.env.SPELLING_CHECKER_URL || "http://localhost:8000").replace(/\/$/, "");
-const MAX_FETCH_BYTES = 500 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+import { AI_SERVICE_URL, AI_SERVICE_MAX_FETCH_BYTES as MAX_FETCH_BYTES, AI_SERVICE_REQUEST_TIMEOUT_MS as REQUEST_TIMEOUT_MS } from "../../../shared/config/aiService";
 
 async function fetchRemoteFile(fileUrl: string): Promise<Buffer> {
     let fileRes;
