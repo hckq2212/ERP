@@ -17,6 +17,7 @@ import { OpportunityServiceJobs } from "./modules/opportunity-service/entities/O
 import { Contracts } from "./modules/contract/entities/Contract.entity";
 import { ContractServices } from "./modules/contract/entities/ContractService.entity";
 import { Projects } from "./modules/project/entities/Project.entity";
+import { ProjectPauseRequests } from "./modules/project/entities/ProjectPauseRequest.entity";
 import { ProjectProductDescriptionSubmissions } from "./modules/project/entities/ProjectProductDescriptionSubmission.entity";
 import { ProjectProductDescriptionItems } from "./modules/project/entities/ProjectProductDescriptionItem.entity";
 import { Tasks } from "./modules/task/entities/Task.entity";
@@ -101,6 +102,7 @@ export const AppDataSource = new DataSource({
         Contracts,
         ContractServices,
         Projects,
+        ProjectPauseRequests,
         ProjectProductDescriptionSubmissions,
         ProjectProductDescriptionItems,
         Tasks,

@@ -27,11 +27,7 @@ import { ProjectBaseService } from "./Project.BaseService";
 type ActorInfo = { id: string; userId?: string; role: string };
 
 export class ProjectLifecycleService extends ProjectBaseService {
-    private httpError(message: string, statusCode: number) {
-        const error: any = new Error(message);
-        error.statusCode = statusCode;
-        return error;
-    }
+    // `httpError` nay kế thừa từ ProjectBaseService (protected) — không khai báo lại.
 
     async createGoogleSheet(projectId: string) {
         void projectId;
