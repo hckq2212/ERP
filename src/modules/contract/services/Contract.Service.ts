@@ -540,13 +540,6 @@ export class ContractService {
             }
         }
 
-        // Update Opportunity Status
-        if (opportunity) {
-            opportunity.status = OpportunityStatus.CONTRACT_CREATED;
-            await this.opportunityRepository.save(opportunity);
-            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, opportunity);
-        }
-
         // Create default milestone (100%)
         const defaultMilestone = this.milestoneRepository.create({
             contract: savedContract,
@@ -617,6 +610,12 @@ export class ContractService {
 
         contract.status = ContractStatus.PROPOSAL_APPROVED;
         const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
+
+        if (contract.opportunity) {
+            contract.opportunity.status = OpportunityStatus.CONTRACT_CREATED;
+            await this.opportunityRepository.save(contract.opportunity);
+            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, contract.opportunity);
+        }
 
         // Auto Create Project (Draft)
         await this.projectService.createFromContract(savedContract, userInfo);
