@@ -52,6 +52,7 @@ export class TaskResultService extends TaskBaseService {
 
     async submitResult(id: string, data: SubmitResultData, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
+        this.assertTaskProjectNotOnHold(task);
         await assertSubtaskPlanApproved(this.taskRepository, task, "nộp kết quả");
         await assertSubtasksCompleted(this.taskRepository, task, "nộp kết quả");
         const currentId = await this.resolveActorUserId(currentUser);
@@ -158,6 +159,7 @@ export class TaskResultService extends TaskBaseService {
             });
 
             if (!task) throw new Error("Không tìm thấy công việc");
+            this.assertTaskProjectNotOnHold(task);
             const currentUserId = await this.resolveActorUserId(currentUser, transactionalEntityManager);
             const isOpportunityDemo = Boolean(task.opportunityId && task.opportunityServiceJob?.isBriefVideo);
             const isDemoSalesOwner = [UserRole.BD, UserRole.ADMIN_SALE].includes(currentUser?.role as UserRole) &&
@@ -326,6 +328,7 @@ export class TaskResultService extends TaskBaseService {
                 ]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+            this.assertTaskProjectNotOnHold(task);
 
             const isOpportunityDemo = Boolean(
                 task.opportunityId && task.opportunityServiceJob?.isBriefVideo

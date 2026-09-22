@@ -21,6 +21,8 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { isManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
+import { assertTaskProjectNotOnHold, assertProjectNotOnHold } from "../helpers/ProjectHold.helper";
+import { assertBdOwnsProjectContract } from "../helpers/ProjectOwnership.helper";
 // Google Sheet integration is temporarily disabled.
 // import { GoogleSheetService } from "../../../shared/services/GoogleSheet.Service";
 
@@ -36,6 +38,44 @@ export class ProjectBaseService {
     protected userRepository = AppDataSource.getRepository(Users);
     protected notificationService = new NotificationService();
     // private googleSheetService = new GoogleSheetService();
+
+    protected httpError(message: string, statusCode: number) {
+        const error: any = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
+
+    /**
+     * Chặn thao tác ghi lên dự án đang tạm dừng (ON_HOLD).
+     * Gọi ở đầu mỗi service method có ghi dữ liệu dự án/task; KHÔNG gọi ở luồng resume/close.
+     */
+    protected async assertProjectNotOnHold(projectIds: (string | null | undefined)[], manager?: any) {
+        return assertProjectNotOnHold(this.projectRepository, projectIds, manager);
+    }
+
+    /**
+     * Biến thể dùng khi đã có sẵn `project` đã load.
+     */
+    protected assertLoadedProjectNotOnHold(project: { id: string; name: string; status: ProjectStatus } | null | undefined) {
+        return assertTaskProjectNotOnHold({ project });
+    }
+
+    /**
+     * Guard cho đường **BD ĐÓNG DỰ ÁN TRỰC TIẾP** (`POST /projects/:id/close/direct`).
+     *
+     * ⚠️ Trước đây helper này dùng cho đường "BD tạm dừng trực tiếp" — đường đó
+     * KHÔNG còn tồn tại (BD nay phải xin phép như PM). Logic không đổi, chỉ đổi
+     * mục đích sử dụng.
+     *
+     * BD không thuộc PROJECT_MANAGEMENT_ROLES nên phải kiểm tra tường minh.
+     * Caller phải tự cho BOD/ADMIN qua trước khi gọi helper này.
+     */
+    protected async assertBdOwnsProjectContract(
+        actor: { id?: string; userId?: string; role?: string } | undefined,
+        projectId: string
+    ) {
+        return assertBdOwnsProjectContract(this.contractRepository, actor, projectId);
+    }
 
     protected assertMonthKey(monthKey?: string) {
         const value = monthKey || new Date().toISOString().slice(0, 7);
@@ -295,6 +335,11 @@ export class ProjectBaseService {
             where: rbacWhere,
             relations: [
                 "contract",
+                "contract.createdBy",
+                "contract.opportunity",
+                "contract.opportunity.createdBy",
+                "contract.customer",
+                "contract.customer.createdBy",
                 "team",
                 "team.teamLead",
                 "team.members",
@@ -307,6 +352,14 @@ export class ProjectBaseService {
                 status: true,
                 plannedStartDate: true,
                 plannedEndDate: true,
+                // ⚠️ BẮT BUỘC có: UI cần các field này để hiện banner đếm ngược 37 ngày,
+                // người tạm dừng, và trạng thái chờ duyệt. Thiếu ở đây thì frontend
+                // nhận `undefined` (KHÔNG báo lỗi — chỉ là banner trống).
+                autoAcceptAt: true,
+                pausedAt: true,
+                pausedById: true,
+                isOnHold: true,
+                currentPauseRequestId: true,
                 googleSheetId: true,
                 googleSheetUrl: true,
                 googleSheetStatus: true,
@@ -318,7 +371,28 @@ export class ProjectBaseService {
                     contractCode: true,
                     attachments: true,
                     status: true,
-                    description: true
+                    description: true,
+                    createdBy: {
+                        id: true,
+                        fullName: true
+                    },
+                    opportunity: {
+                        id: true,
+                        name: true,
+                        opportunityCode: true,
+                        createdBy: {
+                            id: true,
+                            fullName: true
+                        }
+                    },
+                    customer: {
+                        id: true,
+                        name: true,
+                        createdBy: {
+                            id: true,
+                            fullName: true
+                        }
+                    }
                 },
                 team: {
                     id: true,
@@ -341,6 +415,11 @@ export class ProjectBaseService {
                             }
                         }
                     }
+                },
+                // Quan hệ ManyToOne — cần cho banner "Người tạm dừng"
+                pausedBy: {
+                    id: true,
+                    fullName: true
                 }
             }
         });

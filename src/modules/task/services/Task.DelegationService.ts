@@ -117,6 +117,7 @@ export class TaskDelegationService extends TaskBaseService {
                 ]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+            this.assertTaskProjectNotOnHold(task);
             if (!task.project?.team) throw this.httpError("Công việc chưa thuộc đội dự án", 400);
             this.assertTaskCanBeSplit(task);
 
@@ -179,6 +180,7 @@ export class TaskDelegationService extends TaskBaseService {
                 relations: ["project", "project.team", "project.team.teamLead"]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+            this.assertTaskProjectNotOnHold(task);
             if (task.supportRequestType !== "STAFFING" || !task.isSupportRequested || task.isSupportAccepted) {
                 throw this.httpError("Yêu cầu này đã được xử lý", 409);
             }
@@ -245,6 +247,7 @@ export class TaskDelegationService extends TaskBaseService {
                 ]
             });
             if (!parent) throw this.httpError("Không tìm thấy công việc gốc", 404);
+            this.assertTaskProjectNotOnHold(parent);
             if (parent.parentTaskId) throw this.httpError("Không thể chia nhỏ một subtask", 400);
             if (!parent.project?.team) throw this.httpError("Công việc chưa thuộc đội dự án", 400);
             if (!parent.job) throw this.httpError("Công việc chưa có hạng mục để xác định quỹ Vinicoin", 400);
@@ -371,6 +374,7 @@ export class TaskDelegationService extends TaskBaseService {
                 ]
             });
             if (!subtask || !parent) throw this.httpError("Không tìm thấy subtask", 404);
+            this.assertTaskProjectNotOnHold(parent);
             if (!parent.project?.team) throw this.httpError("Công việc chưa thuộc đội dự án", 400);
             const executionStarted = Boolean(
                 subtask.result ||
@@ -464,6 +468,7 @@ export class TaskDelegationService extends TaskBaseService {
                 ]
             });
             if (!parent) throw this.httpError("Không tìm thấy công việc gốc", 404);
+            this.assertTaskProjectNotOnHold(parent);
             if (parent.parentTaskId) throw this.httpError("Subtask không có phương án chia cấp dưới", 400);
             if (!parent.project?.team) throw this.httpError("Công việc chưa thuộc đội dự án", 400);
             if (parent.subtaskPlanStatus === SubtaskPlanStatus.APPROVED) {
@@ -536,6 +541,7 @@ export class TaskDelegationService extends TaskBaseService {
                 ]
             });
             if (!parent) throw this.httpError("Không tìm thấy công việc gốc", 404);
+            this.assertTaskProjectNotOnHold(parent);
             if (parent.subtaskPlanStatus !== SubtaskPlanStatus.PENDING_APPROVAL) {
                 throw this.httpError("Phương án phân bổ không ở trạng thái chờ duyệt", 409);
             }
