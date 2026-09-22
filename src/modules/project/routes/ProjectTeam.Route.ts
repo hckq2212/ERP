@@ -15,6 +15,7 @@ router.put("/:id/lead", teamController.changeLead);
 
 // Member management
 router.post("/:id/members", teamController.addMember);
+router.put("/:id/members/:userId/roles", teamController.updateMemberRoles);
 router.patch("/members/:memberId", teamController.updateMember);
 router.delete("/members/:memberId", teamController.removeMember);
 
