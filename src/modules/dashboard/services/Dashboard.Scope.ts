@@ -75,18 +75,16 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         type = DashboardScopeType.SYSTEM;
         projectIds = unique(input.systemProjectIds);
         memberIds = unique(input.systemMemberIds);
-    } else if (input.mode === "personal") {
-        type = DashboardScopeType.PERSONAL;
-        projectIds = unique(input.personalProjectIds);
-        memberIds = [input.viewerUserId];
-    } else if (hasManagementScope) {
+    } else if (isPMViewer && input.mode !== "personal") {
         type = DashboardScopeType.MANAGEMENT;
         projectIds = unique(input.managedProjectIds);
         memberIds = unique([input.viewerUserId, ...input.managedMemberIds]);
     } else {
         type = DashboardScopeType.PERSONAL;
         projectIds = unique(input.personalProjectIds);
-        memberIds = [input.viewerUserId];
+        memberIds = canSelectMembers
+            ? unique([input.viewerUserId, ...input.managedMemberIds])
+            : [input.viewerUserId];
     }
 
     let isAccountViewingMember = false;

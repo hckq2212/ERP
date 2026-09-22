@@ -170,9 +170,13 @@ export class DashboardService {
         }
 
         // 4. Personal Tasks (strictly assigned to or helped by user)
+        const personalProjectFilter = projectId
+            ? { id: projectId }
+            : (scope.projectIds?.length > 0 ? In(scope.projectIds) : undefined);
+
         const personalTaskWhere = [
-            { assignee: { id: userId }, ...(projectId && { project: { id: projectId } }) },
-            { helper: { id: userId }, ...(projectId && { project: { id: projectId } }) }
+            { assignee: { id: userId }, ...(personalProjectFilter && { project: personalProjectFilter }) },
+            { helper: { id: userId }, ...(personalProjectFilter && { project: personalProjectFilter }) }
         ].flatMap(condition => this.withTaskPeriod(condition, dateFilter));
 
         const rawPersonalTasks = await this.taskRepo.find({
@@ -456,7 +460,7 @@ export class DashboardService {
             completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0) + (statusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
             participatingProjects,
             roleStats,
-            upcomingDeadlines: workTasks
+            upcomingDeadlines: activeTasks
                 .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.INTERNAL_COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
                 .sort((a, b) => new Date(a.plannedEndDate).getTime() - new Date(b.plannedEndDate).getTime())
                 .slice(0, 10)

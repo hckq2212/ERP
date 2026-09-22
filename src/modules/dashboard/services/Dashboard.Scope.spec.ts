@@ -31,16 +31,17 @@ test("staff receives personal scope and cannot select another member", () => {
     );
 });
 
-test("actual team lead receives management scope", () => {
+test("actual team lead receives personal scope on own dashboard but can select managed members", () => {
     const scope = resolveDashboardScope({
         ...baseInput,
         managedProjectIds: ["managed-project"],
         managedMemberIds: ["viewer", "member-a"]
     });
 
-    assert.equal(scope.type, DashboardScopeType.MANAGEMENT);
-    assert.deepEqual(scope.projectIds, ["managed-project"]);
+    assert.equal(scope.type, DashboardScopeType.PERSONAL);
+    assert.deepEqual(scope.projectIds, ["personal-project"]);
     assert.equal(scope.canSelectMembers, true);
+    assert.deepEqual(scope.memberIds, ["viewer", "member-a"]);
 });
 
 test("PM receives management scope even when no project is currently assigned", () => {
