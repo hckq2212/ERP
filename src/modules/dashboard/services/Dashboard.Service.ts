@@ -287,12 +287,14 @@ export class DashboardService {
         const roleOverdueCount = activeRoleTasks.filter(t => t.status === TaskStatus.OVERDUE).length;
 
         const roleReworkCount = activeRoleTasks.filter(t =>
-            [TaskStatus.REWORKING, TaskStatus.REJECTED, TaskStatus.REJECTED_BILLABLE, TaskStatus.REJECTED_SUPPORT].includes(t.status as any)
+            [TaskStatus.REWORKING, TaskStatus.REJECTED].includes(t.status as any)
         ).length;
 
         const roleStats = {
-            doingCount: (roleStatusCounts[TaskStatus.DOING] || 0) + (roleStatusCounts[TaskStatus.REWORKING] || 0) + (roleStatusCounts[TaskStatus.REJECTED] || 0),
-            completedCount: (roleStatusCounts[TaskStatus.COMPLETED] || 0) + (roleStatusCounts[TaskStatus.ACCEPTED] || 0) + (roleStatusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
+            // doingCount: (roleStatusCounts[TaskStatus.DOING] || 0) + (roleStatusCounts[TaskStatus.REWORKING] || 0) + (roleStatusCounts[TaskStatus.REJECTED] || 0),
+            doingCount: (roleStatusCounts[TaskStatus.DOING] || 0),
+            // completedCount: (roleStatusCounts[TaskStatus.COMPLETED] || 0) + (roleStatusCounts[TaskStatus.ACCEPTED] || 0) + (roleStatusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
+            completedCount: (roleStatusCounts[TaskStatus.COMPLETED] || 0),
             overdueCount: roleOverdueCount,
             reworkCount: roleReworkCount,
             pendingCount: (roleStatusCounts[TaskStatus.AWAITING_REVIEW] || 0) + (roleStatusCounts.WAITING_APPROVAL || 0),
