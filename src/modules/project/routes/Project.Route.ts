@@ -20,6 +20,8 @@ router.post("/:id/monthly-work-addendums", projectController.createMonthlyWorkAd
 router.post("/:id/service-addendums", projectController.createServiceAddendum);
 router.get("/:id/product-descriptions", projectController.getProductDescriptions);
 router.post("/:id/product-descriptions", projectController.createProductDescription);
+router.post("/:id/product-descriptions/extract-file", projectController.extractProductDescriptionFile);
+router.post("/:id/product-descriptions/ai-format", projectController.aiFormatProductDescription);
 router.put("/:id/product-descriptions/:submissionId", projectController.updateProductDescription);
 router.post("/:id/product-descriptions/:submissionId/submit", projectController.submitProductDescription);
 router.post(

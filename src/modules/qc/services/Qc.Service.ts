@@ -17,13 +17,6 @@ function httpError(message: string, statusCode: number) {
     return error;
 }
 
-function flattenSpecValue(spec: any): string {
-    if (Array.isArray(spec?.subKeys) && spec.subKeys.length > 0) {
-        return spec.subKeys.map((sk: any) => `${sk.key}: ${sk.value}`).join("; ");
-    }
-    return spec?.value || "";
-}
-
 async function submitAndPollQcJob(formData: FormData) {
     const aiServiceUrl = assertAiServiceUrl();
     const submitRes = await axios.post(`${aiServiceUrl}/qc/run`, formData, {
@@ -50,13 +43,23 @@ async function submitAndPollQcJob(formData: FormData) {
     }
 }
 
+function stripHtml(html: string) {
+    return String(html || "")
+        .replace(/<(li|p|br|div|\/p|\/li|\/div)[^>]*>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/\n{2,}/g, "\n")
+        .trim();
+}
+
 function toAiProductInfo(productInfo: any[]) {
     return productInfo.map((item) => ({
-        ...item,
-        specs: (item.specs || []).map((spec: any) => ({
-            key: spec.key,
-            value: flattenSpecValue(spec)
-        }))
+        productName: item.productName,
+        content: stripHtml(item.extractedText),
+        note: item.note,
     }));
 }
 
@@ -74,9 +77,9 @@ export class QcService {
 
         return approved.items.map((item) => ({
             productName: item.productName,
-            specs: item.specs,
+            extractedText: item.extractedText,
             note: item.note,
-            docUrl: item.docUrl,
+            fileUrl: item.fileUrl,
         }));
     }
 

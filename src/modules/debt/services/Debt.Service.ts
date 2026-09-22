@@ -49,21 +49,6 @@ export class DebtService {
     }
 
     async getByContract(contractId: string, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
-        try {
-            const milestones = await this.milestoneRepository.find({
-                where: { contract: { id: contractId } },
-                relations: ["contract", "debt"]
-            });
-
-            for (const m of milestones) {
-                if (!m.debt) {
-                    await this.createFromMilestone(m.id);
-                }
-            }
-        } catch (syncErr) {
-            console.error("Error auto-syncing debts in getByContract:", syncErr);
-        }
-
         let rbacWhere: any = {};
         if (userInfo) {
             rbacWhere = SecurityService.getDebtFilters(userInfo);
