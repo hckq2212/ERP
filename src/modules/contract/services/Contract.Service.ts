@@ -342,7 +342,7 @@ export class ContractService {
                     0
                 );
                 if (finalSellingPrice === undefined || finalSellingPrice === null || finalSellingPrice === 0) {
-                    finalSellingPrice = quotationSellingPrice;
+                    finalSellingPrice = quotationSellingPrice * 1.08;
                 }
                 if (finalCost === undefined || finalCost === null || finalCost === 0) {
                     finalCost = quotationCost;
@@ -356,7 +356,7 @@ export class ContractService {
                     // Price Priority 2: Sum of Opportunity Services
                     const serviceSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.sellingPrice) * (os.quantity || 1)), 0);
                     if (serviceSum > 0) {
-                        finalSellingPrice = serviceSum;
+                        finalSellingPrice = serviceSum * 1.08;
                     }
                 }
 
@@ -540,13 +540,6 @@ export class ContractService {
             }
         }
 
-        // Update Opportunity Status
-        if (opportunity) {
-            opportunity.status = OpportunityStatus.CONTRACT_CREATED;
-            await this.opportunityRepository.save(opportunity);
-            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, opportunity);
-        }
-
         // Create default milestone (100%)
         const defaultMilestone = this.milestoneRepository.create({
             contract: savedContract,
@@ -557,7 +550,14 @@ export class ContractService {
             dueDate: new Date(new Date().setDate(new Date().getDate() + 30)), // Default 30 days
             ...SecurityService.getTenantWhere(userInfo)
         } as any);
-        await this.milestoneRepository.save(defaultMilestone);
+        const savedDefaultMilestone: any = await this.milestoneRepository.save(defaultMilestone);
+
+        // Auto create debt for default milestone
+        try {
+            await this.debtService.createFromMilestone(savedDefaultMilestone.id);
+        } catch (debtErr) {
+            console.error("Error auto-creating debt for default milestone:", debtErr);
+        }
 
         // Invalidate contract caches before returning the freshly loaded detail
         await RedisService.deleteCache('contracts:all*');
@@ -617,6 +617,12 @@ export class ContractService {
 
         contract.status = ContractStatus.PROPOSAL_APPROVED;
         const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
+
+        if (contract.opportunity) {
+            contract.opportunity.status = OpportunityStatus.CONTRACT_CREATED;
+            await this.opportunityRepository.save(contract.opportunity);
+            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, contract.opportunity);
+        }
 
         // Auto Create Project (Draft)
         await this.projectService.createFromContract(savedContract, userInfo);

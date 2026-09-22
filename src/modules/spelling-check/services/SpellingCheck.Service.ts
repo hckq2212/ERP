@@ -1,8 +1,5 @@
 import axios from "axios";
-
-const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || process.env.SPELLING_CHECKER_URL || "http://localhost:8000").replace(/\/$/, "");
-const MAX_FETCH_BYTES = 500 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+import { assertAiServiceUrl, AI_SERVICE_MAX_FETCH_BYTES as MAX_FETCH_BYTES, AI_SERVICE_REQUEST_TIMEOUT_MS as REQUEST_TIMEOUT_MS } from "../../../shared/config/aiService";
 
 async function fetchRemoteFile(fileUrl: string): Promise<Buffer> {
     let fileRes;
@@ -35,7 +32,7 @@ export class SpellingCheckService {
     async listSheets(fileBuffer: Buffer, fileName: string) {
         const formData = new FormData();
         formData.append("file", new Blob([new Uint8Array(fileBuffer)]), fileName);
-        const res = await axios.post(`${AI_SERVICE_URL}/check/sheets`, formData, {
+        const res = await axios.post(`${assertAiServiceUrl()}/check/sheets`, formData, {
             timeout: REQUEST_TIMEOUT_MS,
             maxBodyLength: MAX_FETCH_BYTES,
             maxContentLength: MAX_FETCH_BYTES,
@@ -56,7 +53,7 @@ export class SpellingCheckService {
         if (whitelist) formData.append("whitelist", whitelist);
         if (scenarioIds) formData.append("scenario_ids", scenarioIds);
 
-        const res = await axios.post(`${AI_SERVICE_URL}/check/start`, formData, {
+        const res = await axios.post(`${assertAiServiceUrl()}/check/start`, formData, {
             timeout: REQUEST_TIMEOUT_MS,
             maxBodyLength: MAX_FETCH_BYTES,
             maxContentLength: MAX_FETCH_BYTES,
@@ -71,7 +68,7 @@ export class SpellingCheckService {
 
     async getStatus(jobId: string) {
         try {
-            const res = await axios.get(`${AI_SERVICE_URL}/check/${jobId}`, { timeout: 10000 });
+            const res = await axios.get(`${assertAiServiceUrl()}/check/${jobId}`, { timeout: 10000 });
             return res.data;
         } catch (e: any) {
             if (e.response?.status === 404) {
@@ -82,7 +79,7 @@ export class SpellingCheckService {
     }
 
     async getPdfStream(jobId: string) {
-        const res = await axios.get(`${AI_SERVICE_URL}/check/${jobId}/pdf`, {
+        const res = await axios.get(`${assertAiServiceUrl()}/check/${jobId}/pdf`, {
             responseType: "stream",
             timeout: REQUEST_TIMEOUT_MS,
         });
@@ -91,7 +88,7 @@ export class SpellingCheckService {
 
     async delete(jobId: string) {
         try {
-            const res = await axios.delete(`${AI_SERVICE_URL}/check/${jobId}`, { timeout: 10000 });
+            const res = await axios.delete(`${assertAiServiceUrl()}/check/${jobId}`, { timeout: 10000 });
             return res.data;
         } catch (e: any) {
             if (e.response?.status === 404) return { deleted: jobId };

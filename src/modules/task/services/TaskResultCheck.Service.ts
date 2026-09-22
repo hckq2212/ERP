@@ -314,7 +314,7 @@ export class TaskResultCheckService extends TaskBaseService {
                     fileName,
                     sheetNames,
                     projectId,
-                    scenarioIds,
+                    scenarioIds: scenarioIds && scenarioIds.length > 0 ? scenarioIds : undefined,
                     actor: actor as any
                 });
                 qcMismatches = qcResult?.mismatch_report?.mismatches || [];
