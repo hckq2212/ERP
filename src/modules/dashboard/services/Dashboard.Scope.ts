@@ -16,6 +16,7 @@ export class DashboardScopeError extends Error {
 export interface DashboardScopeInput {
     viewerUserId: string;
     viewerRole: UserRole;
+    isAccountViewer?: boolean;
     requestedUserId?: string;
     requestedProjectId?: string;
     managedProjectIds: string[];
@@ -33,6 +34,8 @@ export interface ResolvedDashboardScope {
     memberIds: string[];
     selectedProjectId?: string;
     canSelectMembers: boolean;
+    isAccountViewer?: boolean;
+    isAccountViewingMember?: boolean;
 }
 
 export function selectDashboardWorkItems<T>(
@@ -53,8 +56,10 @@ const intersection = (left: string[], right: string[]) => {
 export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashboardScope {
     const isSystemViewer = [UserRole.ADMIN, UserRole.BOD].includes(input.viewerRole);
     const isPMViewer = input.viewerRole === UserRole.PM;
-    const hasManagementScope = isPMViewer || input.managedProjectIds.length > 0;
-    const canSelectMembers = isSystemViewer || isPMViewer;
+    const isExcludedSaleRole = [UserRole.BD, UserRole.ADMIN_SALE].includes(input.viewerRole);
+    const isAccountViewer = !isExcludedSaleRole && Boolean(input.isAccountViewer);
+    const hasManagementScope = !isExcludedSaleRole && (isPMViewer || input.managedProjectIds.length > 0);
+    const canSelectMembers = !isExcludedSaleRole && (isSystemViewer || hasManagementScope);
     const requestedAnotherUser = Boolean(
         input.requestedUserId && input.requestedUserId !== input.viewerUserId
     );
@@ -78,6 +83,8 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         memberIds = [input.viewerUserId];
     }
 
+    let isAccountViewingMember = false;
+
     if (requestedAnotherUser) {
         if (!canSelectMembers || !memberIds.includes(input.requestedUserId!)) {
             throw new DashboardScopeError("Bạn không có quyền xem dashboard của nhân sự này");
@@ -88,6 +95,10 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         projectIds = isSystemViewer
             ? unique(input.targetPersonalProjectIds)
             : intersection(input.targetPersonalProjectIds, input.managedProjectIds);
+
+        if (isAccountViewer && !isSystemViewer && !isPMViewer) {
+            isAccountViewingMember = true;
+        }
     }
 
     if (input.requestedProjectId && !projectIds.includes(input.requestedProjectId)) {
@@ -100,6 +111,8 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         projectIds,
         memberIds,
         selectedProjectId: input.requestedProjectId,
-        canSelectMembers
+        canSelectMembers,
+        isAccountViewer,
+        isAccountViewingMember
     };
 }

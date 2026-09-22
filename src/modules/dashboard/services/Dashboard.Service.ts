@@ -45,7 +45,9 @@ export class DashboardService {
             selectedProjectId: scope.selectedProjectId,
             canSelectMembers: scope.canSelectMembers,
             availableProjects: scope.availableProjects,
-            availableMembers: scope.availableMembers
+            availableMembers: scope.availableMembers,
+            isAccountViewer: Boolean(scope.isAccountViewer),
+            isAccountViewingMember: Boolean(scope.isAccountViewingMember)
         };
 
         if (scope.canSelectMembers) {
@@ -478,6 +480,16 @@ export class DashboardService {
             violationCount: violations.length,
             violationStats
         };
+
+        if (scope.isAccountViewingMember) {
+            data.member.vinicoin = 0;
+            data.member.vinicoinTotal = 0;
+            data.member.vinicoinWithdrawn = 0;
+            data.member.reworkTasks = [];
+            data.member.reworkCount = 0;
+            data.member.violationCount = 0;
+            data.member.violationStats = {};
+        }
 
         return data;
     }

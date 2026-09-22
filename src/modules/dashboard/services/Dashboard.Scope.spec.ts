@@ -106,3 +106,44 @@ test("management widgets use project-scoped work items instead of personal items
         personalItems
     );
 });
+
+test("account viewer can select managed members and has isAccountViewingMember flag set", () => {
+    const scope = resolveDashboardScope({
+        ...baseInput,
+        isAccountViewer: true,
+        managedProjectIds: ["managed-project"],
+        managedMemberIds: ["viewer", "member-a"],
+        requestedUserId: "member-a",
+        targetPersonalProjectIds: ["managed-project", "outside-project"]
+    });
+
+    assert.equal(scope.type, DashboardScopeType.PERSONAL);
+    assert.equal(scope.targetUserId, "member-a");
+    assert.deepEqual(scope.projectIds, ["managed-project"]);
+    assert.equal(scope.canSelectMembers, true);
+    assert.equal(scope.isAccountViewingMember, true);
+});
+
+test("BD and ADMIN_SALE cannot select members or view another member dashboard", () => {
+    const scopeBD = resolveDashboardScope({
+        ...baseInput,
+        viewerRole: UserRole.BD,
+        isAccountViewer: true,
+        managedProjectIds: ["managed-project"],
+        managedMemberIds: ["viewer", "member-a"]
+    });
+
+    assert.equal(scopeBD.canSelectMembers, false);
+    assert.equal(scopeBD.isAccountViewer, false);
+
+    const scopeAdminSale = resolveDashboardScope({
+        ...baseInput,
+        viewerRole: UserRole.ADMIN_SALE,
+        isAccountViewer: true,
+        managedProjectIds: ["managed-project"],
+        managedMemberIds: ["viewer", "member-a"]
+    });
+
+    assert.equal(scopeAdminSale.canSelectMembers, false);
+    assert.equal(scopeAdminSale.isAccountViewer, false);
+});

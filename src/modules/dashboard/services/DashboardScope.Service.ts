@@ -76,7 +76,18 @@ export class DashboardScopeService {
             order: { createdAt: "DESC" }
         });
 
-        const managedProjects = allActiveProjects.filter(project => {
+        const isExcludedSaleRole = [UserRole.BD, UserRole.ADMIN_SALE].includes(actor.role);
+
+        const isTeamLeadOrAccount = !isExcludedSaleRole && allActiveProjects.some(project =>
+            project.team?.members?.some(member =>
+                member.user?.id === viewerUserId && member.role === MemberRole.ACCOUNT
+            ) ||
+            (project.team?.teamLead?.id === viewerUserId && actor.role !== UserRole.PM)
+        );
+
+        const isAccountViewer = isTeamLeadOrAccount;
+
+        const managedProjects = isExcludedSaleRole ? [] : allActiveProjects.filter(project => {
             if (project.team?.teamLead?.id === viewerUserId) return true;
 
             return project.team?.members?.some(member => {
@@ -90,7 +101,9 @@ export class DashboardScopeService {
         const managedMemberRoles = new Map<string, string>();
         managedProjects.forEach(project => {
             const lead = project.team?.teamLead;
-            if (lead?.id) managedMemberRoles.set(lead.id, MemberRole.ACCOUNT);
+            if (lead?.id && !managedMemberRoles.has(lead.id)) {
+                managedMemberRoles.set(lead.id, MemberRole.ACCOUNT);
+            }
             project.team?.members?.forEach(member => {
                 if (member.user?.id && !managedMemberRoles.has(member.user.id)) {
                     managedMemberRoles.set(member.user.id, member.role);
@@ -117,6 +130,7 @@ export class DashboardScopeService {
         const resolved = resolveDashboardScope({
             viewerUserId,
             viewerRole: actor.role,
+            isAccountViewer,
             requestedUserId,
             requestedProjectId,
             managedProjectIds: managedProjects.map(project => project.id),
