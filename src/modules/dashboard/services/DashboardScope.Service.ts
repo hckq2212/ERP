@@ -55,7 +55,8 @@ export class DashboardScopeService {
     async resolve(
         actor: DashboardActor,
         requestedUserId?: string,
-        requestedProjectId?: string
+        requestedProjectId?: string,
+        mode?: "personal" | "management"
     ): Promise<DashboardScopeContext> {
         const viewerUserId = actor.userId;
         if (!viewerUserId) {
@@ -133,6 +134,7 @@ export class DashboardScopeService {
             isAccountViewer,
             requestedUserId,
             requestedProjectId,
+            mode,
             managedProjectIds: managedProjects.map(project => project.id),
             managedMemberIds: Array.from(managedMemberRoles.keys()),
             personalProjectIds: personalProjects.map(project => project.id),

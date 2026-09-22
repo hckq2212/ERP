@@ -25,6 +25,7 @@ export interface DashboardScopeInput {
     targetPersonalProjectIds: string[];
     systemProjectIds: string[];
     systemMemberIds: string[];
+    mode?: "personal" | "management";
 }
 
 export interface ResolvedDashboardScope {
@@ -36,6 +37,7 @@ export interface ResolvedDashboardScope {
     canSelectMembers: boolean;
     isAccountViewer?: boolean;
     isAccountViewingMember?: boolean;
+    mode?: "personal" | "management";
 }
 
 export function selectDashboardWorkItems<T>(
@@ -73,6 +75,10 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         type = DashboardScopeType.SYSTEM;
         projectIds = unique(input.systemProjectIds);
         memberIds = unique(input.systemMemberIds);
+    } else if (input.mode === "personal") {
+        type = DashboardScopeType.PERSONAL;
+        projectIds = unique(input.personalProjectIds);
+        memberIds = [input.viewerUserId];
     } else if (hasManagementScope) {
         type = DashboardScopeType.MANAGEMENT;
         projectIds = unique(input.managedProjectIds);
@@ -113,6 +119,7 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         selectedProjectId: input.requestedProjectId,
         canSelectMembers,
         isAccountViewer,
-        isAccountViewingMember
+        isAccountViewingMember,
+        mode: input.mode || (type === DashboardScopeType.MANAGEMENT ? "management" : "personal")
     };
 }

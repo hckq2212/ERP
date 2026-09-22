@@ -31,11 +31,12 @@ export class DashboardService {
         requestedUserId?: string,
         month?: number,
         year?: number,
-        projectId?: string
+        projectId?: string,
+        mode?: "personal" | "management"
     ) {
         const data: any = {};
         const dateFilter = this.getDateFilter(month, year);
-        const scope = await this.scopeService.resolve(actor, requestedUserId, projectId);
+        const scope = await this.scopeService.resolve(actor, requestedUserId, projectId, mode);
         const userId = scope.targetUserId;
         const role = actor.role;
 
@@ -47,7 +48,8 @@ export class DashboardService {
             availableProjects: scope.availableProjects,
             availableMembers: scope.availableMembers,
             isAccountViewer: Boolean(scope.isAccountViewer),
-            isAccountViewingMember: Boolean(scope.isAccountViewingMember)
+            isAccountViewingMember: Boolean(scope.isAccountViewingMember),
+            mode: scope.mode
         };
 
         if (scope.canSelectMembers) {
@@ -413,7 +415,11 @@ export class DashboardService {
                 projectName: t.project?.name,
                 clientName: t.project?.contract?.customer?.name,
                 code: t.code,
-                projectId: t.project?.id
+                projectId: t.project?.id,
+                assignee: t.assignee ? {
+                    id: t.assignee.id,
+                    fullName: t.assignee.fullName
+                } : undefined
             }));
 
         // 2. Rework Tasks (Làm sai / Bị từ chối do chưa đạt yêu cầu)
@@ -428,7 +434,11 @@ export class DashboardService {
                 code: t.code,
                 deadline: t.plannedEndDate,
                 status: t.status,
-                projectId: t.project?.id
+                projectId: t.project?.id,
+                assignee: t.assignee ? {
+                    id: t.assignee.id,
+                    fullName: t.assignee.fullName
+                } : undefined
             }));
 
         data.member = {

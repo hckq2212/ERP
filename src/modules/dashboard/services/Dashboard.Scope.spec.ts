@@ -147,3 +147,17 @@ test("BD and ADMIN_SALE cannot select members or view another member dashboard",
     assert.equal(scopeAdminSale.canSelectMembers, false);
     assert.equal(scopeAdminSale.isAccountViewer, false);
 });
+
+test("PM can request personal scope using mode=personal", () => {
+    const scope = resolveDashboardScope({
+        ...baseInput,
+        viewerRole: UserRole.PM,
+        mode: "personal"
+    });
+
+    assert.equal(scope.type, DashboardScopeType.PERSONAL);
+    assert.equal(scope.targetUserId, "viewer");
+    assert.deepEqual(scope.projectIds, ["personal-project"]);
+    assert.equal(scope.canSelectMembers, true);
+    assert.equal(scope.mode, "personal");
+});
