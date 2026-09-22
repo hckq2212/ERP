@@ -68,6 +68,23 @@ export class ContractService {
         }
     }
 
+    private async notifyContractCreator(
+        contract: Contracts,
+        data: { title: string, content: string, type: string },
+        senderUserId?: string
+    ) {
+        if (!contract.createdBy?.id || contract.createdBy.id === senderUserId) return;
+
+        await this.notificationService.createNotification({
+            ...data,
+            recipient: contract.createdBy,
+            sender: senderUserId ? { id: senderUserId } as Users : undefined,
+            link: `/contracts/${contract.id}`,
+            relatedEntityId: contract.id,
+            relatedEntityType: "CONTRACT"
+        });
+    }
+
 
     async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
         const page = parseInt(filters.page) || 1;
@@ -611,7 +628,7 @@ export class ContractService {
     async approveProposal(id: string, userInfo?: { id: string, userId?: string }) {
         const contract = await this.contractRepository.findOne({
             where: { id },
-            relations: ["opportunity"]
+            relations: ["opportunity", "createdBy"]
         });
         if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
@@ -633,6 +650,12 @@ export class ContractService {
             content: `Hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được duyệt. Dự án đã được khởi tạo.`,
             contractId: savedContract.id
         });
+
+        await this.notifyContractCreator(savedContract, {
+            title: "Hợp đồng đã được duyệt",
+            content: `Hợp đồng ${savedContract.contractCode}-${savedContract.name} đã được BOD duyệt.`,
+            type: "CONTRACT_APPROVED"
+        }, userInfo?.userId);
 
         // Invalidate caches
         await RedisService.deleteCache(`contracts:detail:${id}*`);
@@ -763,7 +786,7 @@ export class ContractService {
     async rejectProposal(id: string, reason: string, userInfo?: { id: string, userId: string }) {
         const contract = await this.contractRepository.findOne({
             where: { id },
-            relations: ["opportunity", "opportunity.createdBy"]
+            relations: ["opportunity", "opportunity.createdBy", "createdBy"]
         });
         if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
@@ -787,8 +810,14 @@ export class ContractService {
             contractId: savedContract.id
         });
 
+        await this.notifyContractCreator(savedContract, {
+            title: "Hợp đồng bị từ chối",
+            content: `Hợp đồng ${savedContract.contractCode}-${savedContract.name} đã bị BOD từ chối. Lý do: ${reason}`,
+            type: "CONTRACT_REJECTED"
+        }, userInfo?.userId);
+
         // Notify Opportunity Creator
-        if (contract.opportunity?.createdBy) {
+        if (contract.opportunity?.createdBy && contract.opportunity.createdBy.id !== contract.createdBy?.id) {
             const sender = userInfo?.userId ? { id: userInfo.userId } as Users : undefined;
             await this.notificationService.createNotification({
                 title: "Hợp đồng bị từ chối",

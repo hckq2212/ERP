@@ -11,6 +11,13 @@ const isHttpUrl = (value: string) => {
     }
 };
 
+const isAllowedProposalFile = (file: any) => {
+    const fileName = typeof file?.name === "string" ? file.name.trim() : "";
+    const format = typeof file?.format === "string" ? file.format.trim().toLowerCase() : "";
+
+    return /\.(docx|pdf)$/i.test(fileName) && (!format || ["docx", "pdf"].includes(format));
+};
+
 export class ContractController {
     private contractService = new ContractService();
 
@@ -65,10 +72,13 @@ export class ContractController {
             if (file && contractLink?.trim()) {
                 return res.status(400).json({ message: "Chỉ được chọn upload file hoặc link hợp đồng" });
             }
+            if (file && !isAllowedProposalFile(file)) {
+                return res.status(400).json({ message: "Chỉ chấp nhận file hợp đồng định dạng .docx hoặc .pdf" });
+            }
             const proposalUrl = file?.url || contractLink?.trim();
 
             if (!proposalUrl) {
-                return res.status(400).json({ message: "Vui lòng tải file .docx hoặc nhập link hợp đồng" });
+                return res.status(400).json({ message: "Vui lòng tải file .docx/.pdf hoặc nhập link hợp đồng" });
             }
             if (!isHttpUrl(proposalUrl)) {
                 return res.status(400).json({ message: "Link hợp đồng không hợp lệ" });
