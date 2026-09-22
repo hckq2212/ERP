@@ -107,5 +107,18 @@ export class Projects extends BaseEntity {
     @Index()
     @Column({ default: false })
     isOnHold: boolean;
+
+    /** Danh sách tài liệu làm việc (link bên ngoài hoặc file đã upload). */
+    @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
+    workingFiles: Array<{
+        id: string;
+        name: string;
+        url: string;
+        type: "LINK" | "FILE";
+        size?: number;
+        createdAt: string;
+        createdById?: string;
+        createdByName?: string;
+    }>;
 }
 

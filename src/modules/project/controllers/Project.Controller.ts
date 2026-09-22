@@ -380,4 +380,18 @@ export class ProjectController {
             res.status(error.statusCode || 500).json({ message: error.message });
         }
     };
+
+    updateWorkingFiles = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.updateWorkingFiles(
+                req.params.id as string,
+                req.body.workingFiles,
+                (req as any).user
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
 }
+

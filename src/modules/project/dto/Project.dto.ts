@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString, IsArray } from "class-validator";
 import { ProjectStatus } from "../entities/Project.entity";
 
 export class CreateProjectDTO {
@@ -116,3 +116,18 @@ export class UpdateProjectStatusDTO {
     @IsNotEmpty({ message: "Trạng thái không được để trống" })
     status: string;
 }
+
+export class UpdateWorkingFilesDTO {
+    @IsArray()
+    workingFiles: Array<{
+        id?: string;
+        name: string;
+        url: string;
+        type?: "LINK" | "FILE";
+        size?: number;
+        createdAt?: string;
+        createdById?: string;
+        createdByName?: string;
+    }>;
+}
+

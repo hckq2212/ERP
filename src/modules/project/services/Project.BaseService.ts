@@ -365,6 +365,7 @@ export class ProjectBaseService {
                 googleSheetStatus: true,
                 googleSheetError: true,
                 googleSheetCreatedAt: true,
+                workingFiles: true,
                 contract: {
                     id: true,
                     name: true,

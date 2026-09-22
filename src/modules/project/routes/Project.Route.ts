@@ -9,7 +9,8 @@ import {
     CloseProjectDTO,
     CloseProjectDirectDTO,
     RejectCloseDTO,
-    UpdateProjectStatusDTO
+    UpdateProjectStatusDTO,
+    UpdateWorkingFilesDTO
 } from "../dto/Project.dto";
 import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
 
@@ -125,6 +126,7 @@ router.post(
     projectController.syncServiceJobs
 );
 router.post("/:id/request-staffing", projectController.requestStaffing);
+router.patch("/:id/working-files", validationMiddleware(UpdateWorkingFilesDTO), projectController.updateWorkingFiles);
 router.get("/:id", projectController.getOne);
 // router.post("/:id/start", projectController.start);
 

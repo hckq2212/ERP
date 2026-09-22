@@ -121,4 +121,9 @@ export class ProjectService {
     updateStatus(id: string, status: string, actor?: ActorInfo) {
         return this.pauseService.updateStatus(id, status, actor);
     }
+
+    updateWorkingFiles(id: string, workingFiles: any[], actor?: ActorInfo) {
+        return this.lifecycleService.updateWorkingFiles(id, workingFiles, actor);
+    }
 }
+

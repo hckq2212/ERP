@@ -117,33 +117,70 @@ export class ProjectLifecycleService extends ProjectBaseService {
         return savedProject;
     }
 
+    async updateWorkingFiles(
+        id: string,
+        workingFiles: Array<{
+            id?: string;
+            name: string;
+            url: string;
+            type?: "LINK" | "FILE";
+            size?: number;
+            createdAt?: string;
+            createdById?: string;
+            createdByName?: string;
+        }>,
+        actor?: { id?: string; userId?: string; role?: string }
+    ) {
+        const project = await this.projectRepository.findOne({
+            where: SecurityService.withTenant({ id }),
+            relations: ["team", "team.teamLead", "team.members", "team.members.user"]
+        });
 
-    // async start(id: string) {
-    //     const project = await this.getOne(id);
+        if (!project) {
+            throw this.httpError("Không tìm thấy dự án", 404);
+        }
 
-    //     // Requirement: Only transition to IN_PROGRESS if Team Lead has already accepted (CONFIRMED)
-    //     if (project.status !== ProjectStatus.CONFIRMED) {
-    //         console.log(`[ProjectService] Project ${id} is not in CONFIRMED state (current: ${project.status}). Skipping automatic IN_PROGRESS transition.`);
-    //         return project;
-    //     }
+        await this.assertProjectNotOnHold([project.id]);
 
-    //     // Check contract signed
-    //     const contract = await this.contractRepository.findOneBy({ id: project.contract.id });
-    //     if (contract?.status !== ContractStatus.SIGNED) {
-    //         throw new Error("Hợp đồng chưa được ký (Signed), không thể bắt đầu dự án");
-    //     }
+        let creatorName = "";
+        if (actor) {
+            try {
+                if (actor.id) {
+                    const user = await this.resolveActorUser({
+                        id: actor.id,
+                        userId: actor.userId,
+                        role: actor.role || ""
+                    });
+                    creatorName = user?.fullName || "";
+                } else if (actor.userId) {
+                    const user = await this.userRepository.findOneBy({ id: actor.userId });
+                    creatorName = user?.fullName || "";
+                }
+            } catch {
+                // Actor might be admin/system without user record
+            }
+        }
 
-    //     project.status = ProjectStatus.IN_PROGRESS;
-    //     project.actualStartDate = new Date();
+        const normalizedFiles = Array.isArray(workingFiles)
+            ? workingFiles.map(file => ({
+                id: file.id || `wf_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                name: (file.name || "").trim() || "Tài liệu",
+                url: (file.url || "").trim(),
+                type: (file.type === "FILE" ? "FILE" : "LINK") as "LINK" | "FILE",
+                size: typeof file.size === "number" ? file.size : undefined,
+                createdAt: file.createdAt || new Date().toISOString(),
+                createdById: file.createdById || actor?.userId || actor?.id,
+                createdByName: file.createdByName || creatorName || undefined
+            })).filter(file => Boolean(file.url))
+            : [];
 
-    //     // Update Opportunity Status
-    //     const fullContract = await this.contractRepository.findOne({ where: { id: project.contract.id }, relations: ["opportunity"] });
-    //     if (fullContract?.opportunity) {
-    //         const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
-    //         fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
-    //         await oppRepo.save(fullContract.opportunity);
-    //     }
+        project.workingFiles = normalizedFiles;
+        await this.projectRepository.save(project);
 
-    //     return await this.projectRepository.save(project);
-    // }
+        return {
+            message: "Cập nhật tài liệu làm việc thành công",
+            workingFiles: normalizedFiles
+        };
+    }
 }
+
