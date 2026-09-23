@@ -61,17 +61,6 @@ export class DebtService {
                 relations: ["contract", "debt"]
             });
 
-            // 🔒 FIX #1: KHÔNG auto-sync công nợ cho hợp đồng đã kết thúc.
-            //
-            // `closeProject()` khóa các debt ĐANG TỒN TẠI. Nếu có milestone chưa
-            // từng được kích hoạt thì debt của nó KHÔNG tồn tại → không bị khóa.
-            // Không có guard này, mỗi lần mở màn công nợ của dự án đã đóng sẽ
-            // SINH LẠI debt mới (status UNPAID) → việc khóa công nợ bị vô hiệu
-            // hoàn toàn, và KHÔNG báo lỗi gì.
-            //
-            // ⚠️ Phải kiểm tra theo `Contracts.status`, KHÔNG chỉ theo
-            // `debt.status === LOCKED` — vì milestone chưa kích hoạt thì chưa có
-            // debt nào để mà khóa.
             const contract = milestones[0]?.contract;
             if (!isContractClosed(contract)) {
                 for (const m of milestones) {

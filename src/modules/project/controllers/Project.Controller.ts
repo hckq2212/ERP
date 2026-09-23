@@ -69,6 +69,20 @@ export class ProjectController {
         }
     }
 
+    update = async (req: AuthRequest, res: Response) => {
+        try {
+            const actor = req.user || (req as any).user;
+            if (!actor) {
+                return res.status(401).json({ message: "Bạn cần đăng nhập để thực hiện hành động này" });
+            }
+
+            const project = await this.projectService.update(req.params.id as string, req.body, actor as any);
+            res.status(200).json(project);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     getMonthlyWorkTemplate = async (req: AuthRequest, res: Response) => {
         try {
             const result = await this.projectService.getMonthlyWorkTemplate(
@@ -215,6 +229,33 @@ export class ProjectController {
                 req.params.id as string,
                 req.params.submissionId as string,
                 req.body,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    extractProductDescriptionFile = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.extractForFile(
+                req.params.id as string,
+                req.body?.fileUrl,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    aiFormatProductDescription = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.aiFormat(
+                req.params.id as string,
+                req.body?.text,
+                req.body?.productName,
                 req.user as any
             );
             res.status(200).json(result);

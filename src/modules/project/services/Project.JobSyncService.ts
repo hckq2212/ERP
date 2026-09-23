@@ -38,8 +38,13 @@ export class ProjectJobSyncService extends ProjectBaseService {
             throw error;
         }
 
-        const result = await this.syncContractServiceJobs(id);
+        const serviceResult = await this.syncContractServices(id);
+        const jobResult = await this.syncContractServiceJobs(id);
         projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
-        return result;
+        return {
+            ...jobResult,
+            createdContractServices: serviceResult.createdContractServices,
+            updatedContractServices: serviceResult.updatedContractServices
+        };
     }
 }

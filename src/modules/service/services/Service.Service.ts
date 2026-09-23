@@ -2,12 +2,29 @@ import { AppDataSource } from "../../../data-source";
 import { Services } from "../entities/Service.entity";
 import { Jobs } from "../../job/entities/Job.entity";
 import { ServiceJob } from "../entities/ServiceJob.entity";
-import { In, ILike } from "typeorm";
+import { In, ILike, Raw } from "typeorm";
 import { RedisService } from "../../../shared/services/Redis.Service";
 import { SecurityService } from "../../../shared/services/Security.Service";
 
 export class ServiceService {
     private serviceRepository = AppDataSource.getRepository(Services);
+
+    private normalizeServicePayload(data: any = {}) {
+        if (typeof data.code === "string") {
+            data.code = data.code.trim();
+        }
+        return data;
+    }
+
+    private async findByCode(code: string) {
+        return await this.serviceRepository.findOne({
+            where: {
+                ...SecurityService.withTenant({
+                    code: Raw((alias) => `LOWER(TRIM(${alias})) = LOWER(TRIM(:code))`, { code })
+                })
+            }
+        });
+    }
 
     async getAll(filters: { name?: string, page?: number, limit?: number } = {}) {
         const page = Number(filters.page) || 1;
@@ -75,6 +92,13 @@ export class ServiceService {
 
     async create(data: any = {}) {
         const { jobIds, outputJobIds, ...serviceData } = data;
+        this.normalizeServicePayload(serviceData);
+
+        if (serviceData.code) {
+            const existingService = await this.findByCode(serviceData.code);
+            if (existingService) throw new Error("Mã dịch vụ đã tồn tại");
+        }
+
         const service = this.serviceRepository.create(SecurityService.withTenant(serviceData) as Partial<Services>);
         const savedService = (await this.serviceRepository.save(service)) as unknown as Services;
 
@@ -99,7 +123,13 @@ export class ServiceService {
 
     async update(id: string, data: any = {}) {
         const { jobConfigs, ...serviceData } = data; // jobConfigs: [{ jobId, quantity, isOutput }]
+        this.normalizeServicePayload(serviceData);
         const service = await this.getOne(id);
+
+        if (serviceData.code) {
+            const existingService = await this.findByCode(serviceData.code);
+            if (existingService && existingService.id !== id) throw new Error("Mã dịch vụ đã tồn tại");
+        }
 
         Object.assign(service, serviceData);
         await this.serviceRepository.save(service);

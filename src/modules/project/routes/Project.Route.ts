@@ -10,7 +10,8 @@ import {
     CloseProjectDirectDTO,
     RejectCloseDTO,
     UpdateProjectStatusDTO,
-    UpdateWorkingFilesDTO
+    UpdateWorkingFilesDTO,
+    UpdateProjectDTO,
 } from "../dto/Project.dto";
 import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
 
@@ -23,10 +24,6 @@ router.get("/contract/:contractId", projectController.getByContract);
 router.get("/my-projects", projectController.getMyProjects);
 router.get("/:id/monthly-work-template", projectController.getMonthlyWorkTemplate);
 
-// ── Tạm dừng dự án ───────────────────────────────────────────────────────
-// ⚠️ Đặt TRƯỚC route "/:id" để không bị getOne nuốt.
-// ⚠️ `/pause` KHÔNG dùng roleMiddleware: PM và BD đều vào được, nhưng phải kiểm tra
-//    thêm "BD có phụ trách hợp đồng không" → quyền check nằm trong service.
 router.post("/:id/pause", validationMiddleware(PauseProjectDTO), projectController.requestPause);
 router.post(
     "/:id/pause/direct",
@@ -97,10 +94,18 @@ router.post(
 
 router.post("/assign", validationMiddleware(AssignTeamDTO), projectController.assign);
 router.post("/:id/confirm", projectController.confirm);
+router.put(
+    "/:id",
+    roleMiddleware(["ADMIN", "PM"]),
+    validationMiddleware(UpdateProjectDTO),
+    projectController.update
+);
 router.post("/:id/monthly-work-addendums", projectController.createMonthlyWorkAddendum);
 router.post("/:id/service-addendums", projectController.createServiceAddendum);
 router.get("/:id/product-descriptions", projectController.getProductDescriptions);
 router.post("/:id/product-descriptions", projectController.createProductDescription);
+router.post("/:id/product-descriptions/extract-file", projectController.extractProductDescriptionFile);
+router.post("/:id/product-descriptions/ai-format", projectController.aiFormatProductDescription);
 router.put("/:id/product-descriptions/:submissionId", projectController.updateProductDescription);
 router.post("/:id/product-descriptions/:submissionId/submit", projectController.submitProductDescription);
 router.post(
