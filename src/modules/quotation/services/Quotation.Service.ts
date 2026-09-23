@@ -12,6 +12,7 @@ import { NotificationService } from "../../notification/services/Notification.Se
 import { quotationEmitter, QUOTATION_EVENTS } from "../events/QuotationEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 import { ContractService } from "../../contract/services/Contract.Service";
+import { calculatePricingTotals, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
 
 type QuotationActor = { id: string, role: string, userId?: string, companyId?: string };
 
@@ -144,7 +145,7 @@ export class QuotationService {
                     service,
                     serviceId: item.serviceId,
                     quantity: item.quantity || 1,
-                    sellingPrice: item.sellingPrice || 0,
+                    sellingPrice: roundUnitSellingPrice(item.sellingPrice || 0),
                     costAtSale: item.costAtSale || 0,
                     name: item.name || service?.name || 'Service Item',
                     packageQuantity: item.packageQuantity || 1,
@@ -164,7 +165,7 @@ export class QuotationService {
                     service: oppService.service,
                     serviceId: oppService.service?.id,
                     quantity: oppService.quantity,
-                    sellingPrice: oppService.sellingPrice,
+                    sellingPrice: roundUnitSellingPrice(oppService.sellingPrice),
                     costAtSale: oppService.costAtSale,
                     name: oppService.service?.name || 'Standalone Service',
                     packageQuantity: 1,
@@ -184,7 +185,7 @@ export class QuotationService {
                                 service: s.service,
                                 serviceId: s.service?.id,
                                 quantity: Number(s.quantity) * Number(oppPkg.quantity || 1),
-                                sellingPrice: s.sellingPrice,
+                                sellingPrice: roundUnitSellingPrice(s.sellingPrice),
                                 costAtSale: s.costAtSale,
                                 name: s.service?.name || 'Package Item',
                                 packageQuantity: oppPkg.quantity || 1,
@@ -200,7 +201,7 @@ export class QuotationService {
             }
         }
 
-        savedQuotation.totalAmount = total;
+        Object.assign(savedQuotation, calculatePricingTotals(total));
 
         // Update Opportunity Status to QUOTATION_DRAFTING if it's new
         if (opportunity.status === OpportunityStatus.PENDING_OPP_APPROVAL) {
@@ -287,7 +288,7 @@ export class QuotationService {
                     quotation: savedQuotation,
                     job: task.job,
                     quantity: 1,
-                    sellingPrice: task.sellingPrice,
+                    sellingPrice: roundUnitSellingPrice(task.sellingPrice),
                     costAtSale: task.cost
                 });
                 await this.quotationDetailRepository.save(detail);
@@ -299,14 +300,14 @@ export class QuotationService {
                 quotation: savedQuotation,
                 service: service,
                 quantity: 1,
-                sellingPrice: task.sellingPrice,
+                sellingPrice: roundUnitSellingPrice(task.sellingPrice),
                 costAtSale: task.cost
             });
             await this.quotationDetailRepository.save(detail);
             total += Number(detail.sellingPrice);
         }
 
-        savedQuotation.totalAmount = total;
+        Object.assign(savedQuotation, calculatePricingTotals(total));
         savedQuotation.tasks = tasks; // Link tasks to quotation
         const saved = await this.quotationRepository.save(savedQuotation);
 
@@ -356,7 +357,7 @@ export class QuotationService {
                     service,
                     serviceId: item.serviceId,
                     quantity: item.quantity || 1,
-                    sellingPrice: item.sellingPrice || 0,
+                    sellingPrice: roundUnitSellingPrice(item.sellingPrice || 0),
                     costAtSale: item.costAtSale || 0,
                     name: item.name || service.name,
                     packageQuantity: item.packageQuantity || 1,
@@ -371,7 +372,7 @@ export class QuotationService {
                 // Keep in memory for the final return
                 quotation.details.push(detail);
             }
-            quotation.totalAmount = total;
+            Object.assign(quotation, calculatePricingTotals(total));
         }
 
         const saved = await this.quotationRepository.save(quotation);
@@ -409,7 +410,7 @@ export class QuotationService {
             const addendum = addendumRepo.create({
                 name: quotation.note || `Phụ lục phát sinh - Ver ${quotation.version}`,
                 contract: contract,
-                sellingPrice: quotation.totalAmount,
+                ...calculatePricingTotals(quotation.totalAmount),
                 cost: quotation.details.reduce((sum, d) => sum + Number(d.costAtSale), 0),
                 status: AddendumStatus.DRAFT
             });
@@ -447,7 +448,7 @@ export class QuotationService {
         await this.quotationRepository.save(quotation);
 
         const totalRevenue = quotation.details.reduce(
-            (sum, detail) => sum + (Number(detail.sellingPrice || 0) * (detail.quantity || 1)),
+            (sum, detail) => sum + (roundUnitSellingPrice(detail.sellingPrice || 0) * (detail.quantity || 1)),
             0
         );
 

@@ -56,6 +56,9 @@ import { createServer } from "http"
 import { initSocket } from "./socket"
 import aiDashboardRoute from "./modules/ai-dashboard/routes/AiDashboard.Route"
 import { migrateTeamMemberRoles } from "./modules/project/services/TeamMemberMigration.Service"
+import paymentDashboardRoute from "./modules/payment-dashboard/routes/PaymentDashboard.Route"
+import financeDocumentRoute from "./modules/finance-document/routes/FinanceDocument.Route"
+import { PricingBackfillService } from "./shared/services/PricingBackfill.Service"
 
 const app = express()
 app.set('trust proxy', 1)
@@ -113,6 +116,8 @@ app.use("/api/teams", authMiddleware, writeRateLimitMiddleware, projectTeamRoute
 app.use("/api/notifications", authMiddleware, writeRateLimitMiddleware, notificationRoute)
 app.use("/api/announcements", authMiddleware, writeRateLimitMiddleware, announcementRoute)
 app.use("/api/dashboard", authMiddleware, writeRateLimitMiddleware, dashboardRoute);
+app.use("/api/payment-dashboard", authMiddleware, writeRateLimitMiddleware, paymentDashboardRoute)
+app.use("/api/finance-documents", authMiddleware, writeRateLimitMiddleware, financeDocumentRoute)
 app.use("/api/customers", authMiddleware, writeRateLimitMiddleware, customerRoute)
 app.use("/api/vendors", authMiddleware, writeRateLimitMiddleware, vendorRoute)
 app.use("/api/referral-partners", authMiddleware, writeRateLimitMiddleware, referralPartnerRoute)
@@ -152,6 +157,7 @@ app.head("/health", (req, res) => {
 
 
 AppDataSource.initialize().then(async () => {
+    await PricingBackfillService.run();
     await migrateTeamMemberRoles();
     // Initialize Event Subscribers
     initSubscribers();

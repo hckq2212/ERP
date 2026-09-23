@@ -14,6 +14,7 @@ import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.h
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { EntityManager } from "typeorm";
 import { UserRole } from "../../account/entities/Account.entity";
+import { calculatePricingTotals, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
 
 export class ContractAddendumService {
     private addendumRepository = AppDataSource.getRepository(ContractAddendums);
@@ -104,13 +105,13 @@ export class ContractAddendumService {
                         service: d.service,
                         job: d.job,
                         serviceId: d.service?.id,
-                        sellingPrice: d.sellingPrice,
+                        sellingPrice: roundUnitSellingPrice(d.sellingPrice),
                         name: d.name || d.service?.name,
                         code: d.service?.code,
                         status: ContractServiceStatus.ACTIVE
                     });
                     await this.contractServiceRepository.save(addendumService);
-                    totalSellingPrice += Number(d.sellingPrice);
+                    totalSellingPrice += roundUnitSellingPrice(d.sellingPrice);
                     totalCost += Number(d.costAtSale || 0);
                 }
             }
@@ -125,13 +126,13 @@ export class ContractAddendumService {
                     addendum: addendum,
                     service: serviceDef,
                     serviceId: serviceDef?.id,
-                    sellingPrice: s.sellingPrice,
+                    sellingPrice: roundUnitSellingPrice(s.sellingPrice),
                     name: s.serviceName || serviceDef?.name,
                     code: serviceDef?.code,
                     status: ContractServiceStatus.ACTIVE
                 });
                 await this.contractServiceRepository.save(addendumService);
-                totalSellingPrice += Number(s.sellingPrice);
+                totalSellingPrice += roundUnitSellingPrice(s.sellingPrice);
             }
         }
 
@@ -151,7 +152,7 @@ export class ContractAddendumService {
             }
         }
 
-        addendum.sellingPrice = totalSellingPrice;
+        Object.assign(addendum, calculatePricingTotals(totalSellingPrice));
         addendum.cost = totalCost; // Update addendum cost estimate
         return await this.addendumRepository.save(addendum);
     }
@@ -168,7 +169,10 @@ export class ContractAddendumService {
 
         // Update Contract Totals (Revenue and Cost)
         const contract = addendum.contract;
-        contract.sellingPrice = Number(contract.sellingPrice) + Number(addendum.sellingPrice);
+        Object.assign(contract, calculatePricingTotals(
+            Number(contract.sellingPrice) + Number(addendum.sellingPrice),
+            contract.vatRate || 8
+        ));
         contract.cost = Number(contract.cost || 0) + Number(addendum.cost || 0);
         await this.contractRepository.save(contract);
 
@@ -197,7 +201,7 @@ export class ContractAddendumService {
         }
 
         // 2. Record the scale down amount (negative)
-        addendum.sellingPrice = -Math.abs(data.refundAmount);
+        Object.assign(addendum, calculatePricingTotals(-Math.abs(data.refundAmount)));
         addendum.name += " (Cắt giảm hạng mục)";
 
         return await this.addendumRepository.save(addendum);
@@ -216,7 +220,7 @@ export class ContractAddendumService {
                 throw new Error("Danh sách dịch vụ cập nhật không hợp lệ");
             }
 
-            const sellingPrice = Number(item.sellingPrice || 0);
+            const sellingPrice = roundUnitSellingPrice(item.sellingPrice || 0);
             if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
                 throw new Error("Đơn giá dịch vụ không hợp lệ");
             }
@@ -226,8 +230,8 @@ export class ContractAddendumService {
                 sellingPrice
             };
         });
-        addendum.sellingPrice = addendum.selectedItems.reduce((sum, item) =>
-            sum + Number(item.sellingPrice || 0) * Number(item.quantity || 1), 0) as any;
+        Object.assign(addendum, calculatePricingTotals(addendum.selectedItems.reduce((sum, item) =>
+            sum + Number(item.sellingPrice || 0) * Number(item.quantity || 1), 0)));
     }
 
     private assertCanResubmit(userInfo?: { role?: string }) {
@@ -352,7 +356,7 @@ export class ContractAddendumService {
                         addendum,
                         service,
                         serviceId: service.id,
-                        sellingPrice: item.sellingPrice || 0,
+                        sellingPrice: roundUnitSellingPrice(item.sellingPrice || 0),
                         status: ContractServiceStatus.ACTIVE,
                         name: item.serviceName || service.name,
                         code: service.code,

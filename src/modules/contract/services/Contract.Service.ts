@@ -21,6 +21,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { Services } from "../../service/entities/Service.entity";
 import { ServicePackages } from "../../service-package/entities/ServicePackage.entity";
 import { CustomerService } from "../../customer/services/Customer.Service";
+import { calculatePricingTotals, getContractCollectibleTotal, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
 
 export class ContractService {
     private contractRepository = AppDataSource.getRepository(Contracts);
@@ -351,7 +352,7 @@ export class ContractService {
         if (opportunity) {
             if (approvedQuotationDetails.length > 0) {
                 const quotationSellingPrice = approvedQuotationDetails.reduce(
-                    (sum, detail) => sum + (Number(detail.sellingPrice || 0) * (detail.quantity || 1)),
+                    (sum, detail) => sum + (roundUnitSellingPrice(detail.sellingPrice || 0) * (detail.quantity || 1)),
                     0
                 );
                 const quotationCost = approvedQuotationDetails.reduce(
@@ -371,7 +372,7 @@ export class ContractService {
                     finalSellingPrice = approvedQuote.totalAmount;
                 } else {
                     // Price Priority 2: Sum of Opportunity Services
-                    const serviceSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.sellingPrice) * (os.quantity || 1)), 0);
+                    const serviceSum = opportunity.services?.reduce((sum, os) => sum + (roundUnitSellingPrice(os.sellingPrice) * (os.quantity || 1)), 0);
                     if (serviceSum > 0) {
                         finalSellingPrice = serviceSum;
                     }
@@ -394,7 +395,7 @@ export class ContractService {
                     const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }, userInfo) });
                     if (service) {
                         const qty = item.quantity || 1;
-                        const sellPrice = item.sellingPrice !== undefined ? Number(item.sellingPrice) : Number(service.costPrice || 0);
+                        const sellPrice = roundUnitSellingPrice(item.sellingPrice !== undefined ? item.sellingPrice : service.costPrice || 0);
                         computedSellingPrice += sellPrice * qty;
                         computedCost += Number(service.costPrice || 0) * qty;
                     }
@@ -430,7 +431,7 @@ export class ContractService {
 
         const contract = this.contractRepository.create(SecurityService.withTenant({
             ...contractData,
-            sellingPrice: finalSellingPrice || 0,
+            ...calculatePricingTotals(finalSellingPrice || 0),
             cost: finalCost || 0,
             customer: customer,
             opportunity: opportunity,
@@ -466,7 +467,7 @@ export class ContractService {
                             contract: savedContract,
                             service: detailService,
                             serviceId: detailServiceId,
-                            sellingPrice: detail.sellingPrice,
+                            sellingPrice: roundUnitSellingPrice(detail.sellingPrice),
                             opportunityService,
                             name: detail.name || detailService?.name,
                             code: detailService?.code,
@@ -490,7 +491,7 @@ export class ContractService {
                             contract: savedContract,
                             service: os.service,
                             serviceId: os.service?.id || os.serviceId,
-                            sellingPrice: os.sellingPrice,
+                            sellingPrice: roundUnitSellingPrice(os.sellingPrice),
                             opportunityService: os,
                             name: os.name || os.service?.name,
                             code: os.service?.code,
@@ -510,7 +511,7 @@ export class ContractService {
                     const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }, userInfo) });
                     if (service) {
                         const qty = item.quantity || 1;
-                        const sellPrice = item.sellingPrice !== undefined ? Number(item.sellingPrice) : Number(service.costPrice || 0);
+                        const sellPrice = roundUnitSellingPrice(item.sellingPrice !== undefined ? item.sellingPrice : service.costPrice || 0);
                         for (let i = 0; i < qty; i++) {
                             const cs = this.contractServiceRepository.create({
                                 contract: savedContract,
@@ -541,7 +542,7 @@ export class ContractService {
                                 const qty = (item.defaultQuantity || 1) * pkgQty;
                                 const customPrices = pkgItem.customPrices || {};
                                 const customPrice = customPrices[item.service.id];
-                                const sellPrice = customPrice !== undefined ? Number(customPrice) : Number(item.service.costPrice || 0);
+                                const sellPrice = roundUnitSellingPrice(customPrice !== undefined ? customPrice : item.service.costPrice || 0);
 
                                 for (let i = 0; i < qty; i++) {
                                     const cs = this.contractServiceRepository.create({
@@ -576,7 +577,7 @@ export class ContractService {
             contract: savedContract,
             name: "Thanh toán đợt 1",
             percentage: 100,
-            amount: savedContract.sellingPrice,
+            amount: getContractCollectibleTotal(savedContract),
             status: MilestoneStatus.PENDING,
             dueDate: new Date(new Date().setDate(new Date().getDate() + 30)), // Default 30 days
             ...SecurityService.getTenantWhere(userInfo)
@@ -719,7 +720,7 @@ export class ContractService {
             throw new Error(`Tổng phần trăm thanh toán không được vượt quá 100%. Hiện tại: ${totalPercentage}%`);
         }
 
-        const amount = data.amount || (contract.sellingPrice * data.percentage / 100);
+        const amount = data.amount ?? (getContractCollectibleTotal(contract) * data.percentage / 100);
 
         const milestone = this.milestoneRepository.create({
             ...data,
@@ -750,7 +751,7 @@ export class ContractService {
                 throw new Error(`Tổng phần trăm thanh toán không được vượt quá 100%. Hiện tại: ${otherMilestonesTotal}%`);
             }
             // Recalculate amount if percentage changes
-            milestone.amount = milestone.contract.sellingPrice * Number(data.percentage) / 100;
+            milestone.amount = getContractCollectibleTotal(milestone.contract) * Number(data.percentage) / 100;
         }
 
         Object.assign(milestone, data);

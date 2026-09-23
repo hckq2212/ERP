@@ -41,8 +41,18 @@ export class Quotations extends BaseEntity {
     })
     type: QuotationType;
 
-    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
+    /** Tổng giá bán chưa VAT. */
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
     totalAmount: number;
+
+    @Column({ type: "decimal", precision: 5, scale: 2, default: 8 })
+    vatRate: number;
+
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
+    vatAmount: number;
+
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
+    totalWithVat: number;
 
     @ManyToOne(() => Opportunities, (opportunity) => opportunity.quotations)
     opportunity: Opportunities;
