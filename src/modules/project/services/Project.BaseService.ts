@@ -303,18 +303,18 @@ export class ProjectBaseService {
             where: { id: projectId },
             relations: ["contract"]
         });
-        if (!project) throw new Error("KhÃ´ng tÃ¬m tháº¥y dá»± Ã¡n");
-        if (!project.contract) throw new Error("Dá»± Ã¡n chÆ°a liÃªn káº¿t há»£p Ä‘á»“ng");
+        if (!project) throw new Error("Không tìm thấy dự án");
+        if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");
         if (!options.allowCompletedProject &&
             [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
-            throw new Error("Dá»± Ã¡n Ä‘Ã£ hoÃ n táº¥t hoáº·c Ä‘Ã£ há»§y, khÃ´ng thá»ƒ Ä‘á»“ng bá»™ cÃ´ng viá»‡c");
+            throw new Error("Dự án đã hoàn tất hoặc đã hủy, không thể đồng bộ công việc");
         }
 
         const contract = await this.contractRepository.findOne({
             where: { id: project.contract.id },
             relations: ["opportunity"]
         });
-        if (!contract) throw new Error("KhÃ´ng tÃ¬m tháº¥y há»£p Ä‘á»“ng");
+        if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
         const opportunityServices = contract.opportunity
             ? await this.opportunityServiceRepository.find({
@@ -479,9 +479,6 @@ export class ProjectBaseService {
                 status: true,
                 plannedStartDate: true,
                 plannedEndDate: true,
-                // ⚠️ BẮT BUỘC có: UI cần các field này để hiện banner đếm ngược 37 ngày,
-                // người tạm dừng, và trạng thái chờ duyệt. Thiếu ở đây thì frontend
-                // nhận `undefined` (KHÔNG báo lỗi — chỉ là banner trống).
                 autoAcceptAt: true,
                 pausedAt: true,
                 pausedById: true,

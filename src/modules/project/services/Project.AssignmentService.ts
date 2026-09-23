@@ -211,6 +211,13 @@ export class ProjectAssignmentService extends ProjectBaseService {
 
         if (!project) throw new Error("Không tìm thấy dự án");
 
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
+            const error: any = new Error("Dự án đã hoàn tất hoặc đã đóng, không thể chỉnh sửa tiến trình dự án");
+            error.statusCode = 400;
+            throw error;
+        }
+        this.assertLoadedProjectNotOnHold(project);
+
         const actorUserId = actor?.userId || actor?.id;
         const isAdmin = actor?.role === UserRole.ADMIN;
         const isAssignedPm = actor?.role === UserRole.PM && project.team?.members?.some(member =>
@@ -249,6 +256,11 @@ export class ProjectAssignmentService extends ProjectBaseService {
         if (!project) {
             const error: any = new Error("Không tìm thấy dự án");
             error.statusCode = 404;
+            throw error;
+        }
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
+            const error: any = new Error("Dự án đã hoàn tất hoặc đã đóng, không thể yêu cầu thêm nhân sự");
+            error.statusCode = 400;
             throw error;
         }
         this.assertLoadedProjectNotOnHold(project);
