@@ -81,7 +81,7 @@ export class DashboardScopeService {
 
         const isTeamLeadOrAccount = !isExcludedSaleRole && allActiveProjects.some(project =>
             project.team?.members?.some(member =>
-                member.user?.id === viewerUserId && member.role === MemberRole.ACCOUNT
+                member.user?.id === viewerUserId && memberHasRole(member, MemberRole.ACCOUNT)
             ) ||
             (project.team?.teamLead?.id === viewerUserId && actor.role !== UserRole.PM)
         );
