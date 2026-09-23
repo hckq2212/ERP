@@ -86,4 +86,14 @@ export class OpportunityController {
             res.status(400).json({ message: error.message });
         }
     }
+
+    reject = async (req: Request, res: Response) => {
+        try {
+            const id = req.params.id as string;
+            const result = await this.opportunityService.reject(id, req.body.reason);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
 }

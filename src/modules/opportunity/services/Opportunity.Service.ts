@@ -504,22 +504,18 @@ export class OpportunityService {
         opportunity.status = OpportunityStatus.QUOTATION_DRAFTING;
         const result = await this.opportunityRepository.save(opportunity);
 
-        // --- Notifications ---
-        // Fetch full record to get createdBy
+        // Notify the employee who created the opportunity.
         const doc = await this.getOne(id);
         if (doc.createdBy) {
-            const creatorRole = doc.createdBy.accounts?.[0]?.role;
-            // Notify creator if they are NOT BOD/ADMIN
-            if (creatorRole !== UserRole.BOD && creatorRole !== UserRole.ADMIN) {
-                await this.notificationService.createNotification({
-                    title: "Cơ hội đã được duyệt",
-                    content: `Cơ hội "${doc.name}" (${doc.opportunityCode}) của bạn đã được duyệt.`,
-                    type: "OPPORTUNITY_APPROVED",
-                    recipient: doc.createdBy,
-                    relatedEntityId: doc.id,
-                    relatedEntityType: "Opportunities"
-                });
-            }
+            await this.notificationService.createNotification({
+                title: "Cơ hội đã được duyệt",
+                content: `Cơ hội "${doc.name}" (${doc.opportunityCode}) của bạn đã được duyệt.`,
+                type: "OPPORTUNITY_APPROVED",
+                recipient: doc.createdBy,
+                relatedEntityId: doc.id,
+                relatedEntityType: "Opportunities",
+                link: `/opportunities/${doc.id}`
+            });
         }
 
         const pendingVideoDemoTasks = await this.taskRepository.find({
@@ -539,6 +535,43 @@ export class OpportunityService {
         opportunityEmitter.emit(OPPORTUNITY_EVENTS.APPROVED, doc);
 
         return { message: "Duyệt cơ hội thành công", opportunity: result };
+    }
+
+    async reject(id: string, reason: string) {
+        const rejectionReason = reason?.trim();
+
+        if (!rejectionReason) {
+            throw new Error("Vui lòng nhập lý do không duyệt");
+        }
+
+        const opportunity = await this.getOne(id);
+
+        if (opportunity.status !== OpportunityStatus.PENDING_OPP_APPROVAL) {
+            throw new Error("Chỉ có thể không duyệt cơ hội đang ở trạng thái chờ duyệt");
+        }
+
+        opportunity.status = OpportunityStatus.OPP_REJECTED;
+        opportunity.rejectionReason = rejectionReason;
+        const result = await this.opportunityRepository.save(opportunity);
+
+        if (opportunity.createdBy) {
+            await this.notificationService.createNotification({
+                title: "Cơ hội không được duyệt",
+                content: `Cơ hội "${opportunity.name}" (${opportunity.opportunityCode}) không được duyệt. Lý do: ${rejectionReason}`,
+                type: "OPPORTUNITY_REJECTED",
+                recipient: opportunity.createdBy,
+                relatedEntityId: opportunity.id,
+                relatedEntityType: "Opportunities",
+                link: `/opportunities/${opportunity.id}`
+            });
+        }
+
+        await RedisService.deleteCache('opportunities:all*');
+        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+
+        opportunityEmitter.emit(OPPORTUNITY_EVENTS.REJECTED, result);
+
+        return { message: "Không duyệt cơ hội thành công", opportunity: result };
     }
 
     private async notifyProjectManagersAboutVideoDemoTasks(opportunity: Opportunities, tasks: Tasks[]) {
