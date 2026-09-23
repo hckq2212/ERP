@@ -17,12 +17,14 @@ import { ContractServices, ContractServiceStatus } from "../../contract/entities
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { PaymentRequestService } from "../../payment-request/services/PaymentRequest.Service";
 
 import { TaskBaseService } from "./Task.BaseService";
 import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
 
 export class TaskAssignmentService extends TaskBaseService {
+    private paymentRequestService = new PaymentRequestService();
     async updateNickname(
         id: string,
         nickname: string | null | undefined,
@@ -159,6 +161,8 @@ export class TaskAssignmentService extends TaskBaseService {
         // thì chặn toàn bộ, không ghi nửa vời.
         await this.assertProjectNotOnHoldForTasks(taskIds);
 
+        const vendorExpenseTasks: { projectId: string; taskId: string; vendorId: string; vendorName: string; taskName: string; taskCode?: string | null; projectName?: string; amount: number; dueDate: Date; requesterId: string }[] = [];
+
         const results = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const results = [];
             const contractCostUpdates = new Map<string, number>();
@@ -177,6 +181,7 @@ export class TaskAssignmentService extends TaskBaseService {
 
                 const oldCost = Number(task.cost || 0);
                 let newCost = 0;
+                let assignedVendor: Vendors | null = null;
                 const isVideoDemoTask = Boolean(task.opportunityServiceJob?.isBriefVideo);
 
                 const isSupportAssign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.supportLeadId && task.isSupportAccepted && currentUser &&
@@ -239,6 +244,7 @@ export class TaskAssignmentService extends TaskBaseService {
                         task.assignee = null as any;
                         task.performerType = PerformerType.VENDOR;
                         task.cost = newCost;
+                        assignedVendor = vendor;
                     } else {
                         const user = await transactionalEntityManager.findOne(Users, {
                             where: { id: data.assigneeId },
@@ -292,7 +298,25 @@ export class TaskAssignmentService extends TaskBaseService {
                     task.assignerId = assignerId;
                 }
 
-                results.push(await transactionalEntityManager.save(task));
+                const savedTask = await transactionalEntityManager.save(task);
+                results.push(savedTask);
+
+                // Task giao cho vendor => tự động xem là chi phí phát sinh, chuẩn bị tạo yêu cầu thanh toán
+                // điền sẵn thông tin theo dự án/công việc (thực hiện sau khi transaction commit thành công)
+                if (assignedVendor && savedTask.project?.id && savedTask.assignerId) {
+                    vendorExpenseTasks.push({
+                        projectId: savedTask.project.id,
+                        taskId: savedTask.id,
+                        vendorId: assignedVendor.id,
+                        vendorName: assignedVendor.name,
+                        taskName: this.taskDisplayName(savedTask),
+                        taskCode: savedTask.code,
+                        projectName: savedTask.project?.name,
+                        amount: newCost,
+                        dueDate: plannedEndDate,
+                        requesterId: savedTask.assignerId
+                    });
+                }
             }
 
             // Batch update contract costs
@@ -308,6 +332,16 @@ export class TaskAssignmentService extends TaskBaseService {
 
             return results;
         });
+
+        // Tạo yêu cầu thanh toán chi phí phát sinh (vendor) sau khi transaction phân công đã commit
+        for (const item of vendorExpenseTasks) {
+            try {
+                await this.paymentRequestService.createVendorExpense(item);
+            } catch (err) {
+                // Không chặn việc phân công task nếu tạo yêu cầu thanh toán tự động thất bại
+                console.error("Không thể tự động tạo yêu cầu thanh toán chi phí phát sinh cho vendor:", err);
+            }
+        }
 
         results.forEach(task => taskEmitter.emit(TASK_EVENTS.UPDATED, task));
         return results;
@@ -481,6 +515,7 @@ export class TaskAssignmentService extends TaskBaseService {
         let newCost = 0;
         let newPerformerName = "";
         let newRecipient: Users | null = null;
+        let assignedVendor: Vendors | null = null;
 
         const isSupportReassign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.isSupportAccepted && currentUser &&
             (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
@@ -533,6 +568,7 @@ export class TaskAssignmentService extends TaskBaseService {
                 task.assignee = null as any;
                 task.performerType = PerformerType.VENDOR;
                 task.cost = newCost;
+                assignedVendor = vendor;
             } else {
                 const user = await this.userRepository.findOneBy({ id: data.assigneeId });
                 if (!user) throw new Error("Người thực hiện không tồn tại");
@@ -593,6 +629,27 @@ export class TaskAssignmentService extends TaskBaseService {
                 relatedEntityType: "Task",
                 link: `/tasks/${task.id}`
             });
+        }
+
+        // Task được chuyển giao cho vendor => tự động xem là chi phí phát sinh, tạo sẵn yêu cầu thanh toán
+        if (assignedVendor && savedTask.project?.id && savedTask.assignerId) {
+            try {
+                await this.paymentRequestService.createVendorExpense({
+                    projectId: savedTask.project.id,
+                    taskId: savedTask.id,
+                    vendorId: assignedVendor.id,
+                    vendorName: assignedVendor.name,
+                    taskName: this.taskDisplayName(savedTask),
+                    taskCode: savedTask.code,
+                    projectName: savedTask.project?.name,
+                    amount: newCost,
+                    dueDate: savedTask.plannedEndDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                    requesterId: savedTask.assignerId
+                });
+            } catch (err) {
+                // Không chặn việc chuyển giao task nếu tạo yêu cầu thanh toán tự động thất bại
+                console.error("Không thể tự động tạo yêu cầu thanh toán chi phí phát sinh cho vendor:", err);
+            }
         }
 
         taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
