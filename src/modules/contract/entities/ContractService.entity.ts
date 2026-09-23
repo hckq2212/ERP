@@ -80,6 +80,9 @@ export class ContractServices extends BaseEntity {
     name: string; // Snapshot of service name
 
     @Column({ nullable: true })
+    code: string; // Snapshot of service code
+
+    @Column({ nullable: true })
     packageName: string; // Snapshot of package name
 
     @Column({ default: false })

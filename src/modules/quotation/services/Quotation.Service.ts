@@ -477,7 +477,7 @@ export class QuotationService {
                 (sum, detail) => sum + (Number(detail.costAtSale || 0) * (detail.quantity || 1)),
                 0
             ),
-            name: opportunity.name || `Hợp đồng ${opportunity.opportunityCode}`
+            name: opportunity.name || `Hợp đồng ${opportunity.opportunityCode}`,
         }, creatorUserInfo);
 
         // Notify management

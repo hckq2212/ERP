@@ -38,6 +38,10 @@ export class ProjectService {
         return this.assignmentService.createFromContract(contract, userInfo);
     }
 
+    update(id: string, data: { plannedStartDate?: string | null, plannedEndDate?: string | null }, actor?: { id: string, role: string, userId?: string }) {
+        return this.assignmentService.updateSchedule(id, data, actor);
+    }
+
     syncServiceJobs(id: string, actor?: { id: string, role: string, userId?: string }) {
         return this.jobSyncService.syncServiceJobs(id, actor);
     }

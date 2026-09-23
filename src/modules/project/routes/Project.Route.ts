@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { ProjectController } from "../controllers/Project.Controller";
 import { validationMiddleware } from "../../../shared/middlewares/Validation.Middleware";
-import { AssignTeamDTO } from "../dto/Project.dto";
+import { AssignTeamDTO, UpdateProjectDTO } from "../dto/Project.dto";
 import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
 
 
@@ -16,6 +16,12 @@ router.get("/:id/monthly-work-template", projectController.getMonthlyWorkTemplat
 
 router.post("/assign", validationMiddleware(AssignTeamDTO), projectController.assign);
 router.post("/:id/confirm", projectController.confirm);
+router.put(
+    "/:id",
+    roleMiddleware(["ADMIN", "PM"]),
+    validationMiddleware(UpdateProjectDTO),
+    projectController.update
+);
 router.post("/:id/monthly-work-addendums", projectController.createMonthlyWorkAddendum);
 router.post("/:id/service-addendums", projectController.createServiceAddendum);
 router.get("/:id/product-descriptions", projectController.getProductDescriptions);

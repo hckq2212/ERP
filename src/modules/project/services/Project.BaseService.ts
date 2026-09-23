@@ -84,6 +84,7 @@ export class ProjectBaseService {
             contractServiceId: cs.id,
             contractServiceIds: [cs.id],
             serviceId: cs.service?.id || cs.serviceId,
+            serviceCode: cs.code || cs.service?.code || null,
             serviceName: cs.name || cs.service?.name || "Dịch vụ",
             packageKey: opportunityPackage?.id || cs.packageName || cs.id,
             packageName: cs.packageName,
@@ -105,10 +106,133 @@ export class ProjectBaseService {
 
     protected emptySyncResult() {
         return {
+            createdContractServices: 0,
+            updatedContractServices: 0,
             createdTasks: 0,
             updatedOutputTasks: 0,
             backfilledResults: 0
         };
+    }
+
+    protected async syncContractServices(projectId: string) {
+        const syncResult = {
+            createdContractServices: 0,
+            updatedContractServices: 0
+        };
+
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["contract", "contract.opportunity"]
+        });
+        if (!project) throw new Error("Không tìm thấy dự án");
+        if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");
+
+        const contract = project.contract;
+        const contractServices = await this.contractServiceRepository.find({
+            where: { contract: { id: contract.id } },
+            relations: ["service", "opportunityService"]
+        });
+
+        const updateContractServiceSnapshot = async (
+            contractService: ContractServices,
+            source?: { opportunityService?: OpportunityServices | null, service?: Services | null }
+        ) => {
+            const opportunityService = source?.opportunityService || contractService.opportunityService;
+            const service = source?.service || opportunityService?.service || contractService.service;
+            let changed = false;
+
+            if (service && contractService.service?.id !== service.id) {
+                contractService.service = service;
+                contractService.serviceId = service.id;
+                changed = true;
+            } else if (service?.id && contractService.serviceId !== service.id) {
+                contractService.serviceId = service.id;
+                changed = true;
+            }
+
+            if (opportunityService && contractService.opportunityService?.id !== opportunityService.id) {
+                contractService.opportunityService = opportunityService;
+                changed = true;
+            }
+
+            const nextName = opportunityService?.name || service?.name;
+            if (!contractService.name && nextName) {
+                contractService.name = nextName;
+                changed = true;
+            }
+
+            const nextCode = service?.code || null;
+            if (nextCode && contractService.code !== nextCode) {
+                contractService.code = nextCode;
+                changed = true;
+            }
+
+            if (opportunityService) {
+                if (contractService.packageName !== opportunityService.packageName) {
+                    contractService.packageName = opportunityService.packageName;
+                    changed = true;
+                }
+                if (contractService.isPackageService !== opportunityService.isPackageService) {
+                    contractService.isPackageService = opportunityService.isPackageService;
+                    changed = true;
+                }
+            }
+
+            if (!changed) return;
+            await this.contractServiceRepository.save(contractService);
+            syncResult.updatedContractServices += 1;
+        };
+
+        if (contract.opportunity?.id) {
+            const opportunityServices = await this.opportunityServiceRepository.find({
+                where: { opportunity: { id: contract.opportunity.id } },
+                relations: ["service", "opportunity"]
+            });
+
+            const usedContractServiceIds = new Set<string>();
+            for (const opportunityService of opportunityServices) {
+                const matchingContractServices = contractServices.filter((contractService) => {
+                    if (usedContractServiceIds.has(contractService.id)) return false;
+                    if (contractService.opportunityService?.id === opportunityService.id) return true;
+                    return contractService.serviceId === opportunityService.serviceId &&
+                        contractService.isPackageService === opportunityService.isPackageService &&
+                        (!opportunityService.isPackageService || contractService.packageName === opportunityService.packageName);
+                });
+
+                for (const contractService of matchingContractServices) {
+                    usedContractServiceIds.add(contractService.id);
+                    await updateContractServiceSnapshot(contractService, {
+                        opportunityService,
+                        service: opportunityService.service
+                    });
+                }
+
+                const requiredQuantity = Number(opportunityService.quantity || 1);
+                for (let i = matchingContractServices.length; i < requiredQuantity; i++) {
+                    const contractService = this.contractServiceRepository.create({
+                        contract,
+                        service: opportunityService.service,
+                        serviceId: opportunityService.service?.id || opportunityService.serviceId,
+                        sellingPrice: opportunityService.sellingPrice,
+                        opportunityService,
+                        name: opportunityService.name || opportunityService.service?.name,
+                        code: opportunityService.service?.code,
+                        packageName: opportunityService.packageName,
+                        isPackageService: opportunityService.isPackageService
+                    } as any) as unknown as ContractServices;
+                    const savedContractService = await this.contractServiceRepository.save(contractService) as ContractServices;
+                    contractServices.push(savedContractService);
+                    usedContractServiceIds.add(savedContractService.id);
+                    syncResult.createdContractServices += 1;
+                }
+            }
+        }
+
+        for (const contractService of contractServices) {
+            await updateContractServiceSnapshot(contractService);
+        }
+
+        return syncResult;
     }
 
     protected buildContractServiceResult(task: Tasks) {
@@ -215,8 +339,9 @@ export class ProjectBaseService {
 
                     const sequenceNumber = totalCountForProject + 1;
                     const seq = sequenceNumber.toString().padStart(2, '0');
+                    const serviceCode = cs.code || cs.service?.code;
                     const jobCode = job.code || `JOB${job.id}`;
-                    const taskCode = `${contract.contractCode}-${jobCode}-${seq}`;
+                    const taskCode = [contract.contractCode, serviceCode, jobCode, seq].filter(Boolean).join("-");
 
                     const task = this.taskRepository.create({
                         code: taskCode,
