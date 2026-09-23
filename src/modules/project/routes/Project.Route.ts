@@ -10,7 +10,8 @@ import {
     CloseProjectDirectDTO,
     RejectCloseDTO,
     UpdateProjectStatusDTO,
-    UpdateWorkingFilesDTO
+    UpdateWorkingFilesDTO,
+    UpdateProjectDTO,
 } from "../dto/Project.dto";
 import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
 

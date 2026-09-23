@@ -58,6 +58,7 @@ import { SystemSettings } from "./modules/setting/entities/SystemSetting.entity"
 import { ChatRooms } from "./modules/chat-room/entities/ChatRoom.entity"
 import { ChatParticipants } from "./modules/chat-room/entities/ChatParticipant.entity"
 import { ChatMessages } from "./modules/chat-room/entities/ChatMessage.entity"
+import { ProjectPauseRequests } from "./modules/project/entities/ProjectPauseRequest.entity"
 
 import * as dotenv from "dotenv"
 dotenv.config()
