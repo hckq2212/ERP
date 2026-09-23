@@ -13,7 +13,7 @@ export class ProjectProductDescriptionItems extends BaseEntity {
     @Column()
     productName: string;
 
-    @Column({ type: "varchar" })
+    @Column({ type: "varchar", nullable: true })
     fileUrl: string;
 
     @Column({ type: "varchar", nullable: true })
