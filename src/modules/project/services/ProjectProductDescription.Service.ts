@@ -1,3 +1,4 @@
+import axios from "axios";
 import { AppDataSource } from "../../../data-source";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { UserRole } from "../../account/entities/Account.entity";
@@ -9,34 +10,28 @@ import {
     ProjectProductDescriptionStatus,
     ProjectProductDescriptionSubmissions
 } from "../entities/ProjectProductDescriptionSubmission.entity";
+import { ProjectProductDescriptionItems } from "../entities/ProjectProductDescriptionItem.entity";
 import {
-    ProjectProductDescriptionItems,
-    ProjectProductDescriptionSpec,
-    ProjectProductDescriptionSpecType
-} from "../entities/ProjectProductDescriptionItem.entity";
+    assertAiServiceUrl,
+    AI_SERVICE_MAX_FETCH_BYTES,
+    AI_SERVICE_REQUEST_TIMEOUT_MS
+} from "../../../shared/config/aiService";
 
 type Actor = { id: string; userId?: string; role: string; username?: string };
 
-const VALID_SPEC_TYPES: ProjectProductDescriptionSpecType[] = ["text", "number", "percent", "currency", "date", "url"];
-
-type ProductDescriptionSubKeyInput = {
-    key?: string;
-    value?: string;
-};
-
-type ProductDescriptionSpecInput = {
-    key?: string;
-    value?: string;
-    type?: string;
-    subKeys?: ProductDescriptionSubKeyInput[];
+type ProductDescriptionDocumentInput = {
+    url?: string;
+    name?: string;
 };
 
 type ProductDescriptionItemInput = {
     id?: string | null;
     productName?: string;
-    specs?: ProductDescriptionSpecInput[];
+    fileUrl?: string;
+    fileName?: string;
+    extractedText?: string | null;
     note?: string;
-    docUrl?: string;
+    documents?: ProductDescriptionDocumentInput[];
 };
 
 type ProductDescriptionPayload = {
@@ -118,51 +113,133 @@ export class ProjectProductDescriptionService {
         }
     }
 
-    private validateItems(rawItems?: ProductDescriptionItemInput[]) {
+    private escapeHtml(text: string) {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    private textToHtml(text: string) {
+        return text
+            .split(/\n{2,}/)
+            .map((paragraph) => paragraph.trim())
+            .filter(Boolean)
+            .map((paragraph) => `<p>${this.escapeHtml(paragraph).replace(/\n/g, "<br/>")}</p>`)
+            .join("");
+    }
+
+    private async extractRawFileText(fileUrl: string): Promise<{ text: string | null; hasComplexLayout: boolean }> {
+        const aiServiceUrl = assertAiServiceUrl();
+        const formData = new URLSearchParams();
+        formData.append("url", fileUrl);
+        try {
+            const response = await axios.post(`${aiServiceUrl}/documents/extract`, formData, {
+                timeout: AI_SERVICE_REQUEST_TIMEOUT_MS,
+                maxBodyLength: AI_SERVICE_MAX_FETCH_BYTES,
+                maxContentLength: AI_SERVICE_MAX_FETCH_BYTES
+            });
+            return {
+                text: response.data?.text ?? null,
+                hasComplexLayout: Boolean(response.data?.has_complex_layout)
+            };
+        } catch (error: any) {
+            const message = error?.response?.data?.detail || error?.message || "Không thể trích xuất nội dung file";
+            throw this.httpError(message, 400);
+        }
+    }
+
+    private async extractFileText(fileUrl: string): Promise<{ extractedText: string | null; hasComplexLayout: boolean }> {
+        const { text, hasComplexLayout } = await this.extractRawFileText(fileUrl);
+        return {
+            extractedText: text ? this.textToHtml(text) : null,
+            hasComplexLayout
+        };
+    }
+
+    async extractForFile(projectId: string, fileUrl: string, actor?: Actor) {
+        const project = await this.assertProjectAccess(projectId, actor);
+        this.assertCanEditProductDescription(project, actor);
+
+        const url = fileUrl?.trim();
+        if (!url) {
+            throw this.httpError("Vui lòng cung cấp fileUrl", 400);
+        }
+
+        const { extractedText, hasComplexLayout } = await this.extractFileText(url);
+        return { extractedText, hasComplexLayout };
+    }
+
+    async aiFormat(projectId: string, text: string, productName?: string, actor?: Actor) {
+        const project = await this.assertProjectAccess(projectId, actor);
+        this.assertCanEditProductDescription(project, actor);
+
+        const trimmed = text?.trim();
+        if (!trimmed) {
+            throw this.httpError("Vui lòng cung cấp nội dung để format", 400);
+        }
+
+        const aiServiceUrl = assertAiServiceUrl();
+        try {
+            const response = await axios.post(
+                `${aiServiceUrl}/documents/format-product-info`,
+                { text: trimmed, product_name: productName || null },
+                {
+                    timeout: AI_SERVICE_REQUEST_TIMEOUT_MS,
+                    maxBodyLength: AI_SERVICE_MAX_FETCH_BYTES,
+                    maxContentLength: AI_SERVICE_MAX_FETCH_BYTES
+                }
+            );
+            return { extractedText: response.data?.html ?? "" };
+        } catch (error: any) {
+            const message = error?.response?.data?.detail || error?.message || "Không thể format nội dung";
+            throw this.httpError(message, 400);
+        }
+    }
+
+    private async validateItems(rawItems?: ProductDescriptionItemInput[]) {
         if (!Array.isArray(rawItems) || rawItems.length === 0) {
             throw this.httpError("Vui lòng thêm ít nhất một sản phẩm", 400);
         }
 
-        return rawItems.map((item, index) => {
+        const results = [];
+        for (let index = 0; index < rawItems.length; index++) {
+            const item = rawItems[index];
             const productName = item.productName?.trim();
 
             if (!productName) {
                 throw this.httpError(`Vui lòng nhập tên sản phẩm ở dòng ${index + 1}`, 400);
             }
 
-            const specs: ProjectProductDescriptionSpec[] = (Array.isArray(item.specs) ? item.specs : [])
-                .map((spec) => {
-                    const key = spec.key?.trim() || "";
-                    const type = VALID_SPEC_TYPES.includes(spec.type as ProjectProductDescriptionSpecType)
-                        ? (spec.type as ProjectProductDescriptionSpecType)
-                        : "text";
-                    const subKeys = (Array.isArray(spec.subKeys) ? spec.subKeys : [])
-                        .map((sk) => ({ key: sk.key?.trim() || "", value: sk.value?.trim() || "" }))
-                        .filter((sk) => sk.key && sk.value);
-                    const value = spec.value?.trim() || "";
-
-                    if (type === "text" && subKeys.length > 0) {
-                        return { key, value: "", type, subKeys };
-                    }
-                    return { key, value, type };
-                })
-                .filter((spec) => spec.key && (spec.value || (spec.subKeys && spec.subKeys.length > 0)));
-
-            if (specs.length === 0) {
-                throw this.httpError(`Vui lòng nhập ít nhất một thông tin chuẩn (key:value) cho sản phẩm ${productName}`, 400);
+            const fileUrl = item.fileUrl?.trim() || "";
+            if (!fileUrl) {
+                throw this.httpError(`Vui lòng upload file thông tin chuẩn (doc/pdf) cho sản phẩm ${productName}`, 400);
             }
 
+            const fileName = item.fileName?.trim() || null;
             const note = item.note?.trim() || null;
-            const docUrl = item.docUrl?.trim() || null;
+            const providedExtractedText = typeof item.extractedText === "string" ? item.extractedText.trim() : "";
+            const extractedText = providedExtractedText
+                ? providedExtractedText
+                : (await this.extractFileText(fileUrl)).extractedText;
+            const documents = Array.isArray(item.documents)
+                ? item.documents
+                    .filter((doc) => doc?.url?.trim())
+                    .map((doc) => ({ url: doc.url!.trim(), name: doc.name?.trim() || null }))
+                : [];
 
-            return {
+            results.push({
                 id: item.id || null,
                 productName,
-                specs,
+                fileUrl,
+                fileName,
+                extractedText,
                 note,
-                docUrl
-            };
-        });
+                documents
+            });
+        }
+
+        return results;
     }
 
     private async findSubmissionForProject(projectId: string, submissionId: string) {
@@ -182,7 +259,7 @@ export class ProjectProductDescriptionService {
         }
     }
 
-    private async syncItems(submissionId: string, items: ReturnType<ProjectProductDescriptionService["validateItems"]>) {
+    private async syncItems(submissionId: string, items: Awaited<ReturnType<ProjectProductDescriptionService["validateItems"]>>) {
         const existingItems = await this.itemRepository.query(
             `SELECT "id" FROM "project_product_description_items" WHERE "submissionId" = $1`,
             [submissionId]
@@ -195,13 +272,15 @@ export class ProjectProductDescriptionService {
                 keptIds.add(item.id);
                 await this.itemRepository.query(
                     `UPDATE "project_product_description_items"
-                     SET "productName" = $1, "specs" = $2, "note" = $3, "docUrl" = $4, "updatedAt" = NOW()
-                     WHERE "id" = $5 AND "submissionId" = $6`,
+                     SET "productName" = $1, "fileUrl" = $2, "fileName" = $3, "extractedText" = $4, "note" = $5, "documents" = $6, "updatedAt" = NOW()
+                     WHERE "id" = $7 AND "submissionId" = $8`,
                     [
                         item.productName,
-                        JSON.stringify(item.specs),
+                        item.fileUrl,
+                        item.fileName,
+                        item.extractedText,
                         item.note,
-                        item.docUrl,
+                        JSON.stringify(item.documents || []),
                         item.id,
                         submissionId
                     ]
@@ -213,14 +292,16 @@ export class ProjectProductDescriptionService {
             keptIds.add(newId);
             await this.itemRepository.query(
                 `INSERT INTO "project_product_description_items"
-                    ("id", "productName", "specs", "note", "docUrl", "submissionId")
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                    ("id", "productName", "fileUrl", "fileName", "extractedText", "note", "documents", "submissionId")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                 [
                     newId,
                     item.productName,
-                    JSON.stringify(item.specs),
+                    item.fileUrl,
+                    item.fileName,
+                    item.extractedText,
                     item.note,
-                    item.docUrl,
+                    JSON.stringify(item.documents || []),
                     submissionId
                 ]
             );
@@ -265,7 +346,7 @@ export class ProjectProductDescriptionService {
         const createdBy = await this.userRepository.findOneBy({ id: actorUserId });
         if (!createdBy) throw this.httpError("Không tìm thấy người tạo", 404);
 
-        const items = this.validateItems(payload.items);
+        const items = await this.validateItems(payload.items);
         const submission = this.submissionRepository.create({
             project,
             projectId: project.id,
@@ -291,7 +372,7 @@ export class ProjectProductDescriptionService {
         const submission = await this.findSubmissionForProject(projectId, submissionId);
         this.assertEditableSubmission(submission, actor as Actor);
 
-        const items = this.validateItems(payload.items);
+        const items = await this.validateItems(payload.items);
         await this.syncItems(submission.id, items);
 
         submission.status = ProjectProductDescriptionStatus.DRAFT;
@@ -311,7 +392,7 @@ export class ProjectProductDescriptionService {
         this.assertEditableSubmission(submission, actor as Actor);
 
         if (Array.isArray(payload.items)) {
-            const items = this.validateItems(payload.items);
+            const items = await this.validateItems(payload.items);
             await this.syncItems(submission.id, items);
         }
 

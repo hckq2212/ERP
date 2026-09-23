@@ -21,6 +21,8 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { isManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
+import { assertTaskProjectNotOnHold, assertProjectNotOnHold } from "../helpers/ProjectHold.helper";
+import { assertBdOwnsProjectContract } from "../helpers/ProjectOwnership.helper";
 // Google Sheet integration is temporarily disabled.
 // import { GoogleSheetService } from "../../../shared/services/GoogleSheet.Service";
 
@@ -36,6 +38,44 @@ export class ProjectBaseService {
     protected userRepository = AppDataSource.getRepository(Users);
     protected notificationService = new NotificationService();
     // private googleSheetService = new GoogleSheetService();
+
+    protected httpError(message: string, statusCode: number) {
+        const error: any = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
+
+    /**
+     * Chặn thao tác ghi lên dự án đang tạm dừng (ON_HOLD).
+     * Gọi ở đầu mỗi service method có ghi dữ liệu dự án/task; KHÔNG gọi ở luồng resume/close.
+     */
+    protected async assertProjectNotOnHold(projectIds: (string | null | undefined)[], manager?: any) {
+        return assertProjectNotOnHold(this.projectRepository, projectIds, manager);
+    }
+
+    /**
+     * Biến thể dùng khi đã có sẵn `project` đã load.
+     */
+    protected assertLoadedProjectNotOnHold(project: { id: string; name: string; status: ProjectStatus } | null | undefined) {
+        return assertTaskProjectNotOnHold({ project });
+    }
+
+    /**
+     * Guard cho đường **BD ĐÓNG DỰ ÁN TRỰC TIẾP** (`POST /projects/:id/close/direct`).
+     *
+     * ⚠️ Trước đây helper này dùng cho đường "BD tạm dừng trực tiếp" — đường đó
+     * KHÔNG còn tồn tại (BD nay phải xin phép như PM). Logic không đổi, chỉ đổi
+     * mục đích sử dụng.
+     *
+     * BD không thuộc PROJECT_MANAGEMENT_ROLES nên phải kiểm tra tường minh.
+     * Caller phải tự cho BOD/ADMIN qua trước khi gọi helper này.
+     */
+    protected async assertBdOwnsProjectContract(
+        actor: { id?: string; userId?: string; role?: string } | undefined,
+        projectId: string
+    ) {
+        return assertBdOwnsProjectContract(this.contractRepository, actor, projectId);
+    }
 
     protected assertMonthKey(monthKey?: string) {
         const value = monthKey || new Date().toISOString().slice(0, 7);
@@ -84,6 +124,7 @@ export class ProjectBaseService {
             contractServiceId: cs.id,
             contractServiceIds: [cs.id],
             serviceId: cs.service?.id || cs.serviceId,
+            serviceCode: cs.code || cs.service?.code || null,
             serviceName: cs.name || cs.service?.name || "Dịch vụ",
             packageKey: opportunityPackage?.id || cs.packageName || cs.id,
             packageName: cs.packageName,
@@ -105,10 +146,133 @@ export class ProjectBaseService {
 
     protected emptySyncResult() {
         return {
+            createdContractServices: 0,
+            updatedContractServices: 0,
             createdTasks: 0,
             updatedOutputTasks: 0,
             backfilledResults: 0
         };
+    }
+
+    protected async syncContractServices(projectId: string) {
+        const syncResult = {
+            createdContractServices: 0,
+            updatedContractServices: 0
+        };
+
+        const project = await this.projectRepository.findOne({
+            where: { id: projectId },
+            relations: ["contract", "contract.opportunity"]
+        });
+        if (!project) throw new Error("Không tìm thấy dự án");
+        if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");
+
+        const contract = project.contract;
+        const contractServices = await this.contractServiceRepository.find({
+            where: { contract: { id: contract.id } },
+            relations: ["service", "opportunityService"]
+        });
+
+        const updateContractServiceSnapshot = async (
+            contractService: ContractServices,
+            source?: { opportunityService?: OpportunityServices | null, service?: Services | null }
+        ) => {
+            const opportunityService = source?.opportunityService || contractService.opportunityService;
+            const service = source?.service || opportunityService?.service || contractService.service;
+            let changed = false;
+
+            if (service && contractService.service?.id !== service.id) {
+                contractService.service = service;
+                contractService.serviceId = service.id;
+                changed = true;
+            } else if (service?.id && contractService.serviceId !== service.id) {
+                contractService.serviceId = service.id;
+                changed = true;
+            }
+
+            if (opportunityService && contractService.opportunityService?.id !== opportunityService.id) {
+                contractService.opportunityService = opportunityService;
+                changed = true;
+            }
+
+            const nextName = opportunityService?.name || service?.name;
+            if (!contractService.name && nextName) {
+                contractService.name = nextName;
+                changed = true;
+            }
+
+            const nextCode = service?.code || null;
+            if (nextCode && contractService.code !== nextCode) {
+                contractService.code = nextCode;
+                changed = true;
+            }
+
+            if (opportunityService) {
+                if (contractService.packageName !== opportunityService.packageName) {
+                    contractService.packageName = opportunityService.packageName;
+                    changed = true;
+                }
+                if (contractService.isPackageService !== opportunityService.isPackageService) {
+                    contractService.isPackageService = opportunityService.isPackageService;
+                    changed = true;
+                }
+            }
+
+            if (!changed) return;
+            await this.contractServiceRepository.save(contractService);
+            syncResult.updatedContractServices += 1;
+        };
+
+        if (contract.opportunity?.id) {
+            const opportunityServices = await this.opportunityServiceRepository.find({
+                where: { opportunity: { id: contract.opportunity.id } },
+                relations: ["service", "opportunity"]
+            });
+
+            const usedContractServiceIds = new Set<string>();
+            for (const opportunityService of opportunityServices) {
+                const matchingContractServices = contractServices.filter((contractService) => {
+                    if (usedContractServiceIds.has(contractService.id)) return false;
+                    if (contractService.opportunityService?.id === opportunityService.id) return true;
+                    return contractService.serviceId === opportunityService.serviceId &&
+                        contractService.isPackageService === opportunityService.isPackageService &&
+                        (!opportunityService.isPackageService || contractService.packageName === opportunityService.packageName);
+                });
+
+                for (const contractService of matchingContractServices) {
+                    usedContractServiceIds.add(contractService.id);
+                    await updateContractServiceSnapshot(contractService, {
+                        opportunityService,
+                        service: opportunityService.service
+                    });
+                }
+
+                const requiredQuantity = Number(opportunityService.quantity || 1);
+                for (let i = matchingContractServices.length; i < requiredQuantity; i++) {
+                    const contractService = this.contractServiceRepository.create({
+                        contract,
+                        service: opportunityService.service,
+                        serviceId: opportunityService.service?.id || opportunityService.serviceId,
+                        sellingPrice: opportunityService.sellingPrice,
+                        opportunityService,
+                        name: opportunityService.name || opportunityService.service?.name,
+                        code: opportunityService.service?.code,
+                        packageName: opportunityService.packageName,
+                        isPackageService: opportunityService.isPackageService
+                    } as any) as unknown as ContractServices;
+                    const savedContractService = await this.contractServiceRepository.save(contractService) as ContractServices;
+                    contractServices.push(savedContractService);
+                    usedContractServiceIds.add(savedContractService.id);
+                    syncResult.createdContractServices += 1;
+                }
+            }
+        }
+
+        for (const contractService of contractServices) {
+            await updateContractServiceSnapshot(contractService);
+        }
+
+        return syncResult;
     }
 
     protected buildContractServiceResult(task: Tasks) {
@@ -215,8 +379,9 @@ export class ProjectBaseService {
 
                     const sequenceNumber = totalCountForProject + 1;
                     const seq = sequenceNumber.toString().padStart(2, '0');
+                    const serviceCode = cs.code || cs.service?.code;
                     const jobCode = job.code || `JOB${job.id}`;
-                    const taskCode = `${contract.contractCode}-${jobCode}-${seq}`;
+                    const taskCode = [contract.contractCode, serviceCode, jobCode, seq].filter(Boolean).join("-");
 
                     const task = this.taskRepository.create({
                         code: taskCode,
@@ -295,6 +460,11 @@ export class ProjectBaseService {
             where: rbacWhere,
             relations: [
                 "contract",
+                "contract.createdBy",
+                "contract.opportunity",
+                "contract.opportunity.createdBy",
+                "contract.customer",
+                "contract.customer.createdBy",
                 "team",
                 "team.teamLead",
                 "team.members",
@@ -307,18 +477,48 @@ export class ProjectBaseService {
                 status: true,
                 plannedStartDate: true,
                 plannedEndDate: true,
+                // ⚠️ BẮT BUỘC có: UI cần các field này để hiện banner đếm ngược 37 ngày,
+                // người tạm dừng, và trạng thái chờ duyệt. Thiếu ở đây thì frontend
+                // nhận `undefined` (KHÔNG báo lỗi — chỉ là banner trống).
+                autoAcceptAt: true,
+                pausedAt: true,
+                pausedById: true,
+                isOnHold: true,
+                currentPauseRequestId: true,
                 googleSheetId: true,
                 googleSheetUrl: true,
                 googleSheetStatus: true,
                 googleSheetError: true,
                 googleSheetCreatedAt: true,
+                workingFiles: true,
                 contract: {
                     id: true,
                     name: true,
                     contractCode: true,
                     attachments: true,
                     status: true,
-                    description: true
+                    description: true,
+                    createdBy: {
+                        id: true,
+                        fullName: true
+                    },
+                    opportunity: {
+                        id: true,
+                        name: true,
+                        opportunityCode: true,
+                        createdBy: {
+                            id: true,
+                            fullName: true
+                        }
+                    },
+                    customer: {
+                        id: true,
+                        name: true,
+                        createdBy: {
+                            id: true,
+                            fullName: true
+                        }
+                    }
                 },
                 team: {
                     id: true,
@@ -341,6 +541,11 @@ export class ProjectBaseService {
                             }
                         }
                     }
+                },
+                // Quan hệ ManyToOne — cần cho banner "Người tạm dừng"
+                pausedBy: {
+                    id: true,
+                    fullName: true
                 }
             }
         });

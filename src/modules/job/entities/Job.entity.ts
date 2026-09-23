@@ -6,7 +6,7 @@ import { Tasks } from "../../task/entities/Task.entity";
 import { VendorJobs } from "../../vendor/entities/VendorJob.entity";
 import { JobCriterias } from "../../job-criteria/entities/JobCriteria.entity";
 import { ServiceJob } from "../../service/entities/ServiceJob.entity";
-import { PerformerType } from "../../../shared/entities/Enums";
+import { PerformerType, JobCategory } from "../../../shared/entities/Enums";
 
 
 @Entity()
@@ -42,6 +42,14 @@ export class Jobs extends BaseEntity {
 
     @Column({ nullable: true })
     code: string;
+
+    @Column({
+        type: "enum",
+        enum: JobCategory,
+        array: true,
+        default: '{}'
+    })
+    categories: JobCategory[];
 
     @Column({ nullable: true })
     vinicoin: number;

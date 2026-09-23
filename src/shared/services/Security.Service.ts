@@ -129,11 +129,12 @@ export class SecurityService {
             ], userInfo);
         }
 
-        // Business Development (BD) can see projects related to their contracts or customers
+        // Business Development (BD) can see projects related to their contracts, customers, or opportunities
         if (role === UserRole.BD) {
             return SecurityService.withTenant([
                 { contract: { createdBy: { id: userInfo.userId } } },
-                { contract: { customer: { createdBy: { id: userInfo.userId } } } }
+                { contract: { customer: { createdBy: { id: userInfo.userId } } } },
+                { contract: { opportunity: { createdBy: { id: userInfo.userId } } } }
             ], userInfo);
         }
 

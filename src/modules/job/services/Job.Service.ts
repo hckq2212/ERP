@@ -20,13 +20,16 @@ export class JobService {
         return data;
     }
 
-    async getAll(filters: { name?: string } = {}) {
+    async getAll(filters: { name?: string; category?: string } = {}) {
         const query: any = {
             relations: ["vendorJobs", "vendorJobs.vendor", "serviceJobs", "serviceJobs.service", "criteria"]
         };
 
         if (filters.name) {
             query.where = { name: ILike(`%${filters.name}%`) };
+        }
+        if (filters.category) {
+            query.where = { ...(query.where || {}), categories: Raw((alias) => `:category = ANY(${alias})`, { category: filters.category }) };
         }
         query.where = SecurityService.withTenant(query.where || {});
 

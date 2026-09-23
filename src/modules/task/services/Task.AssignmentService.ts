@@ -34,6 +34,7 @@ export class TaskAssignmentService extends TaskBaseService {
         });
 
         if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+        this.assertTaskNotLocked(task);
 
         const currentUserId = currentUser?.userId || currentUser?.id;
         const isAdminOrBod = isProjectManagementRole(currentUser?.role);
@@ -58,6 +59,7 @@ export class TaskAssignmentService extends TaskBaseService {
 
     async update(id: string, data: Partial<Tasks> & { assigneeId?: string }, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
+        this.assertTaskNotLocked(task);
         await assertSubtaskPlanApproved(this.taskRepository, task, "cập nhật subtask");
 
         const completionStatuses = [
@@ -152,6 +154,10 @@ export class TaskAssignmentService extends TaskBaseService {
         if (!plannedEndDate || Number.isNaN(plannedEndDate.getTime())) {
             throw this.httpError("Vui lòng nhập deadline", 400);
         }
+
+        // Chặn trước khi mở transaction: nếu BẤT KỲ task nào thuộc dự án ON_HOLD
+        // thì chặn toàn bộ, không ghi nửa vời.
+        await this.assertProjectNotOnHoldForTasks(taskIds);
 
         const results = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const results = [];
@@ -334,6 +340,8 @@ export class TaskAssignmentService extends TaskBaseService {
                 throw this.httpError("Không tìm thấy dự án", 404);
             }
 
+            this.assertTaskProjectNotOnHold({ project });
+
             const currentUserId = currentUser?.userId || currentUser?.id;
             const isAdminOrBod = isProjectManagementRole(currentUser?.role);
             const isProjectLead = this.isProjectOperatorFromTeam(project.team, currentUser);
@@ -457,6 +465,7 @@ export class TaskAssignmentService extends TaskBaseService {
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
+        this.assertTaskProjectNotOnHold(task);
 
         // Identify old performer info for notification
         let oldPerformerName = "";

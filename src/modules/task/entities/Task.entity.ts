@@ -97,6 +97,16 @@ export class Tasks extends BaseEntity {
     })
     status: TaskStatus;
 
+    /**
+     * Trạng thái TRƯỚC khi dự án tạm dừng — để `resume` khôi phục đúng.
+     *
+     * ⚠️ CHỈ set cho task DỞ DANG bị đưa về `ON_HOLD`.
+     * Task thuộc 3 trạng thái cuối (COMPLETED / INTERNAL_COMPLETED / ACCEPTED)
+     * được MIỄN TRỪ — không bị đổi status nên không cần field này.
+     */
+    @Column({ type: "varchar", length: 30, nullable: true })
+    statusBeforeHold: TaskStatus | null;
+
     @Column({ type: "json", nullable: true })
     result: {
         type: string,

@@ -25,6 +25,13 @@ import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events
 import { ProjectBaseService } from "./Project.BaseService";
 
 export class ProjectAssignmentService extends ProjectBaseService {
+    private applyOpportunitySchedule(project: Projects, contract: Contracts) {
+        if (!contract.opportunity) return;
+
+        project.plannedStartDate = contract.opportunity.startDate || null as any;
+        project.plannedEndDate = contract.opportunity.endDate || null as any;
+    }
+
     async assign(data: { contractId: string, pmId: string, name?: string }, actor?: { id: string; role: string; userId?: string }) {
         if (!actor || !isManagementRole(actor.role)) {
             const error: any = new Error("Chỉ ADMIN/BOD mới được phân công PM cho dự án");
@@ -59,15 +66,17 @@ export class ProjectAssignmentService extends ProjectBaseService {
 
         let isNewProject = false;
         if (project) {
+            this.assertLoadedProjectNotOnHold(project);
             project.name = data.name || project.name;
+            this.applyOpportunitySchedule(project, contract);
         } else {
             isNewProject = true;
             project = this.projectRepository.create({
                 name: data.name || `Dự án cho HĐ ${contract.contractCode}`,
                 contract: contract,
-                status: ProjectStatus.PENDING_CONFIRMATION,
-                plannedStartDate: new Date()
+                status: ProjectStatus.PENDING_CONFIRMATION
             });
+            this.applyOpportunitySchedule(project, contract);
         }
 
         let team = project.team;
@@ -98,10 +107,21 @@ export class ProjectAssignmentService extends ProjectBaseService {
             await this.memberRepository.remove(oldProjectManagers);
         }
 
-        const existingPmMember = await this.memberRepository.findOne({
+        // The assigned PM is a fixed project role: remove every secondary role
+        // and keep exactly one PROJECT_MANAGER membership.
+        const assignedPmMemberships = await this.memberRepository.find({
             where: SecurityService.withTenant({ team: { id: team.id }, user: { id: pm.id } })
         });
-        if (!existingPmMember) {
+        const assignedPmRoleMemberships = assignedPmMemberships.filter(
+            member => member.role === MemberRole.PROJECT_MANAGER
+        );
+        const secondaryMemberships = assignedPmMemberships.filter(
+            member => member.role !== MemberRole.PROJECT_MANAGER
+        );
+        if (secondaryMemberships.length > 0) {
+            await this.memberRepository.remove(secondaryMemberships);
+        }
+        if (assignedPmRoleMemberships.length === 0) {
             const pmMember = this.memberRepository.create({
                 team,
                 user: pm,
@@ -109,9 +129,8 @@ export class ProjectAssignmentService extends ProjectBaseService {
                 ...SecurityService.getTenantWhere()
             } as any);
             await this.memberRepository.save(pmMember);
-        } else if (existingPmMember.role !== MemberRole.PROJECT_MANAGER) {
-            existingPmMember.role = MemberRole.PROJECT_MANAGER;
-            await this.memberRepository.save(existingPmMember);
+        } else if (assignedPmRoleMemberships.length > 1) {
+            await this.memberRepository.remove(assignedPmRoleMemberships.slice(1));
         }
 
         if (isNewProject) {
@@ -148,9 +167,16 @@ export class ProjectAssignmentService extends ProjectBaseService {
     }
 
     async createFromContract(contract: Contracts, userInfo?: { id: string, userId?: string }) {
+        const fullContract = contract.opportunity
+            ? contract
+            : await this.contractRepository.findOne({
+                where: { id: contract.id },
+                relations: ["opportunity"]
+            }) || contract;
+
         // 1. Check if project already exists
         let project = await this.projectRepository.findOne({
-            where: { contract: { id: contract.id } },
+            where: { contract: { id: fullContract.id } },
             relations: ["contract"]
         });
 
@@ -158,14 +184,15 @@ export class ProjectAssignmentService extends ProjectBaseService {
         if (!project) {
             isNewProject = true;
             project = this.projectRepository.create({
-                name: `${contract.name}`,
-                contract: contract,
+                name: `${fullContract.name}`,
+                contract: fullContract,
                 status: ProjectStatus.PENDING_CONFIRMATION,
                 createdBy: userInfo?.userId ? { id: userInfo.userId } as Users : undefined
             });
-
-            project = await this.projectRepository.save(project);
         }
+
+        this.applyOpportunitySchedule(project, fullContract);
+        project = await this.projectRepository.save(project);
 
         if (isNewProject) {
             // Google Sheet integration is temporarily disabled.
@@ -180,6 +207,38 @@ export class ProjectAssignmentService extends ProjectBaseService {
 
         projectEmitter.emit(PROJECT_EVENTS.CREATED, project);
         return project;
+    }
+
+    async updateSchedule(id: string, data: { plannedStartDate?: string | null, plannedEndDate?: string | null }, actor?: { id: string; role: string; userId?: string }) {
+        const project = await this.projectRepository.findOne({
+            where: { id },
+            relations: ["team", "team.members", "team.members.user"]
+        });
+
+        if (!project) throw new Error("Không tìm thấy dự án");
+
+        const actorUserId = actor?.userId || actor?.id;
+        const isAdmin = actor?.role === UserRole.ADMIN;
+        const isAssignedPm = actor?.role === UserRole.PM && project.team?.members?.some(member =>
+            member.role === MemberRole.PROJECT_MANAGER && member.user?.id === actorUserId
+        );
+
+        if (!isAdmin && !isAssignedPm) {
+            const error: any = new Error("Chỉ ADMIN hoặc PM phụ trách dự án được chỉnh sửa tiến trình dự án");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        if (data.plannedStartDate !== undefined) {
+            project.plannedStartDate = data.plannedStartDate ? new Date(data.plannedStartDate) : null as any;
+        }
+        if (data.plannedEndDate !== undefined) {
+            project.plannedEndDate = data.plannedEndDate ? new Date(data.plannedEndDate) : null as any;
+        }
+
+        const savedProject = await this.projectRepository.save(project);
+        projectEmitter.emit(PROJECT_EVENTS.UPDATED, savedProject);
+        return this.getOne(savedProject.id, actor);
     }
 
     async requestStaffing(projectId: string, note: string | undefined, actor?: { id: string; role: string; userId?: string }) {
@@ -198,6 +257,7 @@ export class ProjectAssignmentService extends ProjectBaseService {
             error.statusCode = 404;
             throw error;
         }
+        this.assertLoadedProjectNotOnHold(project);
         if (!project.team) {
             const error: any = new Error("Dự án chưa có đội dự án");
             error.statusCode = 400;

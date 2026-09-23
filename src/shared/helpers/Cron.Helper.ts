@@ -4,6 +4,8 @@ import { Tasks } from '../../modules/task/entities/Task.entity';
 import { TaskStatus } from '../entities/Enums';
 import { Debts, DebtStatus } from '../../modules/debt/entities/Debt.entity';
 import { Accounts } from '../../modules/account/entities/Account.entity';
+import { Projects, ProjectStatus } from '../../modules/project/entities/Project.entity';
+import { ProjectPauseService } from '../../modules/project/services/ProjectPause.Service';
 import { VinicoinTransactions, VinicoinTransactionType } from '../../modules/vinicoin/entities/VinicoinTransaction.entity';
 import { LessThan, MoreThan, In } from 'typeorm';
 import { ulid } from 'ulid';
@@ -25,6 +27,10 @@ export class CronHelper {
 
                 // Statuses that represent "Work in Progress" or "Pending" 
                 // and should be marked as OVERDUE if the deadline passes.
+                //
+                // ⚠️ KHÔNG thêm TaskStatus.ON_HOLD vào danh sách này.
+                // Task ON_HOLD thuộc dự án đang tạm dừng — không bao giờ được
+                // tự chuyển sang OVERDUE (sẽ phá vỡ trạng thái tạm dừng).
                 const activeStatuses = [
                     TaskStatus.PENDING,
                     TaskStatus.DOING,
@@ -62,6 +68,8 @@ export class CronHelper {
                 const debtRepository = AppDataSource.getRepository(Debts);
                 const now = new Date();
 
+                // ⚠️ KHÔNG thêm DebtStatus.LOCKED vào danh sách này.
+                // Debt LOCKED thuộc dự án đã đóng — không bao giờ được tự chuyển sang OVERDUE.
                 const activeDebtStatuses = [
                     DebtStatus.UNPAID,
                     DebtStatus.PARTIAL
@@ -150,6 +158,60 @@ export class CronHelper {
             }
         }, { timezone: 'Asia/Ho_Chi_Minh' });
 
+        /**
+         * Project Auto-Close Job (D+37)
+         * Chạy mỗi giờ: dự án đang tạm dừng quá 37 ngày → FORCE ĐÓNG (không qua duyệt).
+         *
+         * Idempotent: `forceCloseForCron` tự bỏ qua nếu dự án đã resume/đã đóng.
+         */
+        cron.schedule('0 * * * *', async () => {
+            console.log('[Cron] Checking for projects to force-close at', new Date().toLocaleString());
+            try {
+                const projectRepository = AppDataSource.getRepository(Projects);
+                const dueProjects = await projectRepository.find({
+                    where: {
+                        status: ProjectStatus.ON_HOLD,
+                        autoAcceptAt: LessThan(new Date())
+                    },
+                    select: { id: true, name: true }
+                });
+
+                if (dueProjects.length === 0) return;
+
+                const pauseService = new ProjectPauseService();
+                let closedCount = 0;
+                for (const project of dueProjects) {
+                    try {
+                        const result = await pauseService.forceCloseForCron(project.id);
+                        if (result) closedCount += 1;
+                    } catch (error) {
+                        console.error(`[Cron] Lỗi force đóng dự án ${project.id}:`, error);
+                    }
+                }
+                console.log(`[Cron] Force-closed ${closedCount}/${dueProjects.length} projects.`);
+            } catch (error) {
+                console.error('[Cron] Error in project auto-close job:', error);
+            }
+        }, { timezone: 'Asia/Ho_Chi_Minh' });
+
+        /**
+         * Project Close Reminder Job
+         * Chạy 09:00 sáng giờ VN mỗi ngày: nhắc nhở trong 7 ngày cuối trước D+37.
+         *
+         * Người nhận: PM + BD phụ trách HĐ + BOD + ADMIN.
+         * Chống gửi lặp bằng `Projects.lastReminderDate`.
+         */
+        cron.schedule('0 9 * * *', async () => {
+            console.log('[Cron] Sending project close reminders at', new Date().toLocaleString());
+            try {
+                const pauseService = new ProjectPauseService();
+                const sent = await pauseService.sendDailyReminders();
+                console.log(`[Cron] Sent ${sent} project close reminders.`);
+            } catch (error) {
+                console.error('[Cron] Error in project close reminder job:', error);
+            }
+        }, { timezone: 'Asia/Ho_Chi_Minh' });
+
         console.log('[Cron] Service initialized successfully.');
     }
 
@@ -193,6 +255,35 @@ export class CronHelper {
         );
 
         console.log(`[Cron] Manual check: Updated ${result.affected || 0} tasks and ${debtResult.affected || 0} debts.`);
-        return { tasks: result.affected || 0, debts: debtResult.affected || 0 };
+
+        // Project auto-close + reminder (tính năng tạm dừng dự án)
+        let closedProjects = 0;
+        let remindersSent = 0;
+        try {
+            const pauseService = new ProjectPauseService();
+            const projectRepository = AppDataSource.getRepository(Projects);
+            const dueProjects = await projectRepository.find({
+                where: {
+                    status: ProjectStatus.ON_HOLD,
+                    autoAcceptAt: LessThan(now)
+                },
+                select: { id: true }
+            });
+            for (const project of dueProjects) {
+                const closed = await pauseService.forceCloseForCron(project.id);
+                if (closed) closedProjects += 1;
+            }
+            remindersSent = await pauseService.sendDailyReminders();
+        } catch (error) {
+            console.error('[Cron] Manual check error in project pause jobs:', error);
+        }
+
+        console.log(`[Cron] Manual check: closed ${closedProjects} projects, sent ${remindersSent} reminders.`);
+        return {
+            tasks: result.affected || 0,
+            debts: debtResult.affected || 0,
+            closedProjects,
+            remindersSent
+        };
     }
 }
