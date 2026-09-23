@@ -14,6 +14,7 @@ import { Violations } from "../../task/entities/Violation.entity";
 import { DashboardScopeType, selectDashboardWorkItems } from "./Dashboard.Scope";
 import { DashboardActor, DashboardScopeService } from "./DashboardScope.Service";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
+import { getMemberRoles } from "../../project/entities/TeamMember.entity";
 
 export class DashboardService {
     private contractRepo = AppDataSource.getRepository(Contracts);
@@ -31,11 +32,12 @@ export class DashboardService {
         requestedUserId?: string,
         month?: number,
         year?: number,
-        projectId?: string
+        projectId?: string,
+        mode?: "personal" | "management"
     ) {
         const data: any = {};
         const dateFilter = this.getDateFilter(month, year);
-        const scope = await this.scopeService.resolve(actor, requestedUserId, projectId);
+        const scope = await this.scopeService.resolve(actor, requestedUserId, projectId, mode);
         const userId = scope.targetUserId;
         const role = actor.role;
 
@@ -45,7 +47,10 @@ export class DashboardService {
             selectedProjectId: scope.selectedProjectId,
             canSelectMembers: scope.canSelectMembers,
             availableProjects: scope.availableProjects,
-            availableMembers: scope.availableMembers
+            availableMembers: scope.availableMembers,
+            isAccountViewer: Boolean(scope.isAccountViewer),
+            isAccountViewingMember: Boolean(scope.isAccountViewingMember),
+            mode: scope.mode
         };
 
         if (scope.canSelectMembers) {
@@ -166,9 +171,13 @@ export class DashboardService {
         }
 
         // 4. Personal Tasks (strictly assigned to or helped by user)
+        const personalProjectFilter = projectId
+            ? { id: projectId }
+            : (scope.projectIds?.length > 0 ? In(scope.projectIds) : undefined);
+
         const personalTaskWhere = [
-            { assignee: { id: userId }, ...(projectId && { project: { id: projectId } }) },
-            { helper: { id: userId }, ...(projectId && { project: { id: projectId } }) }
+            { assignee: { id: userId }, ...(personalProjectFilter && { project: personalProjectFilter }) },
+            { helper: { id: userId }, ...(personalProjectFilter && { project: personalProjectFilter }) }
         ].flatMap(condition => this.withTaskPeriod(condition, dateFilter));
 
         const rawPersonalTasks = await this.taskRepo.find({
@@ -279,12 +288,14 @@ export class DashboardService {
         const roleOverdueCount = activeRoleTasks.filter(t => t.status === TaskStatus.OVERDUE).length;
 
         const roleReworkCount = activeRoleTasks.filter(t =>
-            [TaskStatus.REWORKING, TaskStatus.REJECTED, TaskStatus.REJECTED_BILLABLE, TaskStatus.REJECTED_SUPPORT].includes(t.status as any)
+            [TaskStatus.REWORKING, TaskStatus.REJECTED].includes(t.status as any)
         ).length;
 
         const roleStats = {
-            doingCount: (roleStatusCounts[TaskStatus.DOING] || 0) + (roleStatusCounts[TaskStatus.REWORKING] || 0) + (roleStatusCounts[TaskStatus.REJECTED] || 0),
-            completedCount: (roleStatusCounts[TaskStatus.COMPLETED] || 0) + (roleStatusCounts[TaskStatus.ACCEPTED] || 0) + (roleStatusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
+            // doingCount: (roleStatusCounts[TaskStatus.DOING] || 0) + (roleStatusCounts[TaskStatus.REWORKING] || 0) + (roleStatusCounts[TaskStatus.REJECTED] || 0),
+            doingCount: (roleStatusCounts[TaskStatus.DOING] || 0),
+            // completedCount: (roleStatusCounts[TaskStatus.COMPLETED] || 0) + (roleStatusCounts[TaskStatus.ACCEPTED] || 0) + (roleStatusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
+            completedCount: (roleStatusCounts[TaskStatus.COMPLETED] || 0),
             overdueCount: roleOverdueCount,
             reworkCount: roleReworkCount,
             pendingCount: (roleStatusCounts[TaskStatus.AWAITING_REVIEW] || 0) + (roleStatusCounts.WAITING_APPROVAL || 0),
@@ -334,7 +345,7 @@ export class DashboardService {
                         userRole = "ACCOUNT";
                     } else if (project.team.members?.length) {
                         const m = project.team.members.find((mem: any) => mem.user?.id === userId);
-                        if (m) userRole = m.role;
+                        if (m) userRole = getMemberRoles(m)[0];
                     }
                 }
 
@@ -411,7 +422,11 @@ export class DashboardService {
                 projectName: t.project?.name,
                 clientName: t.project?.contract?.customer?.name,
                 code: t.code,
-                projectId: t.project?.id
+                projectId: t.project?.id,
+                assignee: t.assignee ? {
+                    id: t.assignee.id,
+                    fullName: t.assignee.fullName
+                } : undefined
             }));
 
         // 2. Rework Tasks (Làm sai / Bị từ chối do chưa đạt yêu cầu)
@@ -426,7 +441,11 @@ export class DashboardService {
                 code: t.code,
                 deadline: t.plannedEndDate,
                 status: t.status,
-                projectId: t.project?.id
+                projectId: t.project?.id,
+                assignee: t.assignee ? {
+                    id: t.assignee.id,
+                    fullName: t.assignee.fullName
+                } : undefined
             }));
 
         data.member = {
@@ -444,16 +463,8 @@ export class DashboardService {
             completedCount: (statusCounts[TaskStatus.COMPLETED] || 0) + (statusCounts[TaskStatus.ACCEPTED] || 0) + (statusCounts[TaskStatus.INTERNAL_COMPLETED] || 0),
             participatingProjects,
             roleStats,
-            upcomingDeadlines: workTasks
-                .filter(t =>
-                    t.status !== TaskStatus.COMPLETED
-                    && t.status !== TaskStatus.INTERNAL_COMPLETED
-                    && t.status !== TaskStatus.ACCEPTED
-                    // Không réo deadline của dự án đang tạm dừng / task đã hủy
-                    && t.status !== TaskStatus.ON_HOLD
-                    && t.status !== TaskStatus.CANCELLED
-                    && t.plannedEndDate
-                )
+            upcomingDeadlines: activeTasks
+                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.INTERNAL_COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
                 .sort((a, b) => new Date(a.plannedEndDate).getTime() - new Date(b.plannedEndDate).getTime())
                 .slice(0, 10)
                 .map(t => ({
@@ -486,6 +497,16 @@ export class DashboardService {
             violationCount: violations.length,
             violationStats
         };
+
+        if (scope.isAccountViewingMember) {
+            data.member.vinicoin = 0;
+            data.member.vinicoinTotal = 0;
+            data.member.vinicoinWithdrawn = 0;
+            data.member.reworkTasks = [];
+            data.member.reworkCount = 0;
+            data.member.violationCount = 0;
+            data.member.violationStats = {};
+        }
 
         return data;
     }

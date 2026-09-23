@@ -31,16 +31,17 @@ test("staff receives personal scope and cannot select another member", () => {
     );
 });
 
-test("actual team lead receives management scope", () => {
+test("actual team lead receives personal scope on own dashboard but can select managed members", () => {
     const scope = resolveDashboardScope({
         ...baseInput,
         managedProjectIds: ["managed-project"],
         managedMemberIds: ["viewer", "member-a"]
     });
 
-    assert.equal(scope.type, DashboardScopeType.MANAGEMENT);
-    assert.deepEqual(scope.projectIds, ["managed-project"]);
+    assert.equal(scope.type, DashboardScopeType.PERSONAL);
+    assert.deepEqual(scope.projectIds, ["personal-project"]);
     assert.equal(scope.canSelectMembers, true);
+    assert.deepEqual(scope.memberIds, ["viewer", "member-a"]);
 });
 
 test("PM receives management scope even when no project is currently assigned", () => {
@@ -105,4 +106,59 @@ test("management widgets use project-scoped work items instead of personal items
         selectDashboardWorkItems(DashboardScopeType.PERSONAL, personalItems, projectItems),
         personalItems
     );
+});
+
+test("account viewer can select managed members and has isAccountViewingMember flag set", () => {
+    const scope = resolveDashboardScope({
+        ...baseInput,
+        isAccountViewer: true,
+        managedProjectIds: ["managed-project"],
+        managedMemberIds: ["viewer", "member-a"],
+        requestedUserId: "member-a",
+        targetPersonalProjectIds: ["managed-project", "outside-project"]
+    });
+
+    assert.equal(scope.type, DashboardScopeType.PERSONAL);
+    assert.equal(scope.targetUserId, "member-a");
+    assert.deepEqual(scope.projectIds, ["managed-project"]);
+    assert.equal(scope.canSelectMembers, true);
+    assert.equal(scope.isAccountViewingMember, true);
+});
+
+test("BD and ADMIN_SALE cannot select members or view another member dashboard", () => {
+    const scopeBD = resolveDashboardScope({
+        ...baseInput,
+        viewerRole: UserRole.BD,
+        isAccountViewer: true,
+        managedProjectIds: ["managed-project"],
+        managedMemberIds: ["viewer", "member-a"]
+    });
+
+    assert.equal(scopeBD.canSelectMembers, false);
+    assert.equal(scopeBD.isAccountViewer, false);
+
+    const scopeAdminSale = resolveDashboardScope({
+        ...baseInput,
+        viewerRole: UserRole.ADMIN_SALE,
+        isAccountViewer: true,
+        managedProjectIds: ["managed-project"],
+        managedMemberIds: ["viewer", "member-a"]
+    });
+
+    assert.equal(scopeAdminSale.canSelectMembers, false);
+    assert.equal(scopeAdminSale.isAccountViewer, false);
+});
+
+test("PM can request personal scope using mode=personal", () => {
+    const scope = resolveDashboardScope({
+        ...baseInput,
+        viewerRole: UserRole.PM,
+        mode: "personal"
+    });
+
+    assert.equal(scope.type, DashboardScopeType.PERSONAL);
+    assert.equal(scope.targetUserId, "viewer");
+    assert.deepEqual(scope.projectIds, ["personal-project"]);
+    assert.equal(scope.canSelectMembers, true);
+    assert.equal(scope.mode, "personal");
 });

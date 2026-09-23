@@ -2,7 +2,7 @@ import { In } from "typeorm";
 import { AppDataSource } from "../../../data-source";
 import { UserRole } from "../../account/entities/Account.entity";
 import { ProjectStatus, Projects } from "../../project/entities/Project.entity";
-import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { MemberRole, getMemberRoles, memberHasRole } from "../../project/entities/TeamMember.entity";
 import { Tasks } from "../../task/entities/Task.entity";
 import { Users } from "../../user/entities/User.entity";
 import {
@@ -55,7 +55,8 @@ export class DashboardScopeService {
     async resolve(
         actor: DashboardActor,
         requestedUserId?: string,
-        requestedProjectId?: string
+        requestedProjectId?: string,
+        mode?: "personal" | "management"
     ): Promise<DashboardScopeContext> {
         const viewerUserId = actor.userId;
         if (!viewerUserId) {
@@ -76,24 +77,37 @@ export class DashboardScopeService {
             order: { createdAt: "DESC" }
         });
 
-        const managedProjects = allActiveProjects.filter(project => {
+        const isExcludedSaleRole = [UserRole.BD, UserRole.ADMIN_SALE].includes(actor.role);
+
+        const isTeamLeadOrAccount = !isExcludedSaleRole && allActiveProjects.some(project =>
+            project.team?.members?.some(member =>
+                member.user?.id === viewerUserId && member.role === MemberRole.ACCOUNT
+            ) ||
+            (project.team?.teamLead?.id === viewerUserId && actor.role !== UserRole.PM)
+        );
+
+        const isAccountViewer = isTeamLeadOrAccount;
+
+        const managedProjects = isExcludedSaleRole ? [] : allActiveProjects.filter(project => {
             if (project.team?.teamLead?.id === viewerUserId) return true;
 
             return project.team?.members?.some(member => {
                 if (member.user?.id !== viewerUserId) return false;
                 return actor.role === UserRole.PM
-                    ? member.role === MemberRole.PROJECT_MANAGER
-                    : member.role === MemberRole.ACCOUNT;
+                    ? memberHasRole(member, MemberRole.PROJECT_MANAGER)
+                    : memberHasRole(member, MemberRole.ACCOUNT);
             });
         });
 
         const managedMemberRoles = new Map<string, string>();
         managedProjects.forEach(project => {
             const lead = project.team?.teamLead;
-            if (lead?.id) managedMemberRoles.set(lead.id, MemberRole.ACCOUNT);
+            if (lead?.id && !managedMemberRoles.has(lead.id)) {
+                managedMemberRoles.set(lead.id, MemberRole.ACCOUNT);
+            }
             project.team?.members?.forEach(member => {
                 if (member.user?.id && !managedMemberRoles.has(member.user.id)) {
-                    managedMemberRoles.set(member.user.id, member.role);
+                    managedMemberRoles.set(member.user.id, getMemberRoles(member)[0] || "MEMBER");
                 }
             });
         });
@@ -117,8 +131,10 @@ export class DashboardScopeService {
         const resolved = resolveDashboardScope({
             viewerUserId,
             viewerRole: actor.role,
+            isAccountViewer,
             requestedUserId,
             requestedProjectId,
+            mode,
             managedProjectIds: managedProjects.map(project => project.id),
             managedMemberIds: Array.from(managedMemberRoles.keys()),
             personalProjectIds: personalProjects.map(project => project.id),

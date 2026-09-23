@@ -1,9 +1,10 @@
-import "reflect-metadata"
+import "reflect-metadata";
 import { DataSource } from "typeorm"
 import { Accounts } from "./modules/account/entities/Account.entity"
 import { Users } from "./modules/user/entities/User.entity"
 import { ProjectTeams } from "./modules/project/entities/ProjectTeam.entity"
 import { TeamMembers } from "./modules/project/entities/TeamMember.entity"
+import { TeamMemberRoles } from "./modules/project/entities/TeamMemberRole.entity"
 import { Vendors } from "./modules/vendor/entities/Vendor.entity"
 import { ReferralPartners } from "./modules/referral-partner/entities/ReferralPartner.entity"
 import { Customers } from "./modules/customer/entities/Customer.entity"
@@ -92,6 +93,7 @@ export const AppDataSource = new DataSource({
         Users,
         ProjectTeams,
         TeamMembers,
+        TeamMemberRoles,
         Vendors,
         ReferralPartners,
         Customers,

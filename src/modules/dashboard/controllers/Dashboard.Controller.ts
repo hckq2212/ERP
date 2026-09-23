@@ -11,14 +11,15 @@ export class DashboardController {
                 return res.status(401).json({ message: "Không xác định được danh tính người dùng" });
             }
 
-            const { userId, month, year, projectId } = req.query;
+            const { userId, month, year, projectId, mode } = req.query;
 
             const data = await this.dashboardService.getDashboardData(
                 userInfo,
                 userId ? (userId as string) : undefined,
                 month ? Number(month) : undefined,
                 year ? Number(year) : undefined,
-                projectId ? (projectId as string) : undefined
+                projectId ? (projectId as string) : undefined,
+                mode ? (mode as "personal" | "management") : undefined
             );
 
             res.status(200).json(data);

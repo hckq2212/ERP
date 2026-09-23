@@ -54,6 +54,8 @@ import documentLibraryRoute from "./modules/document-library/routes/DocumentLibr
 import chatRoomRoute from "./modules/chat-room/routes/ChatRoom.Route"
 import { createServer } from "http"
 import { initSocket } from "./socket"
+import aiDashboardRoute from "./modules/ai-dashboard/routes/AiDashboard.Route"
+import { migrateTeamMemberRoles } from "./modules/project/services/TeamMemberMigration.Service"
 
 const app = express()
 app.set('trust proxy', 1)
@@ -136,6 +138,7 @@ app.use("/api/assets", authMiddleware, writeRateLimitMiddleware, assetRoute)
 app.use("/api/video-generations", authMiddleware, writeRateLimitMiddleware, videoGenerationRoute)
 app.use("/api/elements", authMiddleware, writeRateLimitMiddleware, aiElementRoute)
 app.use("/api/document-library", authMiddleware, writeRateLimitMiddleware, documentLibraryRoute)
+app.use("/api/ai-dashboard", authMiddleware, writeRateLimitMiddleware, aiDashboardRoute)
 
 app.use("/api/me", profileRoute)
 
@@ -149,6 +152,7 @@ app.head("/health", (req, res) => {
 
 
 AppDataSource.initialize().then(async () => {
+    await migrateTeamMemberRoles();
     // Initialize Event Subscribers
     initSubscribers();
 

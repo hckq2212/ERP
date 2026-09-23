@@ -9,5 +9,6 @@ export const OPPORTUNITY_EVENTS = {
     CREATED: "opportunity_created",
     UPDATED: "opportunity_updated",
     APPROVED: "opportunity_approved",
+    REJECTED: "opportunity_rejected",
     DELETED: "opportunity_deleted",
 };

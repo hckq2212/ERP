@@ -8,7 +8,7 @@ import { Tasks } from "../../task/entities/Task.entity";
 import { TaskStatus } from "../../../shared/entities/Enums";
 import { Users } from "../../user/entities/User.entity";
 import { Projects } from "../../project/entities/Project.entity";
-import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
 import { DebtService } from "../../debt/services/Debt.Service";
 import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
 import { NotificationService } from "../../notification/services/Notification.Service";
@@ -48,7 +48,7 @@ export class ContractAddendumService {
         });
 
         const recipients = (project?.team?.members || [])
-            .filter(member => member.role === MemberRole.PROJECT_MANAGER && member.user)
+            .filter(member => memberHasRole(member, MemberRole.PROJECT_MANAGER) && member.user)
             .map(member => member.user);
         const uniqueRecipients = Array.from(new Map(recipients.map(user => [user.id, user])).values());
 

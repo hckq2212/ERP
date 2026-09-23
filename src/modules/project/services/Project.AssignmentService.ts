@@ -3,7 +3,7 @@ import { Like, ILike, In, IsNull, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { Contracts, ContractStatus } from "../../contract/entities/Contract.entity";
 import { ProjectTeams } from "../entities/ProjectTeam.entity";
-import { TeamMembers, MemberRole } from "../entities/TeamMember.entity";
+import { TeamMembers, MemberRole, memberHasRole } from "../entities/TeamMember.entity";
 import { Users } from "../../user/entities/User.entity";
 import { OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
 import { ContractServices } from "../../contract/entities/ContractService.entity";
@@ -99,7 +99,7 @@ export class ProjectAssignmentService extends ProjectBaseService {
         let savedProject = await this.projectRepository.save(project);
 
         const existingProjectManagers = await this.memberRepository.find({
-            where: SecurityService.withTenant({ team: { id: team.id }, role: MemberRole.PROJECT_MANAGER }),
+            where: SecurityService.withTenant({ team: { id: team.id }, roles: { role: MemberRole.PROJECT_MANAGER } }),
             relations: ["user"]
         });
         const oldProjectManagers = existingProjectManagers.filter(member => member.user?.id !== pm.id);
@@ -107,30 +107,24 @@ export class ProjectAssignmentService extends ProjectBaseService {
             await this.memberRepository.remove(oldProjectManagers);
         }
 
-        // The assigned PM is a fixed project role: remove every secondary role
-        // and keep exactly one PROJECT_MANAGER membership.
-        const assignedPmMemberships = await this.memberRepository.find({
+        // The assigned PM has one membership and exactly one fixed team role.
+        let pmMember = await this.memberRepository.findOne({
             where: SecurityService.withTenant({ team: { id: team.id }, user: { id: pm.id } })
         });
-        const assignedPmRoleMemberships = assignedPmMemberships.filter(
-            member => member.role === MemberRole.PROJECT_MANAGER
-        );
-        const secondaryMemberships = assignedPmMemberships.filter(
-            member => member.role !== MemberRole.PROJECT_MANAGER
-        );
-        if (secondaryMemberships.length > 0) {
-            await this.memberRepository.remove(secondaryMemberships);
-        }
-        if (assignedPmRoleMemberships.length === 0) {
-            const pmMember = this.memberRepository.create({
+        if (!pmMember) {
+            pmMember = this.memberRepository.create({
                 team,
                 user: pm,
-                role: MemberRole.PROJECT_MANAGER,
+                roles: [this.memberRoleRepository.create({ role: MemberRole.PROJECT_MANAGER })],
                 ...SecurityService.getTenantWhere()
-            } as any);
+            } as Partial<TeamMembers>);
             await this.memberRepository.save(pmMember);
-        } else if (assignedPmRoleMemberships.length > 1) {
-            await this.memberRepository.remove(assignedPmRoleMemberships.slice(1));
+        } else {
+            if (pmMember.roles?.length) await this.memberRoleRepository.remove(pmMember.roles);
+            await this.memberRoleRepository.save(this.memberRoleRepository.create({
+                member: pmMember,
+                role: MemberRole.PROJECT_MANAGER
+            }));
         }
 
         if (isNewProject) {
@@ -220,7 +214,7 @@ export class ProjectAssignmentService extends ProjectBaseService {
         const actorUserId = actor?.userId || actor?.id;
         const isAdmin = actor?.role === UserRole.ADMIN;
         const isAssignedPm = actor?.role === UserRole.PM && project.team?.members?.some(member =>
-            member.role === MemberRole.PROJECT_MANAGER && member.user?.id === actorUserId
+            memberHasRole(member, MemberRole.PROJECT_MANAGER) && member.user?.id === actorUserId
         );
 
         if (!isAdmin && !isAssignedPm) {
@@ -275,7 +269,7 @@ export class ProjectAssignmentService extends ProjectBaseService {
         }
 
         const projectManagerMember = project.team.members?.find(
-            m => m.role === MemberRole.PROJECT_MANAGER && m.user
+            m => memberHasRole(m, MemberRole.PROJECT_MANAGER) && m.user
         );
         const pmUser = projectManagerMember?.user;
         console.log("pmUser: ",pmUser)

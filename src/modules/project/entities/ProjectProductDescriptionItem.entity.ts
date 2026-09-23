@@ -17,10 +17,10 @@ export class ProjectProductDescriptionItems extends BaseEntity {
     fileUrl: string;
 
     @Column({ type: "varchar", nullable: true })
-    fileName: string;
+    fileName: string | null;
 
     @Column({ type: "text", nullable: true })
-    extractedText: string;
+    extractedText: string | null;
 
     @Column({ type: "text", nullable: true })
     note: string;

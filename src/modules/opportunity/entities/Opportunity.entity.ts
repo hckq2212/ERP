@@ -16,6 +16,7 @@ export enum CustomerType {
 export enum OpportunityStatus {
     OPEN = "OPEN", // Mới tạo
     PENDING_OPP_APPROVAL = "PENDING_OPP_APPROVAL", // Chờ BOD duyệt cơ hội
+    OPP_REJECTED = "OPP_REJECTED", // BOD không duyệt cơ hội
     OPP_APPROVED = "OPP_APPROVED", // Đã duyệt cơ hội
     QUOTATION_DRAFTING = "QUOTATION_DRAFTING", // Làm báo giá
     PENDING_QUOTE_APPROVAL = "PENDING_QUOTE_APPROVAL", // Chờ duyệt báo giá
@@ -77,6 +78,9 @@ export class Opportunities extends BaseEntity {
         default: OpportunityStatus.PENDING_OPP_APPROVAL
     })
     status: OpportunityStatus;
+
+    @Column({ type: "text", nullable: true })
+    rejectionReason: string;
 
     // Customer Type info
     @Column({

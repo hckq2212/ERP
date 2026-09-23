@@ -22,7 +22,7 @@ import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
 import { TaskResultChecks } from "../entities/TaskResultCheck.entity";
 import { buildCheckSummary } from "../../../shared/helpers/CheckSummary.helper";
-import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
 import { VinicoinService } from "../../../shared/services/Vinicoin.Service";
 import { RedisService } from "../../../shared/services/Redis.Service";
 
@@ -105,7 +105,7 @@ export class TaskResultService extends TaskBaseService {
         if (task.supervisor?.id) recipients.add(task.supervisor.id);
         if (task.assigner?.id) recipients.add(task.assigner.id);
         for (const member of task.project?.team?.members || []) {
-            if (member.role === MemberRole.PROJECT_MANAGER && member.user?.id) recipients.add(member.user.id);
+            if (memberHasRole(member, MemberRole.PROJECT_MANAGER) && member.user?.id) recipients.add(member.user.id);
         }
         recipients.delete(currentId);
 

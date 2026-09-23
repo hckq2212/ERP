@@ -3,7 +3,8 @@ import { Like, ILike, In, IsNull, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { Contracts, ContractStatus } from "../../contract/entities/Contract.entity";
 import { ProjectTeams } from "../entities/ProjectTeam.entity";
-import { TeamMembers, MemberRole } from "../entities/TeamMember.entity";
+import { TeamMembers, MemberRole, memberHasRole } from "../entities/TeamMember.entity";
+import { TeamMemberRoles } from "../entities/TeamMemberRole.entity";
 import { Users } from "../../user/entities/User.entity";
 import { OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
 import { ContractServices } from "../../contract/entities/ContractService.entity";
@@ -31,6 +32,7 @@ export class ProjectBaseService {
     protected contractRepository = AppDataSource.getRepository(Contracts);
     protected teamRepository = AppDataSource.getRepository(ProjectTeams);
     protected memberRepository = AppDataSource.getRepository(TeamMembers);
+    protected memberRoleRepository = AppDataSource.getRepository(TeamMemberRoles);
     protected contractServiceRepository = AppDataSource.getRepository(ContractServices);
     protected opportunityServiceRepository = AppDataSource.getRepository(OpportunityServices);
     protected addendumRepository = AppDataSource.getRepository(ContractAddendums);
@@ -96,7 +98,7 @@ export class ProjectBaseService {
         const actorUserId = userInfo.userId || userInfo.id;
         if (userInfo.role === UserRole.PM) {
             return project.team?.members?.some(member =>
-                member.user?.id === actorUserId && member.role === MemberRole.PROJECT_MANAGER
+                member.user?.id === actorUserId && memberHasRole(member, MemberRole.PROJECT_MANAGER)
             ) || false;
         }
         return project.team?.teamLead?.id === actorUserId;
@@ -530,7 +532,10 @@ export class ProjectBaseService {
                     },
                     members: {
                         id: true,
-                        role: true,
+                        roles: {
+                            id: true,
+                            role: true
+                        },
                         user: {
                             id: true,
                             fullName: true,
@@ -641,7 +646,7 @@ export class ProjectBaseService {
             const isAdminOrBod = userInfo.role === UserRole.ADMIN || userInfo.role === UserRole.BOD;
             const isProjectLead = project.team?.teamLead?.id === userInfo.userId;
             const isProjectManager = project.team?.members?.some(
-                m => m.role === MemberRole.PROJECT_MANAGER && m.user?.id === userInfo.userId
+                m => memberHasRole(m, MemberRole.PROJECT_MANAGER) && m.user?.id === userInfo.userId
             );
 
             if (!isAdminOrBod && !isProjectLead && !isProjectManager) {

@@ -18,7 +18,7 @@ import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { Accounts, isManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { ProjectTeams } from "../../project/entities/ProjectTeam.entity";
-import { TeamMembers, MemberRole } from "../../project/entities/TeamMember.entity";
+import { TeamMembers, MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
 import { assertProjectNotOnHold, assertTaskProjectNotOnHold } from "../../project/helpers/ProjectHold.helper";
 
 type TaskActor = { id?: string; userId?: string; role?: string };
@@ -143,7 +143,7 @@ export class TaskBaseService {
 
         if (actor?.role === UserRole.PM) {
             return team.members?.some(member =>
-                member.user?.id === actorUserId && member.role === MemberRole.PROJECT_MANAGER
+                member.user?.id === actorUserId && memberHasRole(member, MemberRole.PROJECT_MANAGER)
             ) || team.members?.some(member =>
                 member.user?.id === actorUserId) || false;
         }
@@ -152,7 +152,7 @@ export class TaskBaseService {
 
         return team.members?.some(member =>
             member.user?.id === actorUserId &&
-            [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].includes(member.role)
+            [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].some(role => memberHasRole(member, role))
         ) || false;
     }
 

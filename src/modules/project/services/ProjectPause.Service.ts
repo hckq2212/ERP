@@ -17,7 +17,7 @@ import {
     ContractServiceStatus
 } from "../../contract/entities/ContractService.entity";
 import { Accounts, isManagementRole, UserRole } from "../../account/entities/Account.entity";
-import { MemberRole } from "../entities/TeamMember.entity";
+import { MemberRole, memberHasRole } from "../entities/TeamMember.entity";
 import { Debts, DebtStatus } from "../../debt/entities/Debt.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 
@@ -66,7 +66,7 @@ export class ProjectPauseService extends ProjectBaseService {
         if (project.team?.teamLead?.id === actorUserId) return true;
         return Boolean(project.team?.members?.some(member =>
             member.user?.id === actorUserId &&
-            [MemberRole.PROJECT_MANAGER, MemberRole.ACCOUNT].includes(member.role)
+            [MemberRole.PROJECT_MANAGER, MemberRole.ACCOUNT].some(role => memberHasRole(member, role))
         ));
     }
 

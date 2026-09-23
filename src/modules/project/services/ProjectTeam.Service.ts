@@ -1,18 +1,20 @@
 import { AppDataSource } from "../../../data-source";
 import { ProjectTeams } from "../entities/ProjectTeam.entity";
-import { TeamMembers, MemberRole } from "../entities/TeamMember.entity";
+import { TeamMembers, MemberRole, memberHasRole } from "../entities/TeamMember.entity";
+import { TeamMemberRoles } from "../entities/TeamMemberRole.entity";
 import { Users } from "../../user/entities/User.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { UserRole } from "../../account/entities/Account.entity";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
-import { In } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
+import { In } from "typeorm";
 
 type ActorInfo = { id: string; userId?: string; role: string };
 
 export class ProjectTeamService {
     private teamRepository = AppDataSource.getRepository(ProjectTeams);
     private memberRepository = AppDataSource.getRepository(TeamMembers);
+    private memberRoleRepository = AppDataSource.getRepository(TeamMemberRoles);
     private userRepository = AppDataSource.getRepository(Users);
     private workloadService = new WorkloadService();
 
@@ -48,7 +50,7 @@ export class ProjectTeamService {
             where: SecurityService.withTenant({
                 team: { id: teamId },
                 user: { id: actorUserId },
-                role: MemberRole.PROJECT_MANAGER
+                roles: { role: MemberRole.PROJECT_MANAGER }
             })
         });
         if (actor.role !== UserRole.PM || !projectManagerMembership) {
@@ -73,7 +75,7 @@ export class ProjectTeamService {
             where: SecurityService.withTenant({
                 team: { id: teamId },
                 user: { id: targetUserId },
-                role: MemberRole.PROJECT_MANAGER
+                roles: { role: MemberRole.PROJECT_MANAGER }
             })
         });
         if (assignedProjectManager) {
@@ -91,15 +93,20 @@ export class ProjectTeamService {
         });
         if (!team) throw this.httpError("Không tìm thấy team", 404);
 
-        if (member.role === MemberRole.ACCOUNT) {
+        if (memberHasRole(member, MemberRole.ACCOUNT)) {
             const previousAccountMembers = (team.members || []).filter(item =>
-                item.id !== member.id && item.role === MemberRole.ACCOUNT
+                item.id !== member.id && memberHasRole(item, MemberRole.ACCOUNT)
             );
             for (const previousMember of previousAccountMembers) {
-                previousMember.role = MemberRole.CONTENT_CREATOR;
-            }
-            if (previousAccountMembers.length > 0) {
-                await this.memberRepository.save(previousAccountMembers);
+                const accountRole = previousMember.roles.find(item => item.role === MemberRole.ACCOUNT);
+                if (!accountRole) continue;
+                await this.memberRoleRepository.remove(accountRole);
+                if (previousMember.roles.length === 1) {
+                    await this.memberRoleRepository.save(this.memberRoleRepository.create({
+                        member: previousMember,
+                        role: MemberRole.CONTENT_CREATOR
+                    }));
+                }
             }
 
             team.teamLead = member.user;
@@ -195,7 +202,7 @@ export class ProjectTeamService {
             const member = this.memberRepository.create({
                 team,
                 user: newLead,
-                role: MemberRole.CONTENT_CREATOR,
+                roles: [this.memberRoleRepository.create({ role: MemberRole.CONTENT_CREATOR })],
                 ...SecurityService.getTenantWhere()
             } as Partial<TeamMembers>);
             await this.memberRepository.save(member);
@@ -228,28 +235,30 @@ export class ProjectTeamService {
         const user = await this.userRepository.findOneBy({ id: userId });
         if (!user) throw new Error("Không tìm thấy người dùng");
 
-        const existing = await this.memberRepository.find({
+        let member = await this.memberRepository.findOne({
             where: SecurityService.withTenant({
                 team: { id: teamId },
-                user: { id: userId },
-                role: In(requestedRoles)
-            })
+                user: { id: userId }
+            }),
+            relations: ["team", "user"]
         });
-        if (existing.length > 0) {
+        const existingRoles = new Set((member?.roles || []).map(item => item.role));
+        if (requestedRoles.some(memberRole => existingRoles.has(memberRole))) {
             throw this.httpError("Nhân sự đã có một hoặc nhiều vai trò được chọn trong đội dự án", 409);
         }
 
-        const members = requestedRoles.map(memberRole => this.memberRepository.create({
-            team,
-            user,
-            role: memberRole,
-            ...SecurityService.getTenantWhere()
-        } as Partial<TeamMembers>));
-
-        const savedMembers = await this.memberRepository.save(members);
-        const accountMember = savedMembers.find(member => member.role === MemberRole.ACCOUNT);
-        if (accountMember) await this.syncAccountRoleAsLead(accountMember);
-        return savedMembers.length === 1 ? savedMembers[0] : savedMembers;
+        if (!member) {
+            member = await this.memberRepository.save(this.memberRepository.create({
+                team,
+                user,
+                ...SecurityService.getTenantWhere()
+            } as Partial<TeamMembers>));
+        }
+        const newRoles = requestedRoles.map(role => this.memberRoleRepository.create({ member, role }));
+        await this.memberRoleRepository.save(newRoles);
+        member.roles = [...(member.roles || []), ...newRoles];
+        if (requestedRoles.includes(MemberRole.ACCOUNT)) await this.syncAccountRoleAsLead(member);
+        return member;
     }
 
     async updateMember(memberId: string, data: { role?: MemberRole }, actor?: ActorInfo) {
@@ -264,23 +273,8 @@ export class ProjectTeamService {
             throw this.httpError("Vai trò Quản lý dự án chỉ được thay đổi tại chức năng phân công PM", 400);
         }
 
-        if (data.role && data.role !== member.role) {
-            const duplicateRole = await this.memberRepository.findOne({
-                where: SecurityService.withTenant({
-                    team: { id: member.team.id },
-                    user: { id: member.user.id },
-                    role: data.role
-                })
-            });
-            if (duplicateRole) {
-                throw this.httpError("Nhân sự đã có vai trò này trong đội dự án", 409);
-            }
-            member.role = data.role;
-        }
-
-        const savedMember = await this.memberRepository.save(member);
-        await this.syncAccountRoleAsLead(savedMember);
-        return savedMember;
+        if (!data.role) return member;
+        return (await this.updateMemberRoles(member.team.id, member.user.id, [data.role], actor))[0];
     }
 
     async updateMemberRoles(teamId: string, userId: string, roles: MemberRole[], actor?: ActorInfo) {
@@ -297,49 +291,37 @@ export class ProjectTeamService {
             throw this.httpError("Vai trò Quản lý dự án chỉ được thay đổi tại chức năng phân công PM", 400);
         }
 
-        const memberships = await this.memberRepository.find({
+        const membership = await this.memberRepository.findOne({
             where: SecurityService.withTenant({ team: { id: teamId }, user: { id: userId } }),
             relations: ["team", "team.teamLead", "user"]
         });
-        if (memberships.length === 0) throw this.httpError("Không tìm thấy thành viên", 404);
+        if (!membership) throw this.httpError("Không tìm thấy thành viên", 404);
 
-        const currentRoles = new Set(memberships.map(member => member.role));
+        const currentRoles = new Set((membership.roles || []).map(item => item.role));
+        const rolesToRemove = (membership.roles || []).filter(item => !requestedRoles.includes(item.role));
+        if (rolesToRemove.length > 0) await this.memberRoleRepository.remove(rolesToRemove);
 
-        const membershipsToRemove = memberships.filter(member => !requestedRoles.includes(member.role));
-        if (membershipsToRemove.length > 0) await this.memberRepository.remove(membershipsToRemove);
-
-        const team = memberships[0].team;
-        const user = memberships[0].user;
+        const team = membership.team;
         const rolesToAdd = requestedRoles.filter(role => !currentRoles.has(role));
         if (rolesToAdd.length > 0) {
-            const membershipsToAdd = rolesToAdd.map(memberRole => this.memberRepository.create({
-                team,
-                user,
-                role: memberRole,
-                ...SecurityService.getTenantWhere()
-            } as Partial<TeamMembers>));
-            await this.memberRepository.save(membershipsToAdd);
+            await this.memberRoleRepository.save(rolesToAdd.map(role =>
+                this.memberRoleRepository.create({ member: membership, role })
+            ));
         }
 
-        const accountMembership = await this.memberRepository.findOne({
-            where: SecurityService.withTenant({
-                team: { id: teamId },
-                user: { id: userId },
-                role: MemberRole.ACCOUNT
-            }),
-            relations: ["team", "user"]
+        const savedMembership = await this.memberRepository.findOne({
+            where: SecurityService.withTenant({ id: membership.id }),
+            relations: ["team", "team.teamLead", "user", "user.accounts"]
         });
-        if (accountMembership) {
-            await this.syncAccountRoleAsLead(accountMembership);
+        if (!savedMembership) throw this.httpError("Không tìm thấy thành viên", 404);
+        if (memberHasRole(savedMembership, MemberRole.ACCOUNT)) {
+            await this.syncAccountRoleAsLead(savedMembership);
         } else if (team.teamLead?.id === userId) {
             team.teamLead = null as any;
             await this.teamRepository.save(team);
         }
 
-        return this.memberRepository.find({
-            where: SecurityService.withTenant({ team: { id: teamId }, user: { id: userId } }),
-            relations: ["user", "user.accounts"]
-        });
+        return [savedMembership];
     }
 
     async removeMember(memberId: string, actor?: ActorInfo) {
