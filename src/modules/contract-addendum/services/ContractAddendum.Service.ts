@@ -103,7 +103,10 @@ export class ContractAddendumService {
                         addendum: addendum,
                         service: d.service,
                         job: d.job,
+                        serviceId: d.service?.id,
                         sellingPrice: d.sellingPrice,
+                        name: d.name || d.service?.name,
+                        code: d.service?.code,
                         status: ContractServiceStatus.ACTIVE
                     });
                     await this.contractServiceRepository.save(addendumService);
@@ -121,7 +124,10 @@ export class ContractAddendumService {
                     contract: addendum.contract,
                     addendum: addendum,
                     service: serviceDef,
+                    serviceId: serviceDef?.id,
                     sellingPrice: s.sellingPrice,
+                    name: s.serviceName || serviceDef?.name,
+                    code: serviceDef?.code,
                     status: ContractServiceStatus.ACTIVE
                 });
                 await this.contractServiceRepository.save(addendumService);
@@ -349,6 +355,7 @@ export class ContractAddendumService {
                         sellingPrice: item.sellingPrice || 0,
                         status: ContractServiceStatus.ACTIVE,
                         name: item.serviceName || service.name,
+                        code: service.code,
                         packageName: item.packageName,
                         isPackageService: !!item.isPackageService
                     });
@@ -368,8 +375,9 @@ export class ContractAddendumService {
 
                             const sequenceNumber = totalCountForProject + 1;
                             const seq = sequenceNumber.toString().padStart(2, "0");
+                            const serviceCode = savedContractService.code || service.code;
                             const jobCode = job.code || `JOB${job.id}`;
-                            const taskCode = `${addendum.contract.contractCode}-${jobCode}-${seq}`;
+                            const taskCode = [addendum.contract.contractCode, serviceCode, jobCode, seq].filter(Boolean).join("-");
 
                             const task = taskRepository.create({
                                 code: taskCode,

@@ -445,7 +445,15 @@ export class DashboardService {
             participatingProjects,
             roleStats,
             upcomingDeadlines: workTasks
-                .filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.INTERNAL_COMPLETED && t.status !== TaskStatus.ACCEPTED && t.plannedEndDate)
+                .filter(t =>
+                    t.status !== TaskStatus.COMPLETED
+                    && t.status !== TaskStatus.INTERNAL_COMPLETED
+                    && t.status !== TaskStatus.ACCEPTED
+                    // Không réo deadline của dự án đang tạm dừng / task đã hủy
+                    && t.status !== TaskStatus.ON_HOLD
+                    && t.status !== TaskStatus.CANCELLED
+                    && t.plannedEndDate
+                )
                 .sort((a, b) => new Date(a.plannedEndDate).getTime() - new Date(b.plannedEndDate).getTime())
                 .slice(0, 10)
                 .map(t => ({

@@ -7,6 +7,9 @@ import { ServiceJob } from "./ServiceJob.entity";
 @Entity()
 export class Services extends BaseEntity {
 
+    @Column({ nullable: true })
+    code: string;
+
     @Column()
     name: string;
 

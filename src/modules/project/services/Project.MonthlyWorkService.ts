@@ -124,6 +124,7 @@ export class ProjectMonthlyWorkService extends ProjectBaseService {
             relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user"]
         });
         if (!project) throw new Error("Không tìm thấy dự án");
+        this.assertLoadedProjectNotOnHold(project);
         if (!project.contract) throw new Error("Dự án chưa liên kết hợp đồng");
         if (!this.canCreateProjectWork(userInfo)) {
             throw new Error("Bạn không có quyền tạo công việc tháng mới cho dự án này");

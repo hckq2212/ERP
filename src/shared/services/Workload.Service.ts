@@ -87,7 +87,15 @@ export class WorkloadService {
             .where("task.assigneeId IN (:...staffUserIds)", { staffUserIds })
             .andWhere("task.plannedEndDate BETWEEN :start AND :end", { start, end })
             .andWhere("task.performerType = :performerType", { performerType: PerformerType.INTERNAL })
-            .andWhere("task.status != :acceptedStatus", { acceptedStatus: TaskStatus.ACCEPTED })
+            // Không tính workload cho task đã nghiệm thu, đang tạm dừng (dự án ON_HOLD)
+            // hoặc đã bị hủy khi đóng dự án — nếu không KPI tháng sẽ bị đội lên sai.
+            .andWhere("task.status NOT IN (:...excludedStatuses)", {
+                excludedStatuses: [
+                    TaskStatus.ACCEPTED,
+                    TaskStatus.ON_HOLD,
+                    TaskStatus.CANCELLED
+                ]
+            })
             .groupBy("task.assigneeId")
             .getRawMany();
 

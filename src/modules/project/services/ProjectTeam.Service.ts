@@ -6,6 +6,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { UserRole } from "../../account/entities/Account.entity";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
 import { In } from "typeorm";
+import { Projects, ProjectStatus } from "../entities/Project.entity";
 
 type ActorInfo = { id: string; userId?: string; role: string };
 
@@ -21,8 +22,19 @@ export class ProjectTeamService {
         return error;
     }
 
+    private async assertTeamProjectNotOnHold(teamId: string) {
+        const holdProject = await AppDataSource.getRepository(Projects).findOne({
+            where: { team: { id: teamId }, status: ProjectStatus.ON_HOLD },
+            select: { id: true, name: true }
+        });
+        if (holdProject) {
+            throw this.httpError(`Dự án "${holdProject.name}" đang tạm dừng. Không thể thay đổi nhân sự trong đội dự án.`, 409);
+        }
+    }
+
     private async assertCanManageTeam(teamId: string, actor?: ActorInfo) {
         if (!actor) throw this.httpError("Bạn cần đăng nhập để quản lý team", 401);
+        await this.assertTeamProjectNotOnHold(teamId);
         if ([UserRole.ADMIN, UserRole.BOD].includes(actor.role as UserRole)) return;
 
         const actorUserId = actor.userId || actor.id;

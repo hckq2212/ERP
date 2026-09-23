@@ -24,6 +24,7 @@ import { SUBTASK_PM_APPROVAL_ENABLED } from "../constants/SubtaskPlan.constants"
 export class TaskDeletionService extends TaskBaseService {
     async delete(id: string) {
         const task = await this.getOne(id);
+        this.assertTaskProjectNotOnHold(task);
         if (task.subtasks?.length) {
             throw this.httpError("Không thể xóa task gốc khi vẫn còn subtask", 409);
         }

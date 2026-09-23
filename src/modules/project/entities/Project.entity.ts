@@ -1,4 +1,4 @@
-import { Entity, Column, OneToOne, JoinColumn, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, OneToOne, JoinColumn, ManyToOne, OneToMany, Index } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { Contracts } from "../../contract/entities/Contract.entity";
 import { ProjectTeams } from "./ProjectTeam.entity";
@@ -9,6 +9,8 @@ export enum ProjectStatus {
     PENDING_CONFIRMATION = "PENDING_CONFIRMATION", // Chờ xác nhận
     CONFIRMED = "CONFIRMED", // Team Lead đã nhận
     IN_PROGRESS = "IN_PROGRESS", // Đang thực hiện (sau khi upload hợp đồng đã ký)
+    PENDING_PAUSE_APPROVAL = "PENDING_PAUSE_APPROVAL", // Chờ duyệt yêu cầu tạm dừng
+    ON_HOLD = "ON_HOLD", // Tạm dừng — task bị khoá, không thao tác được
     COMPLETED = "COMPLETED",
     CANCELLED = "CANCELLED"
 }
@@ -76,5 +78,47 @@ export class Projects extends BaseEntity {
 
     @Column({ type: "timestamp", nullable: true })
     googleSheetCreatedAt: Date;
+
+    /** D0 — thời điểm dự án vào ON_HOLD (mốc neo tính 37 ngày). */
+    @Column({ type: "timestamptz", nullable: true })
+    pausedAt: Date;
+
+    /** Mốc D+37 = `pausedAt + 37 ngày` (ngày trọn vẹn, giữ nguyên giờ:phút). */
+    @Column({ type: "timestamptz", nullable: true })
+    autoAcceptAt: Date;
+
+    /** Ngày đã gửi thông báo nhắc nhở — chống gửi lặp trong cùng 1 ngày. */
+    @Column({ type: "date", nullable: true })
+    lastReminderDate: Date;
+
+    /** Đơn tạm dừng đang hiệu lực. */
+    @Column({ type: "varchar", length: 26, nullable: true })
+    currentPauseRequestId: string;
+
+    /** Ai bấm tạm dừng (BOD / ADMIN). */
+    @ManyToOne(() => Users, { nullable: true })
+    @JoinColumn({ name: "pausedById" })
+    pausedBy: Users;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    pausedById: string;
+
+    /** Cờ query nhanh cho cron — tránh phải join/lọc theo status. */
+    @Index()
+    @Column({ default: false })
+    isOnHold: boolean;
+
+    /** Danh sách tài liệu làm việc (link bên ngoài hoặc file đã upload). */
+    @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
+    workingFiles: Array<{
+        id: string;
+        name: string;
+        url: string;
+        type: "LINK" | "FILE";
+        size?: number;
+        createdAt: string;
+        createdById?: string;
+        createdByName?: string;
+    }>;
 }
 

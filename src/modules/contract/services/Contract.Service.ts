@@ -359,7 +359,7 @@ export class ContractService {
                     0
                 );
                 if (finalSellingPrice === undefined || finalSellingPrice === null || finalSellingPrice === 0) {
-                    finalSellingPrice = quotationSellingPrice * 1.08;
+                    finalSellingPrice = quotationSellingPrice;
                 }
                 if (finalCost === undefined || finalCost === null || finalCost === 0) {
                     finalCost = quotationCost;
@@ -373,7 +373,7 @@ export class ContractService {
                     // Price Priority 2: Sum of Opportunity Services
                     const serviceSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.sellingPrice) * (os.quantity || 1)), 0);
                     if (serviceSum > 0) {
-                        finalSellingPrice = serviceSum * 1.08;
+                        finalSellingPrice = serviceSum;
                     }
                 }
 
@@ -452,6 +452,9 @@ export class ContractService {
             if (approvedQuotationDetails.length > 0) {
                 for (const detail of approvedQuotationDetails) {
                     const detailServiceId = detail.service?.id || detail.serviceId;
+                    const detailService = detail.service || (detailServiceId
+                        ? await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: detailServiceId }, userInfo) })
+                        : null);
                     const opportunityService = opportunity.services?.find(item =>
                         item.serviceId === detailServiceId &&
                         item.isPackageService === Boolean(detail.isPackageService) &&
@@ -461,11 +464,12 @@ export class ContractService {
                     for (let i = 0; i < qty; i++) {
                         const cs = this.contractServiceRepository.create({
                             contract: savedContract,
-                            service: detail.service,
+                            service: detailService,
                             serviceId: detailServiceId,
                             sellingPrice: detail.sellingPrice,
                             opportunityService,
-                            name: detail.name || detail.service?.name,
+                            name: detail.name || detailService?.name,
+                            code: detailService?.code,
                             packageName: detail.packageName,
                             isPackageService: detail.isPackageService,
                             ...SecurityService.getTenantWhere(userInfo)
@@ -489,6 +493,7 @@ export class ContractService {
                             sellingPrice: os.sellingPrice,
                             opportunityService: os,
                             name: os.name || os.service?.name,
+                            code: os.service?.code,
                             packageName: os.packageName,
                             isPackageService: os.isPackageService,
                             ...SecurityService.getTenantWhere(userInfo)
@@ -513,6 +518,7 @@ export class ContractService {
                                 serviceId: service.id,
                                 sellingPrice: sellPrice,
                                 name: service.name,
+                                code: service.code,
                                 isPackageService: false,
                                 ...SecurityService.getTenantWhere(userInfo)
                             } as any);
@@ -544,6 +550,7 @@ export class ContractService {
                                         serviceId: item.service.id,
                                         sellingPrice: sellPrice,
                                         name: item.service.name,
+                                        code: item.service.code,
                                         packageName: pkg.name,
                                         isPackageService: true,
                                         ...SecurityService.getTenantWhere(userInfo)
@@ -557,6 +564,13 @@ export class ContractService {
             }
         }
 
+        // Update Opportunity Status
+        if (opportunity) {
+            opportunity.status = OpportunityStatus.CONTRACT_CREATED;
+            await this.opportunityRepository.save(opportunity);
+            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, opportunity);
+        }
+
         // Create default milestone (100%)
         const defaultMilestone = this.milestoneRepository.create({
             contract: savedContract,
@@ -567,14 +581,7 @@ export class ContractService {
             dueDate: new Date(new Date().setDate(new Date().getDate() + 30)), // Default 30 days
             ...SecurityService.getTenantWhere(userInfo)
         } as any);
-        const savedDefaultMilestone: any = await this.milestoneRepository.save(defaultMilestone);
-
-        // Auto create debt for default milestone
-        try {
-            await this.debtService.createFromMilestone(savedDefaultMilestone.id);
-        } catch (debtErr) {
-            console.error("Error auto-creating debt for default milestone:", debtErr);
-        }
+        await this.milestoneRepository.save(defaultMilestone);
 
         // Invalidate contract caches before returning the freshly loaded detail
         await RedisService.deleteCache('contracts:all*');
@@ -636,7 +643,7 @@ export class ContractService {
         const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
 
         if (contract.opportunity) {
-            contract.opportunity.status = OpportunityStatus.CONTRACT_CREATED;
+            contract.opportunity.status = OpportunityStatus.CONTRACT_APPROVED;
             await this.opportunityRepository.save(contract.opportunity);
             opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, contract.opportunity);
         }

@@ -19,6 +19,7 @@ import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { Accounts, isManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { ProjectTeams } from "../../project/entities/ProjectTeam.entity";
 import { TeamMembers, MemberRole } from "../../project/entities/TeamMember.entity";
+import { assertProjectNotOnHold, assertTaskProjectNotOnHold } from "../../project/helpers/ProjectHold.helper";
 
 type TaskActor = { id?: string; userId?: string; role?: string };
 
@@ -45,6 +46,75 @@ export class TaskBaseService {
         const error: any = new Error(message);
         error.statusCode = statusCode;
         return error;
+    }
+
+    /**
+     * Chặn thao tác ghi lên dự án đang tạm dừng (ON_HOLD).
+     * Gọi ở đầu mỗi service method có ghi dữ liệu task; KHÔNG gọi ở luồng resume/close.
+     */
+    protected async assertProjectNotOnHold(
+        projectIds: (string | null | undefined)[],
+        manager?: any
+    ) {
+        return assertProjectNotOnHold(this.projectRepository, projectIds, manager);
+    }
+
+    /**
+     * Biến thể dùng khi đã có sẵn `task.project` (đã load quan hệ "project").
+     */
+    protected assertTaskProjectNotOnHold(
+        task: { project?: { id: string; name: string; status: ProjectStatus } | null } | null | undefined
+    ) {
+        return assertTaskProjectNotOnHold(task);
+    }
+
+    /**
+     * Chặn thay đổi lên công việc đã ở trạng thái cuối (ACCEPTED, COMPLETED, DONE, CANCELLED, ON_HOLD)
+     * hoặc dự án đã đóng/tạm dừng (COMPLETED, CANCELLED, ON_HOLD).
+     */
+    protected assertTaskNotLocked(
+        task: {
+            status?: TaskStatus;
+            project?: { id: string; name: string; status: ProjectStatus } | null;
+        } | null | undefined
+    ) {
+        if (!task) return;
+        this.assertTaskProjectNotOnHold(task);
+
+        const lockedStatuses = [
+            TaskStatus.ACCEPTED,
+            TaskStatus.COMPLETED,
+            TaskStatus.CANCELLED,
+            TaskStatus.ON_HOLD
+        ];
+        if (task.status && lockedStatuses.includes(task.status)) {
+            throw this.httpError(`Công việc đã ở trạng thái "${task.status}", không thể chỉnh sửa`, 400);
+        }
+        if (task.project && [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED, ProjectStatus.ON_HOLD].includes(task.project.status)) {
+            throw this.httpError(`Dự án đang ở trạng thái "${task.project.status}", không thể chỉnh sửa công việc`, 409);
+        }
+    }
+
+    /**
+     * Chặn theo DANH SÁCH task id (dùng cho bulk assign/unassign, xoá task...).
+     * Tra project của từng task rồi chặn nếu BẤT KỲ project nào đang ON_HOLD
+     * → đảm bảo không ghi nửa vời.
+     */
+    protected async assertProjectNotOnHoldForTasks(taskIds: string[], manager?: any) {
+        const uniqueIds = [...new Set((taskIds || []).filter(Boolean))];
+        if (uniqueIds.length === 0) return;
+
+        const taskRepo = manager ? manager.getRepository(Tasks) : this.taskRepository;
+        const tasks = await taskRepo.find({
+            where: { id: In(uniqueIds) },
+            relations: ["project"]
+        });
+
+        await assertProjectNotOnHold(
+            this.projectRepository,
+            tasks.map(task => task.project?.id),
+            manager
+        );
     }
 
     protected getActorUserId(actor?: TaskActor) {
@@ -74,7 +144,8 @@ export class TaskBaseService {
         if (actor?.role === UserRole.PM) {
             return team.members?.some(member =>
                 member.user?.id === actorUserId && member.role === MemberRole.PROJECT_MANAGER
-            ) || false;
+            ) || team.members?.some(member =>
+                member.user?.id === actorUserId) || false;
         }
 
         if (team.teamLead?.id === actorUserId) return true;
@@ -152,6 +223,7 @@ export class TaskBaseService {
         const isOpportunityVideoDemo = Boolean(
             task.opportunityId && task.opportunityServiceJob?.isBriefVideo
         );
+
         if (actor?.role === UserRole.PM &&
             !isOpportunityVideoDemo &&
             !this.isProjectOperatorFromTeam(task.project?.team, actor)) {

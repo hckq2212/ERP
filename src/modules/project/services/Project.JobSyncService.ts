@@ -31,14 +31,20 @@ export class ProjectJobSyncService extends ProjectBaseService {
             relations: ["team", "team.teamLead", "team.members", "team.members.user"]
         });
         if (!project) throw new Error("Không tìm thấy dự án");
+        this.assertLoadedProjectNotOnHold(project);
         if (!this.canManageMonthlyWork(project, actor)) {
             const error: any = new Error("Bạn không có quyền đồng bộ công việc của dự án này");
             error.statusCode = 403;
             throw error;
         }
 
-        const result = await this.syncContractServiceJobs(id);
+        const serviceResult = await this.syncContractServices(id);
+        const jobResult = await this.syncContractServiceJobs(id);
         projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
-        return result;
+        return {
+            ...jobResult,
+            createdContractServices: serviceResult.createdContractServices,
+            updatedContractServices: serviceResult.updatedContractServices
+        };
     }
 }

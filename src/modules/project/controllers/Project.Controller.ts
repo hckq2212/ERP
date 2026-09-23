@@ -69,6 +69,20 @@ export class ProjectController {
         }
     }
 
+    update = async (req: AuthRequest, res: Response) => {
+        try {
+            const actor = req.user || (req as any).user;
+            if (!actor) {
+                return res.status(401).json({ message: "Bạn cần đăng nhập để thực hiện hành động này" });
+            }
+
+            const project = await this.projectService.update(req.params.id as string, req.body, actor as any);
+            res.status(200).json(project);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     getMonthlyWorkTemplate = async (req: AuthRequest, res: Response) => {
         try {
             const result = await this.projectService.getMonthlyWorkTemplate(
@@ -196,6 +210,33 @@ export class ProjectController {
         }
     }
 
+    extractProductDescriptionFile = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.extractForFile(
+                req.params.id as string,
+                req.body?.fileUrl,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    aiFormatProductDescription = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.aiFormat(
+                req.params.id as string,
+                req.body?.text,
+                req.body?.productName,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     // start = async (req: Request, res: Response) => {
     //     try {
     //         const project = await this.projectService.start(req.params.id as string);
@@ -230,4 +271,168 @@ export class ProjectController {
             res.status(error.statusCode || 500).json({ message: error.message });
         }
     };
+
+    // ─────────────────────────────────────────────────────────────────────
+    // TẠM DỪNG DỰ ÁN
+    // ─────────────────────────────────────────────────────────────────────
+
+    requestPause = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.requestPause(
+                req.params.id as string,
+                req.body.reason,
+                req.user as any
+            );
+            res.status(201).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    approvePause = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.approvePause(
+                req.params.requestId as string,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    rejectPause = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.rejectPause(
+                req.params.requestId as string,
+                req.body.feedback,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    pauseDirect = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.pauseDirect(
+                req.params.id as string,
+                req.body.reason,
+                req.user as any
+            );
+            res.status(201).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    resume = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.resume(
+                req.params.id as string,
+                req.body?.resumeReason,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    getPauseHistory = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.getPauseHistory(req.params.id as string);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    getHoldSummary = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.getHoldSummary(req.params.id as string);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    closeDirect = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.closeDirect(
+                req.params.id as string,
+                req.body.reason,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    requestClose = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.requestClose(
+                req.params.id as string,
+                req.body?.reason,
+                req.user as any
+            );
+            res.status(201).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    approveClose = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.approveClose(
+                req.params.requestId as string,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    rejectClose = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.rejectClose(
+                req.params.requestId as string,
+                req.body.feedback,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    updateStatus = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.updateStatus(
+                req.params.id as string,
+                req.body.status,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
+
+    updateWorkingFiles = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.projectService.updateWorkingFiles(
+                req.params.id as string,
+                req.body.workingFiles,
+                (req as any).user
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    };
 }
+

@@ -21,7 +21,8 @@ export enum OpportunityStatus {
     QUOTATION_DRAFTING = "QUOTATION_DRAFTING", // Làm báo giá
     PENDING_QUOTE_APPROVAL = "PENDING_QUOTE_APPROVAL", // Chờ duyệt báo giá
     QUOTE_APPROVED = "QUOTE_APPROVED", // Báo giá đã duyệt
-    CONTRACT_CREATED = "CONTRACT_CREATED", // Đã tạo hợp đồng
+    CONTRACT_CREATED = "CONTRACT_CREATED", // Đang làm hợp đồng
+    CONTRACT_APPROVED = "CONTRACT_APPROVED", // Đã tạo hợp đồng
     PROJECT_ASSIGNED = "PROJECT_ASSIGNED", // Đã phân công dự án
     IMPLEMENTATION = "IMPLEMENTATION", // Đang thực hiện
     COMPLETED = "COMPLETED",
