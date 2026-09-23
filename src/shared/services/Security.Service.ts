@@ -218,8 +218,8 @@ export class SecurityService {
         const userId = userInfo.userId;
         const projectOperatorFilters = [
             { project: { team: { teamLead: { id: userId } } } },
-            { project: { team: { members: { user: { id: userId }, role: "ACCOUNT" } } } },
-            { project: { team: { members: { user: { id: userId }, role: "PROJECT_MANAGER" } } } }
+            { project: { team: { members: { user: { id: userId }, roles: { role: "ACCOUNT" } } } } },
+            { project: { team: { members: { user: { id: userId }, roles: { role: "PROJECT_MANAGER" } } } } }
         ];
 
         // Full access for management roles
@@ -236,7 +236,7 @@ export class SecurityService {
                         team: {
                             members: {
                                 user: { id: userId || "__UNLINKED_PM__" },
-                                role: "PROJECT_MANAGER"
+                                roles: { role: "PROJECT_MANAGER" }
                             }
                         }
                     }

@@ -1,33 +1,43 @@
-import { Entity, ManyToOne, Column } from "typeorm";
+import { Entity, ManyToOne, Column, OneToMany } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { ProjectTeams } from "./ProjectTeam.entity";
 import { Users } from "../../user/entities/User.entity";
+import { TeamMemberRoles } from "./TeamMemberRole.entity";
+import { MemberRole } from "./MemberRole.enum";
 
-export enum MemberRole {
-    CONTENT_CREATOR = "CONTENT_CREATOR",
-    EDITOR = "EDITOR",
-    GRAPHIC_DESIGNER = "GRAPHIC_DESIGNER",
-    CAMERAMAN = "CAMERAMAN",
-    PROJECT_MANAGER = "PROJECT_MANAGER",
-    ACCOUNT = "ACCOUNT",
-    SCRIPTER = "SCRIPTER",
-    SOCIAL_MEDIA_MANAGER = "SOCIAL_MEDIA_MANAGER",
-    SEO_SPECIALIST = "SEO_SPECIALIST"
-}
+export { MemberRole } from "./MemberRole.enum";
 
 @Entity()
 export class TeamMembers extends BaseEntity {
 
-    @ManyToOne(() => ProjectTeams, (team) => team.members)
+    @ManyToOne(() => ProjectTeams, (team) => team.members, { onDelete: "CASCADE" })
     team: ProjectTeams;
 
-    @ManyToOne(() => Users, (user) => user.teamMemberships)
+    @ManyToOne(() => Users, (user) => user.teamMemberships, { onDelete: "CASCADE" })
     user: Users;
 
+    @OneToMany(() => TeamMemberRoles, (memberRole) => memberRole.member, {
+        cascade: true,
+        eager: true
+    })
+    roles: TeamMemberRoles[];
+
+    /**
+     * Transitional column used only while consolidating the previous
+     * one-row-per-role model. New application code must use `roles`.
+     */
     @Column({
+        name: "role",
         type: "enum",
         enum: MemberRole,
-        default: MemberRole.CONTENT_CREATOR
+        nullable: true,
+        select: false
     })
-    role: MemberRole;
+    legacyRole?: MemberRole | null;
 }
+
+export const getMemberRoles = (member?: Pick<TeamMembers, "roles"> | null): MemberRole[] =>
+    (member?.roles || []).map(item => typeof item === "string" ? item : item.role);
+
+export const memberHasRole = (member: Pick<TeamMembers, "roles"> | null | undefined, role: MemberRole) =>
+    getMemberRoles(member).includes(role);

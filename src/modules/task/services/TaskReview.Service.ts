@@ -9,7 +9,7 @@ import { Users } from "../../user/entities/User.entity";
 import { taskReviewEmitter, TASK_REVIEW_EVENTS } from "../events/TaskReviewEmitter";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { isProjectManagementRole } from "../../account/entities/Account.entity";
-import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
 import { TaskIterations } from "../entities/TaskIteration.entity";
 import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 import { VideoGenerations } from "../../video-generation/entities/VideoGeneration.entity";
@@ -47,7 +47,7 @@ export class TaskReviewService {
         if (team.teamLead?.id === actorUserId) return true;
         return team.members?.some(member =>
             member.user?.id === actorUserId &&
-            [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].includes(member.role)
+            [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].some(role => memberHasRole(member, role))
         ) || false;
     }
 

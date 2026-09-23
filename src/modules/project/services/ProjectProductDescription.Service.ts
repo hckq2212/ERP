@@ -4,7 +4,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { UserRole } from "../../account/entities/Account.entity";
 import { Users } from "../../user/entities/User.entity";
 import { Projects } from "../entities/Project.entity";
-import { MemberRole } from "../entities/TeamMember.entity";
+import { MemberRole, memberHasRole } from "../entities/TeamMember.entity";
 import { ulid } from "ulid";
 import {
     ProjectProductDescriptionStatus,
@@ -90,7 +90,7 @@ export class ProjectProductDescriptionService {
         }
 
         const isAssignedPm = project.team?.members?.some((member) =>
-            member.role === MemberRole.PROJECT_MANAGER &&
+            memberHasRole(member, MemberRole.PROJECT_MANAGER) &&
             member.user?.id === actor.userId
         );
 
@@ -104,7 +104,7 @@ export class ProjectProductDescriptionService {
         const isBd = actor?.role === UserRole.BD;
         const isProjectLead = project.team?.teamLead?.id === actorUserId;
         const isAssignedPm = actor?.role === UserRole.PM && project.team?.members?.some((member) =>
-            member.role === MemberRole.PROJECT_MANAGER &&
+            memberHasRole(member, MemberRole.PROJECT_MANAGER) &&
             member.user?.id === actorUserId
         );
 
