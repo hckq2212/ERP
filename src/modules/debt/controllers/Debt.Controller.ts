@@ -56,4 +56,18 @@ export class DebtController {
             res.status(500).json({ message: error.message });
         }
     }
+
+    unlockDebt = async (req: Request, res: Response) => {
+        try {
+            const userInfo = (req as any).user;
+            const result = await this.debtService.unlockDebt(
+                req.params.id as string,
+                req.body?.reason,
+                userInfo
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
 }

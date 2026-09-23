@@ -167,12 +167,19 @@ export class AcceptanceService {
         );
       }
 
-      const incompleteTasks = s.tasks?.filter(
-        (t) => t.status !== TaskStatus.COMPLETED,
+      // Task ở trạng thái tạm dừng / đã hủy không được tính là "chưa hoàn thành"
+      // — dự án đang ON_HOLD thì không bao giờ có task COMPLETED, nên nếu không
+      // loại ra thì dịch vụ sẽ KHÔNG BAO GIỜ đủ điều kiện nghiệm thu.
+      const blockingTasks = s.tasks?.filter(
+        (t) => t.status !== TaskStatus.COMPLETED
+          && t.status !== TaskStatus.INTERNAL_COMPLETED
+          && t.status !== TaskStatus.ACCEPTED
+          && t.status !== TaskStatus.ON_HOLD
+          && t.status !== TaskStatus.CANCELLED,
       );
-      if (incompleteTasks && incompleteTasks.length > 0) {
+      if (blockingTasks && blockingTasks.length > 0) {
         throw new Error(
-          `Dịch vụ "${s.name || s.id}" còn ${incompleteTasks.length} công việc chưa hoàn thành. Vui lòng hoàn thành tất cả task trước khi nghiệm thu.`,
+          `Dịch vụ "${s.name || s.id}" còn ${blockingTasks.length} công việc chưa hoàn thành. Vui lòng hoàn thành tất cả task trước khi nghiệm thu.`,
         );
       }
     }
@@ -674,16 +681,49 @@ export class AcceptanceService {
     };
   }
 
-  private async triggerRewards(
+  /**
+   * Trả Vinicoin cho các task của một dịch vụ.
+   *
+   * @param allowedTaskIds Giới hạn task được thưởng.
+   *   - `undefined` (mặc định) = KHÔNG giới hạn → hành vi cũ của luồng nghiệm thu.
+   *   - `Set` = CHỈ các task trong tập này được thưởng. Dùng cho `closeProject()`,
+   *     nơi quy tắc thưởng KHÁC luồng nghiệm thu: chỉ task gốc `COMPLETED` mới
+   *     được thưởng, còn `INTERNAL_COMPLETED` giữ nguyên và KHÔNG thưởng.
+   *
+   * ⚠️ KHÔNG bỏ tham số này đi. Nếu `closeProject()` gọi không whitelist thì
+   * các task `INTERNAL_COMPLETED` / dở dang sẽ BỊ THƯỞNG OAN — bug âm thầm
+   * (không ném lỗi, chỉ sai tiền).
+   */
+  async triggerRewards(
     service: ContractServices,
     manager: EntityManager,
+    allowedTaskIds?: Set<string>,
   ) {
     if (!service.tasks) return;
+
+    // Nạp lại task từ DB để chắc chắn đọc TRẠNG THÁI MỚI NHẤT.
+    // `service.tasks` có thể là mảng cũ trong bộ nhớ: các luồng gọi
+    // `manager.update(Tasks, ...)` chỉ ghi xuống DB, KHÔNG cập nhật objects
+    // đang giữ trong `service.tasks` → nếu không re-fetch, hàm sẽ chạy trên
+    // dữ liệu cũ và có thể thưởng cho task chưa `ACCEPTED`.
+    service.tasks = await manager.getRepository(Tasks).find({
+      where: { contractService: { id: service.id } },
+      relations: [
+        "job",
+        "assignee",
+        "assignee.accounts",
+        "helper",
+        "helper.accounts",
+        "parentTask",
+        "parentTask.job",
+      ],
+    });
 
     const percentageRewards = new Map<string, number>();
     const parentRewards = new Map<string, number>();
     const subtasksByParent = new Map<string, Tasks[]>();
     for (const task of service.tasks) {
+      if (allowedTaskIds && !allowedTaskIds.has(task.id)) continue;
       if (!task.parentTaskId) continue;
       const group = subtasksByParent.get(task.parentTaskId) || [];
       group.push(task);
@@ -707,6 +747,9 @@ export class AcceptanceService {
     }
 
     for (const task of service.tasks) {
+      // Whitelist: chỉ task được phép mới tính thưởng (dùng cho closeProject)
+      if (allowedTaskIds && !allowedTaskIds.has(task.id)) continue;
+
       const isSubtask = Boolean(task.parentTaskId);
       const childSubtasks = isSubtask ? [] : subtasksByParent.get(task.id) || [];
       const hasSubtasks = childSubtasks.length > 0;

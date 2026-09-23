@@ -27,6 +27,7 @@ export class TaskPricingService extends TaskBaseService {
             relations: ["project", "project.contract", "job"]
         });
         if (!task) throw new Error("Không tìm thấy công việc");
+        this.assertTaskProjectNotOnHold(task);
         if (!task.isExtra) throw new Error("Đây không phải là công việc phát sinh");
 
         if (data.isRejected) {

@@ -23,6 +23,7 @@ import { TaskBaseService } from "./Task.BaseService";
 export class TaskSupportService extends TaskBaseService {
     async requestSupport(id: string, note: string) {
         const task = await this.getOne(id);
+        this.assertTaskProjectNotOnHold(task);
         task.isSupportRequested = true;
         task.supportRequestNote = note;
         task.supportRequestType = "EXECUTION";

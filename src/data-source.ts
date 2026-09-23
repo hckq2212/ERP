@@ -104,6 +104,7 @@ export const AppDataSource = new DataSource({
         Contracts,
         ContractServices,
         Projects,
+        ProjectPauseRequests,
         ProjectProductDescriptionSubmissions,
         ProjectProductDescriptionItems,
         Tasks,

@@ -66,6 +66,7 @@ export class ProjectAssignmentService extends ProjectBaseService {
 
         let isNewProject = false;
         if (project) {
+            this.assertLoadedProjectNotOnHold(project);
             project.name = data.name || project.name;
             this.applyOpportunitySchedule(project, contract);
         } else {
@@ -256,6 +257,7 @@ export class ProjectAssignmentService extends ProjectBaseService {
             error.statusCode = 404;
             throw error;
         }
+        this.assertLoadedProjectNotOnHold(project);
         if (!project.team) {
             const error: any = new Error("Dự án chưa có đội dự án");
             error.statusCode = 400;
