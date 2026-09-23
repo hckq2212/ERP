@@ -7,7 +7,6 @@ import { UserRole } from "../../account/entities/Account.entity";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { In } from "typeorm";
-import { Projects, ProjectStatus } from "../entities/Project.entity";
 
 type ActorInfo = { id: string; userId?: string; role: string };
 
