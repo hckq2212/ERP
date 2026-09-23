@@ -196,7 +196,7 @@ export class ContractService {
         const contract = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             return await this.contractRepository.findOne({
                 where: rbacWhere,
-                relations: ["customer", "opportunity", "milestones", "services", "services.service", "debts", "addendums"]
+                relations: ["customer", "opportunity", "milestones", "services", "services.service", "debts", "addendums", "project"]
             });
         });
         if (!contract) {
