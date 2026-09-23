@@ -210,6 +210,33 @@ export class ProjectController {
         }
     }
 
+    extractProductDescriptionFile = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.extractForFile(
+                req.params.id as string,
+                req.body?.fileUrl,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    aiFormatProductDescription = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.productDescriptionService.aiFormat(
+                req.params.id as string,
+                req.body?.text,
+                req.body?.productName,
+                req.user as any
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     // start = async (req: Request, res: Response) => {
     //     try {
     //         const project = await this.projectService.start(req.params.id as string);

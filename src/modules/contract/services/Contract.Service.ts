@@ -342,7 +342,7 @@ export class ContractService {
                     0
                 );
                 if (finalSellingPrice === undefined || finalSellingPrice === null || finalSellingPrice === 0) {
-                    finalSellingPrice = quotationSellingPrice * 1.08;
+                    finalSellingPrice = quotationSellingPrice;
                 }
                 if (finalCost === undefined || finalCost === null || finalCost === 0) {
                     finalCost = quotationCost;
@@ -356,7 +356,7 @@ export class ContractService {
                     // Price Priority 2: Sum of Opportunity Services
                     const serviceSum = opportunity.services?.reduce((sum, os) => sum + (Number(os.sellingPrice) * (os.quantity || 1)), 0);
                     if (serviceSum > 0) {
-                        finalSellingPrice = serviceSum * 1.08;
+                        finalSellingPrice = serviceSum;
                     }
                 }
 
@@ -564,14 +564,7 @@ export class ContractService {
             dueDate: new Date(new Date().setDate(new Date().getDate() + 30)), // Default 30 days
             ...SecurityService.getTenantWhere(userInfo)
         } as any);
-        const savedDefaultMilestone: any = await this.milestoneRepository.save(defaultMilestone);
-
-        // Auto create debt for default milestone
-        try {
-            await this.debtService.createFromMilestone(savedDefaultMilestone.id);
-        } catch (debtErr) {
-            console.error("Error auto-creating debt for default milestone:", debtErr);
-        }
+        await this.milestoneRepository.save(defaultMilestone);
 
         // Invalidate contract caches before returning the freshly loaded detail
         await RedisService.deleteCache('contracts:all*');

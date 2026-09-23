@@ -2,20 +2,6 @@ import { Column, Entity, JoinColumn, ManyToOne } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { ProjectProductDescriptionSubmissions } from "./ProjectProductDescriptionSubmission.entity";
 
-export type ProjectProductDescriptionSpecType = "text" | "number" | "percent" | "currency" | "date" | "url";
-
-export type ProjectProductDescriptionSubKey = {
-    key: string;
-    value: string;
-};
-
-export type ProjectProductDescriptionSpec = {
-    key: string;
-    value: string;
-    type?: ProjectProductDescriptionSpecType;
-    subKeys?: ProjectProductDescriptionSubKey[];
-};
-
 @Entity()
 export class ProjectProductDescriptionItems extends BaseEntity {
     @ManyToOne(() => ProjectProductDescriptionSubmissions, (submission) => submission.items, { onDelete: "CASCADE" })
@@ -27,12 +13,18 @@ export class ProjectProductDescriptionItems extends BaseEntity {
     @Column()
     productName: string;
 
-    @Column({ type: "simple-json", nullable: true })
-    specs: ProjectProductDescriptionSpec[];
+    @Column({ type: "varchar" })
+    fileUrl: string;
+
+    @Column({ type: "varchar", nullable: true })
+    fileName: string | null;
+
+    @Column({ type: "text", nullable: true })
+    extractedText: string | null;
 
     @Column({ type: "text", nullable: true })
     note: string | null;
 
-    @Column({ type: "varchar", nullable: true })
-    docUrl: string | null;
+    @Column({ type: "jsonb", nullable: true })
+    documents: { url: string; name: string | null }[] | null;
 }
