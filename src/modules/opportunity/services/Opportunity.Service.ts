@@ -522,6 +522,16 @@ export class OpportunityService {
             }
         }
 
+        const pendingVideoDemoTasks = await this.taskRepository.find({
+            where: {
+                opportunityId: doc.id,
+                assigneeId: IsNull(),
+                opportunityServiceJob: { isBriefVideo: true }
+            },
+            relations: ["opportunityServiceJob"]
+        });
+        await this.notifyProjectManagersAboutVideoDemoTasks(doc, pendingVideoDemoTasks);
+
         // Invalidate list and detail caches
         await RedisService.deleteCache('opportunities:all*');
         await RedisService.deleteCache(`opportunities:detail:${id}*`);
@@ -529,6 +539,29 @@ export class OpportunityService {
         opportunityEmitter.emit(OPPORTUNITY_EVENTS.APPROVED, doc);
 
         return { message: "Duyệt cơ hội thành công", opportunity: result };
+    }
+
+    private async notifyProjectManagersAboutVideoDemoTasks(opportunity: Opportunities, tasks: Tasks[]) {
+        if (tasks.length === 0) return;
+
+        const projectManagers = await this.userRepository.find({
+            where: { accounts: { role: UserRole.PM } },
+            relations: ["accounts"]
+        });
+
+        for (const task of tasks) {
+            for (const manager of projectManagers) {
+                await this.notificationService.createNotification({
+                    title: "Yêu cầu Video AI demo mới",
+                    content: `Cơ hội ${opportunity.opportunityCode} có hạng mục ${task.name} cần phân công.`,
+                    type: "TASK_ASSIGNED",
+                    recipient: manager,
+                    relatedEntityId: task.id,
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                });
+            }
+        }
     }
 
     private async syncServicesAndPackages(opportunity: Opportunities, services: any[], packages: any[]) {
@@ -719,20 +752,13 @@ export class OpportunityService {
                 });
                 const savedTask = await this.taskRepository.save(task);
 
-                const projectManagers = await this.userRepository.find({
-                    where: { accounts: { role: UserRole.PM } },
-                    relations: ["accounts"]
-                });
-                for (const manager of projectManagers) {
-                    await this.notificationService.createNotification({
-                        title: "Yêu cầu Video AI demo mới",
-                        content: `Cơ hội ${opportunityService.opportunity.opportunityCode} có hạng mục ${snapshot.name} cần phân công.`,
-                        type: "TASK_ASSIGNED",
-                        recipient: manager,
-                        relatedEntityId: savedTask.id,
-                        relatedEntityType: "Task",
-                        link: `/tasks/${savedTask.id}`
-                    });
+                // BD-created opportunities remain pending until BOD/Admin approval.
+                // Notify PMs only when the opportunity has already passed that gate.
+                if (opportunityService.opportunity.status !== OpportunityStatus.PENDING_OPP_APPROVAL) {
+                    await this.notifyProjectManagersAboutVideoDemoTasks(
+                        opportunityService.opportunity,
+                        [savedTask]
+                    );
                 }
             }
         }

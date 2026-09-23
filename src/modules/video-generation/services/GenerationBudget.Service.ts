@@ -8,18 +8,33 @@ import { OpportunityServiceJobs } from "../../opportunity-service/entities/Oppor
 const RELEASED_STATUSES = ["failed", "cancelled"];
 
 export interface GenerationBudgetSnapshot {
-    limit: number;
+    budgetMode: "LIMITED" | "UNLIMITED";
+    limit: number | null;
     used: number;
     requested: number;
-    remaining: number;
-    allocationPercent: number;
+    remaining: number | null;
+    allocationPercent: number | null;
 }
+
+type GenerationLimitContext = Pick<
+    GenerationBudgetSnapshot,
+    "budgetMode" | "limit" | "allocationPercent"
+>;
 
 /**
  * Serializes generation reservations per task so Video AI and Motion Control
  * share one fixed budget without concurrent requests overspending it.
  */
 export class GenerationBudgetService {
+    private async isUnlimitedOpportunityDemo(manager: EntityManager, task: Tasks): Promise<boolean> {
+        if (!task.opportunityId || !task.opportunityServiceJobId) return false;
+
+        const opportunityJob = await manager.getRepository(OpportunityServiceJobs).findOne({
+            where: { id: task.opportunityServiceJobId },
+        });
+        return Boolean(opportunityJob?.isBriefVideo);
+    }
+
     private async getConfiguredCost(manager: EntityManager, task: Tasks): Promise<number> {
         const taskWithPricingSource = await manager.getRepository(Tasks).findOne({
             where: { id: task.id },
@@ -53,7 +68,18 @@ export class GenerationBudgetService {
     private async getLimitContext(
         manager: EntityManager,
         task: Tasks,
-    ): Promise<{ limit: number; allocationPercent: number }> {
+    ): Promise<GenerationLimitContext> {
+        // Video AI demo is created while the sale is still an opportunity. Its
+        // actual cost is only known after generation, so it must not require a
+        // pre-configured cost limit. We still track every generation cost.
+        if (await this.isUnlimitedOpportunityDemo(manager, task)) {
+            return {
+                budgetMode: "UNLIMITED",
+                limit: null,
+                allocationPercent: null,
+            };
+        }
+
         let budgetSourceTask = task;
         let allocationPercent: number;
 
@@ -89,7 +115,7 @@ export class GenerationBudgetService {
         if (!Number.isSafeInteger(limit) || limit <= 0) {
             throw new Error("Task chưa có giá vốn hợp lệ để tạo video AI");
         }
-        return { limit, allocationPercent };
+        return { budgetMode: "LIMITED", limit, allocationPercent };
     }
 
     async getSnapshot(taskId: string, userId: string): Promise<GenerationBudgetSnapshot> {
@@ -103,7 +129,7 @@ export class GenerationBudgetService {
             throw new Error("Bạn không phải người được phân công công việc này");
         }
 
-        const { limit, allocationPercent } = await this.getLimitContext(AppDataSource.manager, task);
+        const { budgetMode, limit, allocationPercent } = await this.getLimitContext(AppDataSource.manager, task);
 
         const [videoResult, motionResult] = await Promise.all([
             AppDataSource.getRepository(VideoGenerations)
@@ -125,10 +151,11 @@ export class GenerationBudgetService {
         ]);
         const used = Number(videoResult?.total || 0) + Number(motionResult?.total || 0);
         return {
+            budgetMode,
             limit,
             used,
             requested: 0,
-            remaining: Math.max(0, limit - used),
+            remaining: budgetMode === "UNLIMITED" ? null : Math.max(0, limit! - used),
             allocationPercent,
         };
     }
@@ -153,7 +180,7 @@ export class GenerationBudgetService {
 
             if (!task) throw new Error("Không tìm thấy công việc");
 
-            const { limit, allocationPercent } = await this.getLimitContext(manager, task);
+            const { budgetMode, limit, allocationPercent } = await this.getLimitContext(manager, task);
 
             const [videoResult, motionResult] = await Promise.all([
                 manager.getRepository(VideoGenerations)
@@ -175,20 +202,21 @@ export class GenerationBudgetService {
             ]);
 
             const used = Number(videoResult?.total || 0) + Number(motionResult?.total || 0);
-            const available = Math.max(0, limit - used);
-            if (normalizedCost > available) {
+            const available = budgetMode === "UNLIMITED" ? null : Math.max(0, limit! - used);
+            if (available !== null && normalizedCost > available) {
                 throw new Error(
-                    `Vượt hạn mức tạo video. Hạn mức: ${limit.toLocaleString("vi-VN")} VNĐ, ` +
+                    `Vượt hạn mức tạo video. Hạn mức: ${limit!.toLocaleString("vi-VN")} VNĐ, ` +
                     `đã dùng/đang giữ: ${used.toLocaleString("vi-VN")} VNĐ, ` +
                     `còn lại: ${available.toLocaleString("vi-VN")} VNĐ`,
                 );
             }
 
             const budget: GenerationBudgetSnapshot = {
+                budgetMode,
                 limit,
                 used: used + normalizedCost,
                 requested: normalizedCost,
-                remaining: limit - used - normalizedCost,
+                remaining: budgetMode === "UNLIMITED" ? null : limit! - used - normalizedCost,
                 allocationPercent,
             };
             const reservation = await saveReservation(manager, budget);
