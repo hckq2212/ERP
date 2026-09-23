@@ -2,7 +2,7 @@ import { In } from "typeorm";
 import { AppDataSource } from "../../../data-source";
 import { UserRole } from "../../account/entities/Account.entity";
 import { ProjectStatus, Projects } from "../../project/entities/Project.entity";
-import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { MemberRole, getMemberRoles, memberHasRole } from "../../project/entities/TeamMember.entity";
 import { Tasks } from "../../task/entities/Task.entity";
 import { Users } from "../../user/entities/User.entity";
 import {
@@ -94,8 +94,8 @@ export class DashboardScopeService {
             return project.team?.members?.some(member => {
                 if (member.user?.id !== viewerUserId) return false;
                 return actor.role === UserRole.PM
-                    ? member.role === MemberRole.PROJECT_MANAGER
-                    : member.role === MemberRole.ACCOUNT;
+                    ? memberHasRole(member, MemberRole.PROJECT_MANAGER)
+                    : memberHasRole(member, MemberRole.ACCOUNT);
             });
         });
 
@@ -107,7 +107,7 @@ export class DashboardScopeService {
             }
             project.team?.members?.forEach(member => {
                 if (member.user?.id && !managedMemberRoles.has(member.user.id)) {
-                    managedMemberRoles.set(member.user.id, member.role);
+                    managedMemberRoles.set(member.user.id, getMemberRoles(member)[0] || "MEMBER");
                 }
             });
         });

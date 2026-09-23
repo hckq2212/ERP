@@ -17,7 +17,7 @@ import { isProjectManagementRole } from "../../account/entities/Account.entity";
 import { TaskBaseService } from "./Task.BaseService";
 import { Tasks } from "../entities/Task.entity";
 import { Users } from "../../user/entities/User.entity";
-import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
 
 const MAX_FETCH_BYTES = 500 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
@@ -85,7 +85,7 @@ export class TaskResultCheckService extends TaskBaseService {
         if (task.supervisor) map.set(task.supervisor.id, task.supervisor);
         if (task.assigner) map.set(task.assigner.id, task.assigner);
         for (const member of task.project?.team?.members || []) {
-            if (member.role === MemberRole.PROJECT_MANAGER && member.user) map.set(member.user.id, member.user);
+            if (memberHasRole(member, MemberRole.PROJECT_MANAGER) && member.user) map.set(member.user.id, member.user);
         }
         return Array.from(map.values());
     }

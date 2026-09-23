@@ -14,6 +14,7 @@ import { Violations } from "../../task/entities/Violation.entity";
 import { DashboardScopeType, selectDashboardWorkItems } from "./Dashboard.Scope";
 import { DashboardActor, DashboardScopeService } from "./DashboardScope.Service";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
+import { getMemberRoles } from "../../project/entities/TeamMember.entity";
 
 export class DashboardService {
     private contractRepo = AppDataSource.getRepository(Contracts);
@@ -344,7 +345,7 @@ export class DashboardService {
                         userRole = "ACCOUNT";
                     } else if (project.team.members?.length) {
                         const m = project.team.members.find((mem: any) => mem.user?.id === userId);
-                        if (m) userRole = m.role;
+                        if (m) userRole = getMemberRoles(m)[0];
                     }
                 }
 

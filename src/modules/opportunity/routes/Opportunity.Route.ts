@@ -12,6 +12,7 @@ router.get("/:id", opportunityController.getOne);
 router.post("/", validationMiddleware(CreateOpportunityDTO), opportunityController.create);
 router.patch("/:id", validationMiddleware(UpdateOpportunityDTO), opportunityController.update);
 router.patch("/:id/approve", roleMiddleware(["BOD", "ADMIN"]), opportunityController.approve);
+router.patch("/:id/reject", roleMiddleware(["BOD", "ADMIN"]), opportunityController.reject);
 router.delete("/:id", opportunityController.delete);
 
 export default router;

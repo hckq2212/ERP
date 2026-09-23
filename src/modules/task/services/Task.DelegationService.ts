@@ -2,7 +2,7 @@ import { AppDataSource } from "../../../data-source";
 import { EntityManager } from "typeorm";
 import { PerformerType, SubtaskPlanStatus, TaskStatus } from "../../../shared/entities/Enums";
 import { UserRole } from "../../account/entities/Account.entity";
-import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
 import { Users } from "../../user/entities/User.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
 import { projectEmitter, PROJECT_EVENTS } from "../../project/events/ProjectEmitter";
@@ -47,7 +47,7 @@ export class TaskDelegationService extends TaskBaseService {
         if (!actorUserId || !task.project?.team) return false;
         if (task.project.team.teamLead?.id === actorUserId) return true;
         return task.project.team.members?.some(member =>
-            member.user?.id === actorUserId && member.role === MemberRole.ACCOUNT
+            member.user?.id === actorUserId && memberHasRole(member, MemberRole.ACCOUNT)
         ) || false;
     }
 
@@ -125,7 +125,7 @@ export class TaskDelegationService extends TaskBaseService {
             this.assertAccountCanDelegate(task, actor, actorUserId);
 
             const projectManagerMember = task.project.team.members?.find(member =>
-                member.role === MemberRole.PROJECT_MANAGER && member.user
+                memberHasRole(member, MemberRole.PROJECT_MANAGER) && member.user
             );
             if (!projectManagerMember?.user) {
                 throw this.httpError("Dự án chưa có PM phụ trách để nhận yêu cầu", 400);
@@ -484,7 +484,7 @@ export class TaskDelegationService extends TaskBaseService {
             this.assertValidSubtaskPlan(parent, subtasks, true);
 
             const projectManager = parent.project.team.members?.find(member =>
-                member.role === MemberRole.PROJECT_MANAGER && member.user?.id
+                memberHasRole(member, MemberRole.PROJECT_MANAGER) && member.user?.id
             )?.user;
             if (!projectManager) throw this.httpError("Dự án chưa có PM phụ trách để duyệt phương án", 400);
 
