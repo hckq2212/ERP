@@ -13,18 +13,18 @@ export class ProjectProductDescriptionItems extends BaseEntity {
     @Column()
     productName: string;
 
-    @Column({ type: "varchar" })
+    @Column({ type: "varchar", nullable: true })
     fileUrl: string;
 
     @Column({ type: "varchar", nullable: true })
-    fileName: string | null;
+    fileName: string;
 
     @Column({ type: "text", nullable: true })
-    extractedText: string | null;
+    extractedText: string;
 
     @Column({ type: "text", nullable: true })
-    note: string | null;
+    note: string;
 
     @Column({ type: "jsonb", nullable: true })
-    documents: { url: string; name: string | null }[] | null;
+    documents: { url: string; name: string | null }[];
 }
