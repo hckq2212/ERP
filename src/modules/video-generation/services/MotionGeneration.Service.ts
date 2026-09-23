@@ -125,6 +125,7 @@ export class MotionGenerationService {
             modelName: model.name,
             generationMode: dto.mode || "pro",
             cost: dto.cost ?? 0,
+            budgetMode: budget.budgetMode,
             budgetLimit: budget.limit,
             budgetUsed: budget.used,
             budgetRemaining: budget.remaining,

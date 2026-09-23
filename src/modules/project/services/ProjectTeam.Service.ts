@@ -6,6 +6,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { UserRole } from "../../account/entities/Account.entity";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
+import { In } from "typeorm";
 
 type ActorInfo = { id: string; userId?: string; role: string };
 
@@ -43,17 +44,43 @@ export class ProjectTeamService {
         });
         if (!team) throw this.httpError("Không tìm thấy team", 404);
 
-        if (team.teamLead?.id === actorUserId) return;
-
-        const projectManagerMember = await this.memberRepository.findOne({
+        const projectManagerMembership = await this.memberRepository.findOne({
             where: SecurityService.withTenant({
                 team: { id: teamId },
                 user: { id: actorUserId },
                 role: MemberRole.PROJECT_MANAGER
             })
         });
-        if (actor.role !== UserRole.PM || !projectManagerMember) {
+        if (actor.role !== UserRole.PM || !projectManagerMembership) {
             throw this.httpError("Bạn không có quyền quản lý team này", 403);
+        }
+    }
+
+    private async assertCanMutateTeamMember(teamId: string, targetUserId: string, actor?: ActorInfo) {
+        if (!actor) throw this.httpError("Bạn cần đăng nhập để quản lý team", 401);
+        if (actor.role === UserRole.BOD) {
+            throw this.httpError("BOD không được thêm, cập nhật hoặc xóa nhân sự của đội dự án", 403);
+        }
+
+        await this.assertCanManageTeam(teamId, actor);
+
+        const actorUserId = actor.userId || actor.id;
+        if (actor.role === UserRole.PM && actorUserId === targetUserId) {
+            throw this.httpError("PM không được tự thêm hoặc cập nhật vai trò của bản thân", 403);
+        }
+
+        const assignedProjectManager = await this.memberRepository.findOne({
+            where: SecurityService.withTenant({
+                team: { id: teamId },
+                user: { id: targetUserId },
+                role: MemberRole.PROJECT_MANAGER
+            })
+        });
+        if (assignedProjectManager) {
+            throw this.httpError(
+                "PM đã phân công có vai trò cố định. Vui lòng dùng chức năng phân công PM để thay đổi",
+                403
+            );
         }
     }
 
@@ -189,31 +216,40 @@ export class ProjectTeamService {
         return await this.teamRepository.remove(team);
     }
 
-    async addMember(teamId: string, userId: string, role?: MemberRole, actor?: ActorInfo) {
-        await this.assertCanManageTeam(teamId, actor);
-        if (role === MemberRole.PROJECT_MANAGER && actor?.role !== UserRole.ADMIN && actor?.role !== UserRole.BOD) {
-            throw this.httpError("Chỉ ADMIN/BOD mới được thêm PM cho đội dự án", 403);
+    async addMember(teamId: string, userId: string, role?: MemberRole, actor?: ActorInfo, roles?: MemberRole[]) {
+        const requestedRoles = Array.from(new Set(
+            roles?.length ? roles : [role || MemberRole.CONTENT_CREATOR]
+        ));
+        if (requestedRoles.includes(MemberRole.PROJECT_MANAGER)) {
+            throw this.httpError("Vai trò Quản lý dự án chỉ được tạo tại chức năng phân công PM", 400);
         }
+        await this.assertCanMutateTeamMember(teamId, userId, actor);
         const team = await this.getOne(teamId);
         const user = await this.userRepository.findOneBy({ id: userId });
         if (!user) throw new Error("Không tìm thấy người dùng");
 
-        // Check if already a member
-        const existing = await this.memberRepository.findOne({
-            where: SecurityService.withTenant({ team: { id: teamId }, user: { id: userId } })
+        const existing = await this.memberRepository.find({
+            where: SecurityService.withTenant({
+                team: { id: teamId },
+                user: { id: userId },
+                role: In(requestedRoles)
+            })
         });
-        if (existing) throw new Error("Người dùng đã là thành viên của team này");
+        if (existing.length > 0) {
+            throw this.httpError("Nhân sự đã có một hoặc nhiều vai trò được chọn trong đội dự án", 409);
+        }
 
-        const member = this.memberRepository.create({
+        const members = requestedRoles.map(memberRole => this.memberRepository.create({
             team,
             user,
-            role: role || MemberRole.CONTENT_CREATOR,
+            role: memberRole,
             ...SecurityService.getTenantWhere()
-        } as Partial<TeamMembers>);
+        } as Partial<TeamMembers>));
 
-        const savedMember = await this.memberRepository.save(member);
-        await this.syncAccountRoleAsLead(savedMember);
-        return savedMember;
+        const savedMembers = await this.memberRepository.save(members);
+        const accountMember = savedMembers.find(member => member.role === MemberRole.ACCOUNT);
+        if (accountMember) await this.syncAccountRoleAsLead(accountMember);
+        return savedMembers.length === 1 ? savedMembers[0] : savedMembers;
     }
 
     async updateMember(memberId: string, data: { role?: MemberRole }, actor?: ActorInfo) {
@@ -222,18 +258,88 @@ export class ProjectTeamService {
             relations: ["team", "user"]
         });
         if (!member) throw new Error("Không tìm thấy thành viên");
-        await this.assertCanManageTeam(member.team.id, actor);
+        await this.assertCanMutateTeamMember(member.team.id, member.user.id, actor);
 
-        const touchesProjectManagerRole = member.role === MemberRole.PROJECT_MANAGER || data.role === MemberRole.PROJECT_MANAGER;
-        if (touchesProjectManagerRole && actor?.role !== UserRole.ADMIN && actor?.role !== UserRole.BOD) {
-            throw this.httpError("Chỉ ADMIN/BOD mới được thay đổi PM của đội dự án", 403);
+        if (data.role === MemberRole.PROJECT_MANAGER) {
+            throw this.httpError("Vai trò Quản lý dự án chỉ được thay đổi tại chức năng phân công PM", 400);
         }
 
-        if (data.role) member.role = data.role;
+        if (data.role && data.role !== member.role) {
+            const duplicateRole = await this.memberRepository.findOne({
+                where: SecurityService.withTenant({
+                    team: { id: member.team.id },
+                    user: { id: member.user.id },
+                    role: data.role
+                })
+            });
+            if (duplicateRole) {
+                throw this.httpError("Nhân sự đã có vai trò này trong đội dự án", 409);
+            }
+            member.role = data.role;
+        }
 
         const savedMember = await this.memberRepository.save(member);
         await this.syncAccountRoleAsLead(savedMember);
         return savedMember;
+    }
+
+    async updateMemberRoles(teamId: string, userId: string, roles: MemberRole[], actor?: ActorInfo) {
+        await this.assertCanMutateTeamMember(teamId, userId, actor);
+
+        const requestedRoles = Array.from(new Set(roles || []));
+        if (requestedRoles.length === 0) {
+            throw this.httpError("Nhân sự phải có ít nhất một vai trò trong đội dự án", 400);
+        }
+        if (requestedRoles.some(role => !Object.values(MemberRole).includes(role))) {
+            throw this.httpError("Danh sách vai trò không hợp lệ", 400);
+        }
+        if (requestedRoles.includes(MemberRole.PROJECT_MANAGER)) {
+            throw this.httpError("Vai trò Quản lý dự án chỉ được thay đổi tại chức năng phân công PM", 400);
+        }
+
+        const memberships = await this.memberRepository.find({
+            where: SecurityService.withTenant({ team: { id: teamId }, user: { id: userId } }),
+            relations: ["team", "team.teamLead", "user"]
+        });
+        if (memberships.length === 0) throw this.httpError("Không tìm thấy thành viên", 404);
+
+        const currentRoles = new Set(memberships.map(member => member.role));
+
+        const membershipsToRemove = memberships.filter(member => !requestedRoles.includes(member.role));
+        if (membershipsToRemove.length > 0) await this.memberRepository.remove(membershipsToRemove);
+
+        const team = memberships[0].team;
+        const user = memberships[0].user;
+        const rolesToAdd = requestedRoles.filter(role => !currentRoles.has(role));
+        if (rolesToAdd.length > 0) {
+            const membershipsToAdd = rolesToAdd.map(memberRole => this.memberRepository.create({
+                team,
+                user,
+                role: memberRole,
+                ...SecurityService.getTenantWhere()
+            } as Partial<TeamMembers>));
+            await this.memberRepository.save(membershipsToAdd);
+        }
+
+        const accountMembership = await this.memberRepository.findOne({
+            where: SecurityService.withTenant({
+                team: { id: teamId },
+                user: { id: userId },
+                role: MemberRole.ACCOUNT
+            }),
+            relations: ["team", "user"]
+        });
+        if (accountMembership) {
+            await this.syncAccountRoleAsLead(accountMembership);
+        } else if (team.teamLead?.id === userId) {
+            team.teamLead = null as any;
+            await this.teamRepository.save(team);
+        }
+
+        return this.memberRepository.find({
+            where: SecurityService.withTenant({ team: { id: teamId }, user: { id: userId } }),
+            relations: ["user", "user.accounts"]
+        });
     }
 
     async removeMember(memberId: string, actor?: ActorInfo) {
@@ -242,15 +348,11 @@ export class ProjectTeamService {
             relations: ["team", "team.teamLead", "user"]
         });
         if (!member) throw new Error("Không tìm thấy thành viên");
-        await this.assertCanManageTeam(member.team.id, actor);
+        await this.assertCanMutateTeamMember(member.team.id, member.user.id, actor);
 
         if (member.team && member.team.teamLead && member.user.id === member.team.teamLead.id) {
             throw new Error("Không thể xóa thành viên đang là Team Lead. Vui lòng chỉ định Lead mới trước khi xóa.");
         }
-        if (member.role === MemberRole.PROJECT_MANAGER && actor?.role !== UserRole.ADMIN && actor?.role !== UserRole.BOD) {
-            throw this.httpError("Chỉ ADMIN/BOD mới được xóa PM khỏi đội dự án", 403);
-        }
-
         return await this.memberRepository.remove(member);
     }
 }

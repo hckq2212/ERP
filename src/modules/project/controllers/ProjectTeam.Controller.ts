@@ -80,8 +80,8 @@ export class ProjectTeamController {
 
     addMember = async (req: Request, res: Response) => {
         try {
-            const { userId, role } = req.body;
-            const member = await this.teamService.addMember(req.params.id as string, userId, role, (req as any).user);
+            const { userId, role, roles } = req.body;
+            const member = await this.teamService.addMember(req.params.id as string, userId, role, (req as any).user, roles);
             res.status(201).json(member);
         } catch (error) {
             sendError(res, error);
@@ -92,6 +92,20 @@ export class ProjectTeamController {
         try {
             const member = await this.teamService.updateMember(req.params.memberId as string, req.body, (req as any).user);
             res.status(200).json(member);
+        } catch (error) {
+            sendError(res, error);
+        }
+    }
+
+    updateMemberRoles = async (req: Request, res: Response) => {
+        try {
+            const members = await this.teamService.updateMemberRoles(
+                req.params.id as string,
+                req.params.userId as string,
+                req.body.roles,
+                (req as any).user
+            );
+            res.status(200).json(members);
         } catch (error) {
             sendError(res, error);
         }

@@ -99,10 +99,21 @@ export class ProjectAssignmentService extends ProjectBaseService {
             await this.memberRepository.remove(oldProjectManagers);
         }
 
-        const existingPmMember = await this.memberRepository.findOne({
+        // The assigned PM is a fixed project role: remove every secondary role
+        // and keep exactly one PROJECT_MANAGER membership.
+        const assignedPmMemberships = await this.memberRepository.find({
             where: SecurityService.withTenant({ team: { id: team.id }, user: { id: pm.id } })
         });
-        if (!existingPmMember) {
+        const assignedPmRoleMemberships = assignedPmMemberships.filter(
+            member => member.role === MemberRole.PROJECT_MANAGER
+        );
+        const secondaryMemberships = assignedPmMemberships.filter(
+            member => member.role !== MemberRole.PROJECT_MANAGER
+        );
+        if (secondaryMemberships.length > 0) {
+            await this.memberRepository.remove(secondaryMemberships);
+        }
+        if (assignedPmRoleMemberships.length === 0) {
             const pmMember = this.memberRepository.create({
                 team,
                 user: pm,
@@ -110,9 +121,8 @@ export class ProjectAssignmentService extends ProjectBaseService {
                 ...SecurityService.getTenantWhere()
             } as any);
             await this.memberRepository.save(pmMember);
-        } else if (existingPmMember.role !== MemberRole.PROJECT_MANAGER) {
-            existingPmMember.role = MemberRole.PROJECT_MANAGER;
-            await this.memberRepository.save(existingPmMember);
+        } else if (assignedPmRoleMemberships.length > 1) {
+            await this.memberRepository.remove(assignedPmRoleMemberships.slice(1));
         }
 
         if (isNewProject) {

@@ -230,6 +230,7 @@ export class VideoGenerationService {
             multiShot: !isByteplus && (dto.multiShot ?? false),
             shotType: dto.shotType,
             cost: dto.cost ?? 0,
+            budgetMode: budget.budgetMode,
             budgetLimit: budget.limit,
             budgetUsed: budget.used,
             budgetRemaining: budget.remaining,

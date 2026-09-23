@@ -12,14 +12,17 @@ import { authMiddleware } from "./shared/middlewares/Auth.Middleware";
 import { loggingMiddleware } from "./shared/middlewares/Logging.Middleware";
 import { globalApiLimiter, writeRateLimitMiddleware } from "./shared/middlewares/RateLimit.Middleware";
 import { initSubscribers } from "./shared/subscribers";
+import aiProviderRoute from "./modules/ai-provider/routes/AiProvider.Route"
+import aiModelRoute from "./modules/ai-model/routes/AiModel.Route"
+import assetRoute from "./modules/asset/routes/Asset.Route"
+import videoGenerationRoute from "./modules/video-generation/routes/VideoGeneration.Route"
+import aiElementRoute from "./modules/ai-element/routes/AiElement.Route"
+import documentLibraryRoute from "./modules/document-library/routes/DocumentLibrary.Route"
+import aiDashboardRoute from "./modules/ai-dashboard/routes/AiDashboard.Route"
 import { initSocket } from "./socket";
 import acceptanceRoute from "./modules/acceptance/routes/Acceptance.Route";
 import accountRoute from "./modules/account/routes/Account.Route";
-import aiElementRoute from "./modules/ai-element/routes/AiElement.Route";
-import aiModelRoute from "./modules/ai-model/routes/AiModel.Route";
-import aiProviderRoute from "./modules/ai-provider/routes/AiProvider.Route";
 import announcementRoute from "./modules/announcement/routes/Announcement.Route";
-import assetRoute from "./modules/asset/routes/Asset.Route";
 import authRoute from "./modules/auth/routes/Auth.Route";
 import chatRoute from "./modules/chat/routes/Chat.Route";
 import chatRoomRoute from "./modules/chat-room/routes/ChatRoom.Route";
@@ -29,7 +32,6 @@ import contractRoute from "./modules/contract/routes/Contract.Route";
 import customerRoute from "./modules/customer/routes/Customer.Route";
 import dashboardRoute from "./modules/dashboard/routes/Dashboard.Route";
 import debtRoute from "./modules/debt/routes/Debt.Route";
-import documentLibraryRoute from "./modules/document-library/routes/DocumentLibrary.Route";
 import jobCriteriaRoute from "./modules/job-criteria/routes/JobCriteria.Route";
 import jobRoute from "./modules/job/routes/Job.Route";
 import notificationRoute from "./modules/notification/routes/Notification.Route";
@@ -52,7 +54,6 @@ import taskReviewRoute from "./modules/task/routes/TaskReview.Route";
 import taskRoute from "./modules/task/routes/Task.Route";
 import userRoute from "./modules/user/routes/User.Route";
 import vendorRoute from "./modules/vendor/routes/Vendor.Route";
-import videoGenerationRoute from "./modules/video-generation/routes/VideoGeneration.Route";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -130,7 +131,9 @@ app.use("/api/assets", authMiddleware, writeRateLimitMiddleware, assetRoute);
 app.use("/api/video-generations", authMiddleware, writeRateLimitMiddleware, videoGenerationRoute);
 app.use("/api/elements", authMiddleware, writeRateLimitMiddleware, aiElementRoute);
 app.use("/api/document-library", authMiddleware, writeRateLimitMiddleware, documentLibraryRoute);
-app.use("/api/me", profileRoute);
+app.use("/api/ai-dashboard", authMiddleware, writeRateLimitMiddleware, aiDashboardRoute)
+
+app.use("/api/me", profileRoute)
 
 app.get("/health", (_req, res) => {
     res.status(200).send("OK");
