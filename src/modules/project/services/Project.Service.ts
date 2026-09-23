@@ -4,7 +4,10 @@ import { ProjectJobSyncService } from "./Project.JobSyncService";
 import { ProjectLifecycleService } from "./Project.LifecycleService";
 import { ProjectMonthlyWorkService } from "./Project.MonthlyWorkService";
 import { ProjectQueryService } from "./Project.QueryService";
+import { ProjectPauseService } from "./ProjectPause.Service";
 import { ProjectServiceAddendumService } from "./Project.ServiceAddendumService";
+
+type ActorInfo = { id?: string; userId?: string; role?: string };
 
 export class ProjectService {
     private queryService = new ProjectQueryService();
@@ -12,6 +15,7 @@ export class ProjectService {
     private jobSyncService = new ProjectJobSyncService();
     private monthlyWorkService = new ProjectMonthlyWorkService();
     private lifecycleService = new ProjectLifecycleService();
+    private pauseService = new ProjectPauseService();
     private serviceAddendumService = new ProjectServiceAddendumService();
 
     getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
@@ -65,4 +69,61 @@ export class ProjectService {
     requestStaffing(id: string, note: string | undefined, actor?: { id: string, role: string, userId?: string }) {
         return this.assignmentService.requestStaffing(id, note, actor);
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // TẠM DỪNG DỰ ÁN
+    // ─────────────────────────────────────────────────────────────────────
+
+    requestPause(id: string, reason: string, actor?: ActorInfo) {
+        return this.pauseService.requestPause(id, reason, actor);
+    }
+
+    approvePause(requestId: string, actor?: ActorInfo) {
+        return this.pauseService.approvePause(requestId, actor);
+    }
+
+    rejectPause(requestId: string, feedback: string, actor?: ActorInfo) {
+        return this.pauseService.rejectPause(requestId, feedback, actor);
+    }
+
+    pauseDirect(id: string, reason: string, actor?: ActorInfo) {
+        return this.pauseService.pauseDirect(id, reason, actor);
+    }
+
+    resume(id: string, resumeReason: string | undefined, actor?: ActorInfo) {
+        return this.pauseService.resume(id, resumeReason, actor);
+    }
+
+    getPauseHistory(id: string) {
+        return this.pauseService.getPauseHistory(id);
+    }
+
+    getHoldSummary(id: string) {
+        return this.pauseService.getHoldSummary(id);
+    }
+
+    closeDirect(id: string, reason: string, actor?: ActorInfo) {
+        return this.pauseService.closeDirect(id, reason, actor);
+    }
+
+    requestClose(id: string, reason: string | undefined, actor?: ActorInfo) {
+        return this.pauseService.requestClose(id, reason, actor);
+    }
+
+    approveClose(requestId: string, actor?: ActorInfo) {
+        return this.pauseService.approveClose(requestId, actor);
+    }
+
+    rejectClose(requestId: string, feedback: string, actor?: ActorInfo) {
+        return this.pauseService.rejectClose(requestId, feedback, actor);
+    }
+
+    updateStatus(id: string, status: string, actor?: ActorInfo) {
+        return this.pauseService.updateStatus(id, status, actor);
+    }
+
+    updateWorkingFiles(id: string, workingFiles: any[], actor?: ActorInfo) {
+        return this.lifecycleService.updateWorkingFiles(id, workingFiles, actor);
+    }
 }
+

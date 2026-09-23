@@ -134,6 +134,7 @@ export class TaskCreationService extends TaskBaseService {
                 relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user"]
             });
             if (!project) throw new Error("Không tìm thấy dự án");
+            this.assertTaskProjectNotOnHold({ project });
             if (!project.contract) throw new Error("Dự án không có hợp đồng liên kết");
             if (currentUser && !await this.isProjectOperator(project.id, currentUser)) {
                 throw this.httpError("Bạn không có quyền tạo công việc trong dự án này", 403);

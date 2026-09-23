@@ -28,6 +28,7 @@ export class TaskReminderService extends TaskBaseService {
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
+        this.assertTaskProjectNotOnHold(task);
         const canSendReminder = isProjectManagementRole(currentUser?.role) ||
             this.isProjectOperatorFromTeam(task.project?.team, currentUser);
         if (!canSendReminder) {

@@ -19,7 +19,19 @@ export enum TaskStatus {
     AWAITING_SUPPORT = "AWAITING_SUPPORT",
     REWORKING = "REWORKING",
     SUPPORT_PENDING = "SUPPORT_PENDING",
-    SUPPORT_AWAITING_RETURN = "SUPPORT_AWAITING_RETURN"
+    SUPPORT_AWAITING_RETURN = "SUPPORT_AWAITING_RETURN",
+    /**
+     * Dự án đang tạm dừng — task bị khoá thao tác, chỉ xem.
+     *
+     * ⚠️ KHÔNG thêm giá trị này vào `activeStatuses` của cron task quá hạn
+     * (`Cron.Helper.ts`) — task ON_HOLD không bao giờ được tự chuyển sang OVERDUE.
+     */
+    ON_HOLD = "ON_HOLD",
+    /**
+     * Task dở dang bị huỷ khi đóng dự án (khách không lấy nữa).
+     * Không tính Vinicoin — luôn đi kèm `isRewardable = false`.
+     */
+    CANCELLED = "CANCELLED"
 }
 
 export enum SubtaskPlanStatus {
