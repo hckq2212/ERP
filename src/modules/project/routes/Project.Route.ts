@@ -130,6 +130,8 @@ router.post(
     roleMiddleware(["ADMIN", "PM"]),
     projectController.syncServiceJobs
 );
+router.post("/:id/product-descriptions/extract-file", projectController.extractProductDescriptionFile);
+router.post("/:id/product-descriptions/ai-format", projectController.aiFormatProductDescription);
 router.post("/:id/request-staffing", projectController.requestStaffing);
 router.patch("/:id/working-files", validationMiddleware(UpdateWorkingFilesDTO), projectController.updateWorkingFiles);
 router.get("/:id", projectController.getOne);

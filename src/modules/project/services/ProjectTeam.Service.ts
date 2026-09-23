@@ -5,6 +5,7 @@ import { Users } from "../../user/entities/User.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { UserRole } from "../../account/entities/Account.entity";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
+import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { In } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 
