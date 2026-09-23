@@ -94,28 +94,20 @@ export class ProjectTeamService {
         if (!team) throw this.httpError("Không tìm thấy team", 404);
 
         if (memberHasRole(member, MemberRole.ACCOUNT)) {
-            const previousAccountMembers = (team.members || []).filter(item =>
-                item.id !== member.id && memberHasRole(item, MemberRole.ACCOUNT)
-            );
-            for (const previousMember of previousAccountMembers) {
-                const accountRole = previousMember.roles.find(item => item.role === MemberRole.ACCOUNT);
-                if (!accountRole) continue;
-                await this.memberRoleRepository.remove(accountRole);
-                if (previousMember.roles.length === 1) {
-                    await this.memberRoleRepository.save(this.memberRoleRepository.create({
-                        member: previousMember,
-                        role: MemberRole.CONTENT_CREATOR
-                    }));
-                }
+            // Một team có thể có nhiều Lead dự án. teamLead chỉ là Lead chính;
+            // thêm Lead mới không được gỡ vai trò ACCOUNT của các Lead hiện có.
+            if (!team.teamLead) {
+                team.teamLead = member.user;
+                await this.teamRepository.save(team);
             }
-
-            team.teamLead = member.user;
-            await this.teamRepository.save(team);
             return;
         }
 
         if (team.teamLead?.id === member.user?.id) {
-            team.teamLead = null as any;
+            const replacementLead = (team.members || []).find(item =>
+                item.id !== member.id && memberHasRole(item, MemberRole.ACCOUNT)
+            );
+            team.teamLead = replacementLead?.user || null as any;
             await this.teamRepository.save(team);
         }
     }

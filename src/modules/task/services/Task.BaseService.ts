@@ -16,7 +16,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { ContractServices, ContractServiceStatus } from "../../contract/entities/ContractService.entity";
 import { Violations } from "../entities/Violation.entity";
 import { taskEmitter, TASK_EVENTS } from "../events/TaskEmitter";
-import { Accounts, isManagementRole, UserRole } from "../../account/entities/Account.entity";
+import { Accounts, isManagementRole, isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { ProjectTeams } from "../../project/entities/ProjectTeam.entity";
 import { TeamMembers, MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
 import { assertProjectNotOnHold, assertTaskProjectNotOnHold } from "../../project/helpers/ProjectHold.helper";
@@ -154,6 +154,61 @@ export class TaskBaseService {
             member.user?.id === actorUserId &&
             [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].some(role => memberHasRole(member, role))
         ) || false;
+    }
+
+    /**
+     * "Account" trong nghiệp vụ dự án là Lead dự án (MemberRole.ACCOUNT),
+     * không phải tài khoản đăng nhập trong bảng Accounts.
+     */
+    protected isProjectLeadFromTeam(team?: ProjectTeams | null, actor?: TaskActor) {
+        const actorUserId = this.getActorUserId(actor);
+        if (!actorUserId || !team) return false;
+
+        if (team.teamLead?.id === actorUserId) return true;
+
+        return team.members?.some(member =>
+            member.user?.id === actorUserId && memberHasRole(member, MemberRole.ACCOUNT)
+        ) || false;
+    }
+
+    /**
+     * Một task đã có người thực hiện chỉ được thay đổi phân công bởi Lead đã giao
+     * task đó. ADMIN là ngoại lệ duy nhất. Task cũ chưa có assignerId có thể được
+     * một Lead nhận quyền sở hữu ở lần thay đổi phân công kế tiếp.
+     */
+    protected async assertCanManageTaskAssignment(
+        task: Pick<Tasks, "assignerId" | "assigneeId" | "vendor" | "project">,
+        actor?: TaskActor,
+        manager?: any
+    ) {
+        if (!actor) throw this.httpError("Bạn cần đăng nhập để phân công công việc", 401);
+
+        const actorUserId = await this.resolveActorUserId(actor, manager);
+        if (!actorUserId) {
+            throw this.httpError("Tài khoản chưa được liên kết nhân sự để phân công công việc", 401);
+        }
+
+        if (actor.role === UserRole.ADMIN) return actorUserId;
+
+        if (task.project) {
+            if (!this.isProjectLeadFromTeam(task.project.team, { ...actor, userId: actorUserId })) {
+                throw this.httpError("Chỉ Lead dự án hoặc Admin mới được phân công công việc", 403);
+            }
+        } else if (!isProjectManagementRole(actor.role)) {
+            // Task cơ hội/video demo không thuộc team dự án nên giữ quyền phân
+            // công quản lý hiện có, nhưng vẫn áp dụng khóa người giao bên dưới.
+            throw this.httpError("Bạn không có quyền phân công công việc này", 403);
+        }
+
+        const hasMainPerformer = Boolean(task.assigneeId || task.vendor);
+        if (hasMainPerformer && task.assignerId && task.assignerId !== actorUserId) {
+            throw this.httpError(
+                "Công việc đã được phân công bởi Lead dự án khác. Bạn không có quyền thay đổi phân công này.",
+                409
+            );
+        }
+
+        return actorUserId;
     }
 
     protected async isProjectOperator(projectId: string | undefined, actor?: TaskActor, manager?: any) {

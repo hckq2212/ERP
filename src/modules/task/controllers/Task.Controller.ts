@@ -220,8 +220,8 @@ export class TaskController {
             const user = (req as any).user;
             const result = await this.taskService.reassign(req.params.id as string, req.body, user);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
@@ -332,8 +332,8 @@ export class TaskController {
                 attachments
             }, user);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
