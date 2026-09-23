@@ -1,7 +1,7 @@
 import { AppDataSource } from "../../../data-source";
 import { Tasks } from "../entities/Task.entity";
 import { TaskStatus, PerformerType, PricingStatus, ViolationType } from "../../../shared/entities/Enums";
-import { ILike, Like, Between, IsNull, In, Not } from "typeorm";
+import { ILike, Like, Between, IsNull, In, Not, MoreThanOrEqual, LessThanOrEqual } from "typeorm";
 import { Projects, ProjectStatus } from "../../project/entities/Project.entity";
 import { Jobs } from "../../job/entities/Job.entity";
 import { Users } from "../../user/entities/User.entity";
@@ -113,6 +113,47 @@ export class TaskQueryService extends TaskBaseService {
                 baseWhere.forEach((w: any) => this.applyProjectFilter(w, projectId));
             } else {
                 this.applyProjectFilter(baseWhere, projectId);
+            }
+        }
+
+        // Lọc theo mốc thời gian linh hoạt (plannedEndDate, actualEndDate, actualStartDate, plannedRange)
+        const dateType = filters.dateType || 'plannedEndDate';
+        const deadlineDate = (filters.deadline === 'today' || filters.date === 'today')
+            ? new Date().toISOString().split('T')[0]
+            : (filters.deadline || filters.date);
+
+        const startStr = filters.deadlineFrom || filters.dateFrom || deadlineDate;
+        const endStr = filters.deadlineTo || filters.dateTo || deadlineDate;
+
+        if (startStr || endStr) {
+            const startDate = startStr ? new Date(`${startStr}T00:00:00.000`) : null;
+            const endDate = endStr ? new Date(`${endStr}T23:59:59.999`) : null;
+            const isValidStart = startDate && !isNaN(startDate.getTime());
+            const isValidEnd = endDate && !isNaN(endDate.getTime());
+
+            const applyDateCondition = (w: any) => {
+                if (dateType === 'plannedRange') {
+                    if (isValidEnd) w.plannedStartDate = LessThanOrEqual(endDate);
+                    if (isValidStart) w.plannedEndDate = MoreThanOrEqual(startDate);
+                } else {
+                    const field = ['plannedEndDate', 'actualEndDate', 'actualStartDate', 'plannedStartDate'].includes(dateType)
+                        ? dateType
+                        : 'plannedEndDate';
+
+                    if (isValidStart && isValidEnd) {
+                        w[field] = Between(startDate, endDate);
+                    } else if (isValidStart) {
+                        w[field] = MoreThanOrEqual(startDate);
+                    } else if (isValidEnd) {
+                        w[field] = LessThanOrEqual(endDate);
+                    }
+                }
+            };
+
+            if (Array.isArray(baseWhere)) {
+                baseWhere.forEach(applyDateCondition);
+            } else {
+                applyDateCondition(baseWhere);
             }
         }
 

@@ -16,6 +16,7 @@ export class DashboardScopeError extends Error {
 export interface DashboardScopeInput {
     viewerUserId: string;
     viewerRole: UserRole;
+    isAccountViewer?: boolean;
     requestedUserId?: string;
     requestedProjectId?: string;
     managedProjectIds: string[];
@@ -24,6 +25,7 @@ export interface DashboardScopeInput {
     targetPersonalProjectIds: string[];
     systemProjectIds: string[];
     systemMemberIds: string[];
+    mode?: "personal" | "management";
 }
 
 export interface ResolvedDashboardScope {
@@ -33,6 +35,9 @@ export interface ResolvedDashboardScope {
     memberIds: string[];
     selectedProjectId?: string;
     canSelectMembers: boolean;
+    isAccountViewer?: boolean;
+    isAccountViewingMember?: boolean;
+    mode?: "personal" | "management";
 }
 
 export function selectDashboardWorkItems<T>(
@@ -53,8 +58,10 @@ const intersection = (left: string[], right: string[]) => {
 export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashboardScope {
     const isSystemViewer = [UserRole.ADMIN, UserRole.BOD].includes(input.viewerRole);
     const isPMViewer = input.viewerRole === UserRole.PM;
-    const hasManagementScope = isPMViewer || input.managedProjectIds.length > 0;
-    const canSelectMembers = isSystemViewer || isPMViewer;
+    const isExcludedSaleRole = [UserRole.BD, UserRole.ADMIN_SALE].includes(input.viewerRole);
+    const isAccountViewer = !isExcludedSaleRole && Boolean(input.isAccountViewer);
+    const hasManagementScope = !isExcludedSaleRole && (isPMViewer || input.managedProjectIds.length > 0);
+    const canSelectMembers = !isExcludedSaleRole && (isSystemViewer || hasManagementScope);
     const requestedAnotherUser = Boolean(
         input.requestedUserId && input.requestedUserId !== input.viewerUserId
     );
@@ -68,15 +75,19 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         type = DashboardScopeType.SYSTEM;
         projectIds = unique(input.systemProjectIds);
         memberIds = unique(input.systemMemberIds);
-    } else if (hasManagementScope) {
+    } else if (isPMViewer && input.mode !== "personal") {
         type = DashboardScopeType.MANAGEMENT;
         projectIds = unique(input.managedProjectIds);
         memberIds = unique([input.viewerUserId, ...input.managedMemberIds]);
     } else {
         type = DashboardScopeType.PERSONAL;
         projectIds = unique(input.personalProjectIds);
-        memberIds = [input.viewerUserId];
+        memberIds = canSelectMembers
+            ? unique([input.viewerUserId, ...input.managedMemberIds])
+            : [input.viewerUserId];
     }
+
+    let isAccountViewingMember = false;
 
     if (requestedAnotherUser) {
         if (!canSelectMembers || !memberIds.includes(input.requestedUserId!)) {
@@ -88,6 +99,10 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         projectIds = isSystemViewer
             ? unique(input.targetPersonalProjectIds)
             : intersection(input.targetPersonalProjectIds, input.managedProjectIds);
+
+        if (isAccountViewer && !isSystemViewer && !isPMViewer) {
+            isAccountViewingMember = true;
+        }
     }
 
     if (input.requestedProjectId && !projectIds.includes(input.requestedProjectId)) {
@@ -100,6 +115,9 @@ export function resolveDashboardScope(input: DashboardScopeInput): ResolvedDashb
         projectIds,
         memberIds,
         selectedProjectId: input.requestedProjectId,
-        canSelectMembers
+        canSelectMembers,
+        isAccountViewer,
+        isAccountViewingMember,
+        mode: input.mode || (type === DashboardScopeType.MANAGEMENT ? "management" : "personal")
     };
 }
