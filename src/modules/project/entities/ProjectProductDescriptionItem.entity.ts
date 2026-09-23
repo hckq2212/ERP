@@ -23,9 +23,6 @@ export class ProjectProductDescriptionItems extends BaseEntity {
     extractedText: string | null;
 
     @Column({ type: "text", nullable: true })
-    extractedText: string;
-
-    @Column({ type: "text", nullable: true })
     note: string;
 
     @Column({ type: "jsonb", nullable: true })
