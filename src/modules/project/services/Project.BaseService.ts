@@ -128,6 +128,7 @@ export class ProjectBaseService {
             serviceId: cs.service?.id || cs.serviceId,
             serviceCode: cs.code || cs.service?.code || null,
             serviceName: cs.name || cs.service?.name || "Dịch vụ",
+            serviceNickname: cs.nickname,
             packageKey: opportunityPackage?.id || cs.packageName || cs.id,
             packageName: cs.packageName,
             packageQuantity,
@@ -580,6 +581,8 @@ export class ProjectBaseService {
                     status: true,
                     results: true,
                     name: true,
+                    nickname: true,
+                    code: true,
                     packageName: true,
                     isPackageService: true,
                     service: {

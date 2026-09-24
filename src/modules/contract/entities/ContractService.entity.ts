@@ -79,6 +79,9 @@ export class ContractServices extends BaseEntity {
     @Column({ nullable: true })
     name: string; // Snapshot of service name
 
+    @Column({ type: "varchar", length: 120, nullable: true })
+    nickname: string | null;
+
     @Column({ nullable: true })
     code: string; // Snapshot of service code
 

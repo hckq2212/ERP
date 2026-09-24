@@ -13,7 +13,7 @@ import { ProjectService } from "../../project/services/Project.Service";
 import { DebtService } from "../../debt/services/Debt.Service";
 import { NotificationService } from "../../notification/services/Notification.Service";
 import { Users } from "../../user/entities/User.entity";
-import { UserRole } from "../../account/entities/Account.entity";
+import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { RedisService } from "../../../shared/services/Redis.Service";
 import { contractEmitter, CONTRACT_EVENTS } from "../events/ContractEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
@@ -21,6 +21,9 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { Services } from "../../service/entities/Service.entity";
 import { ServicePackages } from "../../service-package/entities/ServicePackage.entity";
 import { CustomerService } from "../../customer/services/Customer.Service";
+import { MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
+import { ProjectStatus } from "../../project/entities/Project.entity";
+import { normalizeNickname } from "../../../shared/helpers/TaskNickname.helper";
 
 export class ContractService {
     private contractRepository = AppDataSource.getRepository(Contracts);
@@ -37,6 +40,26 @@ export class ContractService {
     private projectService = new ProjectService();
     private debtService = new DebtService();
     private notificationService = new NotificationService();
+
+    private httpError(message: string, statusCode: number) {
+        const error: any = new Error(message);
+        error.statusCode = statusCode;
+        return error;
+    }
+
+    private canEditProjectContractService(project: any, actor?: { id?: string, role?: string, userId?: string }) {
+        if (isProjectManagementRole(actor?.role)) return true;
+
+        const actorUserId = actor?.userId || actor?.id;
+        if (!actorUserId || !project?.team) return false;
+
+        if (project.team.teamLead?.id === actorUserId) return true;
+
+        return project.team.members?.some((member: any) =>
+            member.user?.id === actorUserId &&
+            [MemberRole.ACCOUNT, MemberRole.PROJECT_MANAGER].some(role => memberHasRole(member, role))
+        ) || false;
+    }
 
     private async getManagementUsers() {
         return await AppDataSource.getRepository(Users).find({
@@ -203,6 +226,52 @@ export class ContractService {
             throw new Error("Không tìm thấy hợp đồng hoặc bạn không có quyền xem");
         }
         return contract;
+    }
+
+    async updateServiceNickname(
+        id: string,
+        nickname: string | null | undefined,
+        userInfo?: { id?: string, role?: string, userId?: string, companyId?: string }
+    ) {
+        const contractService = await this.contractServiceRepository.findOne({
+            where: { id },
+            relations: [
+                "contract",
+                "contract.project",
+                "contract.project.team",
+                "contract.project.team.teamLead",
+                "contract.project.team.members",
+                "contract.project.team.members.user"
+            ]
+        });
+
+        if (!contractService) throw this.httpError("Không tìm thấy hạng mục dịch vụ", 404);
+
+        const project = contractService.contract?.project;
+        if (project && [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED, ProjectStatus.ON_HOLD].includes(project.status)) {
+            throw this.httpError(`Dự án đang ở trạng thái "${project.status}", không thể chỉnh sửa hạng mục dịch vụ`, 409);
+        }
+
+        if (!this.canEditProjectContractService(project, userInfo)) {
+            throw this.httpError("Bạn không có quyền thay đổi nickname của hạng mục dịch vụ này", 403);
+        }
+        if (nickname === undefined) throw this.httpError("Vui lòng cung cấp nickname", 400);
+        if (nickname != null && typeof nickname !== "string") throw this.httpError("Nickname không hợp lệ", 400);
+
+        const normalizedNickname = normalizeNickname(nickname);
+        if (normalizedNickname && normalizedNickname.length > 120) {
+            throw this.httpError("Nickname không được vượt quá 120 ký tự", 400);
+        }
+
+        contractService.nickname = normalizedNickname;
+        const saved = await this.contractServiceRepository.save(contractService);
+
+        await RedisService.deleteCache(`contracts:detail:${contractService.contract?.id}*`);
+        await RedisService.deleteCache("contracts:all*");
+        if (project?.id) await RedisService.deleteCache(`projects:detail:${project.id}*`);
+        await RedisService.deleteCache("projects:all*");
+
+        return saved;
     }
 
     private async generateContractCode(): Promise<string> {

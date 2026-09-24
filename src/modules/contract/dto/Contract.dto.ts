@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsEnum, IsArray, IsUrl, ValidateNested } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsEnum, IsArray, IsUrl, ValidateNested, MaxLength } from "class-validator";
 import { Type } from "class-transformer";
 import { ContractStatus, PartnerCommissionStatus } from "../entities/Contract.entity";
 
@@ -83,6 +83,13 @@ export class UpdateContractDTO {
     @IsOptional()
     @IsArray()
     attachments?: any[];
+}
+
+export class UpdateContractServiceNicknameDTO {
+    @IsString()
+    @IsOptional()
+    @MaxLength(120, { message: "Nickname không được vượt quá 120 ký tự" })
+    nickname?: string | null;
 }
 
 export class ContractResponseDTO {

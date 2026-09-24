@@ -56,6 +56,20 @@ export class ContractController {
         }
     }
 
+    updateServiceNickname = async (req: Request, res: Response) => {
+        try {
+            const userInfo = (req as any).user;
+            const service = await this.contractService.updateServiceNickname(
+                req.params.id as string,
+                req.body.nickname,
+                userInfo
+            );
+            res.status(200).json(service);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     delete = async (req: Request, res: Response) => {
         try {
             const result = await this.contractService.delete(req.params.id as string);
