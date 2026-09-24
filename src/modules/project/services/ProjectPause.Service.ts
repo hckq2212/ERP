@@ -694,7 +694,6 @@ export class ProjectPauseService extends ProjectBaseService {
         }
 
         // ── 3. Vinicoin — CHỈ task gốc COMPLETED ──────────────────────────
-        // ⚠️ Không truyền whitelist = thưởng oan cho INTERNAL_COMPLETED/dở dang.
         const rewardWhitelist = buildRewardWhitelist(toAccept);
         if (rewardWhitelist.size > 0) {
             const freshServices = await manager.getRepository(ContractServices).find({
@@ -710,7 +709,7 @@ export class ProjectPauseService extends ProjectBaseService {
         const debtsLockedCount = await this.lockContractDebts(manager, project, opts.reason, opts.actor);
 
         // ── 5. Đóng dự án ─────────────────────────────────────────────────
-        project.status = ProjectStatus.COMPLETED;
+        project.status = ProjectStatus.CANCELLED;
         project.actualEndDate = now;
         project.autoAcceptAt = null;
         project.isOnHold = false;
@@ -722,7 +721,7 @@ export class ProjectPauseService extends ProjectBaseService {
         if (project.contract?.id) {
             await manager.getRepository(Contracts).update(
                 { id: project.contract.id },
-                { status: ContractStatus.COMPLETED }
+                { status: ContractStatus.CANCELLED }
             );
         }
 
