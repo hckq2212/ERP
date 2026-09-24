@@ -95,9 +95,9 @@ export class TaskAssignmentDTO {
     performerType?: PerformerType;
 
     @IsDate({ message: "Ngày bắt đầu không hợp lệ" })
-    @IsOptional()
+    @IsNotEmpty({ message: "Vui lòng nhập ngày dự kiến bắt đầu" })
     @Type(() => Date)
-    plannedStartDate?: Date;
+    plannedStartDate: Date;
 
     @IsDate({ message: "Ngày kết thúc không hợp lệ" })
     @IsNotEmpty({ message: "Vui lòng nhập deadline" })
@@ -114,6 +114,13 @@ export class TaskAssignmentDTO {
     @IsString()
     @IsOptional()
     projectId?: string;
+}
+
+export class BulkTaskAssignmentDTO extends TaskAssignmentDTO {
+    @IsArray({ message: "Danh sách công việc không hợp lệ" })
+    @ArrayMinSize(1, { message: "Vui lòng chọn ít nhất một công việc" })
+    @IsString({ each: true, message: "ID công việc không hợp lệ" })
+    taskIds: string[];
 }
 
 export class RequestTaskStaffingDTO {

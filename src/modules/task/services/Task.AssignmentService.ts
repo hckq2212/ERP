@@ -22,6 +22,17 @@ import { TaskBaseService } from "./Task.BaseService";
 import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
 
+const getVietnamCalendarDateKey = (date: Date) => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+};
+
 export class TaskAssignmentService extends TaskBaseService {
     async updateNickname(
         id: string,
@@ -138,9 +149,17 @@ export class TaskAssignmentService extends TaskBaseService {
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
     }, currentUser?: { id: string; userId?: string; role?: string }) {
+        const plannedStartDate = data.plannedStartDate ? new Date(data.plannedStartDate) : null;
+        if (!plannedStartDate || Number.isNaN(plannedStartDate.getTime())) {
+            throw this.httpError("Vui lòng nhập ngày dự kiến bắt đầu", 400);
+        }
+
         const plannedEndDate = data.plannedEndDate ? new Date(data.plannedEndDate) : null;
         if (!plannedEndDate || Number.isNaN(plannedEndDate.getTime())) {
             throw this.httpError("Vui lòng nhập deadline", 400);
+        }
+        if (getVietnamCalendarDateKey(plannedEndDate) <= getVietnamCalendarDateKey(plannedStartDate)) {
+            throw this.httpError("Deadline phải sau ngày dự kiến bắt đầu ít nhất 1 ngày", 400);
         }
         const uniqueTaskIds = [...new Set(taskIds)].sort();
 
@@ -279,7 +298,7 @@ export class TaskAssignmentService extends TaskBaseService {
                 }
 
                 task.plannedEndDate = plannedEndDate;
-                task.plannedStartDate = data.plannedStartDate;
+                task.plannedStartDate = plannedStartDate;
                 if (data.description) task.description = data.description;
                 if (data.attachments) task.attachments = data.attachments;
 

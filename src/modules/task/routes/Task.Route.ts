@@ -19,13 +19,13 @@ const upload = multer({
 });
 
 import { validationMiddleware } from "../../../shared/middlewares/Validation.Middleware";
-import { BulkUnassignTasksDTO, CreateSubtaskDTO, CreateTaskDTO, RequestTaskStaffingDTO, RespondSubtaskPlanDTO, RespondTaskStaffingDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
+import { BulkTaskAssignmentDTO, BulkUnassignTasksDTO, CreateSubtaskDTO, CreateTaskDTO, RequestTaskStaffingDTO, RespondSubtaskPlanDTO, RespondTaskStaffingDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
 
 router.get("/", taskController.getAll);
 router.get("/:id", taskController.getOne);
 router.post("/", validationMiddleware(CreateTaskDTO), taskController.create);
 router.post("/internal", taskController.createInternal);
-router.put("/bulk-assign", taskController.bulkAssign);
+router.put("/bulk-assign", validationMiddleware(BulkTaskAssignmentDTO), taskController.bulkAssign);
 router.patch("/bulk-unassign", validationMiddleware(BulkUnassignTasksDTO), taskController.bulkUnassign);
 router.patch("/:id/nickname", validationMiddleware(UpdateTaskNicknameDTO), taskController.updateNickname);
 router.put("/:id", taskController.update);
