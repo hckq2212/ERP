@@ -183,7 +183,6 @@ export class TaskCreationService extends TaskBaseService {
             taskSequenceNumber = count + 1;
             taskCode = `${opportunity.opportunityCode}-${job.code || `JOB${job.id}`}-${String(taskSequenceNumber).padStart(2, "0")}`;
         }
-        const assignerId = await this.resolveActorUserId(currentUser);
         const taskNickname = taskSequenceNumber
             ? buildDefaultTaskNickname(job, taskSequenceNumber)
             : null;
@@ -209,10 +208,11 @@ export class TaskCreationService extends TaskBaseService {
             plannedEndDate: data.plannedEndDate,
             isExtra: data.isExtra || false,
             pricingStatus: data.isExtra ? PricingStatus.PENDING : null,
-            assignerId
+            assignerId: null
         });
 
         if (data.assigneeId) {
+            task.assignerId = await this.assertCanManageTaskAssignment(task, currentUser);
             const user = await this.userRepository.findOneBy({ id: data.assigneeId });
             if (user) {
                 task.assignee = user;

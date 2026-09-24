@@ -62,6 +62,10 @@ export class TaskAssignmentService extends TaskBaseService {
         this.assertTaskNotLocked(task);
         await assertSubtaskPlanApproved(this.taskRepository, task, "cập nhật subtask");
 
+        if (data.assigneeId !== undefined && data.assigneeId !== task.assigneeId) {
+            throw this.httpError("Vui lòng dùng chức năng phân công hoặc chuyển giao để thay đổi người thực hiện", 400);
+        }
+
         const completionStatuses = [
             TaskStatus.AWAITING_REVIEW,
             TaskStatus.INTERNAL_COMPLETED,
@@ -74,22 +78,6 @@ export class TaskAssignmentService extends TaskBaseService {
                 task,
                 data.result ? "nộp kết quả" : "hoàn thành"
             );
-        }
-
-        if (data.assigneeId && (!task.assignee || task.assignee.id !== data.assigneeId)) {
-            const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-            if (user) {
-                task.assignee = user;
-                await this.notificationService.createNotification({
-                    title: "Thay đổi người thực hiện",
-                    content: `Bạn được giao công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code})`,
-                    type: "TASK_ASSIGNED",
-                    recipient: user,
-                    relatedEntityId: task.id.toString(),
-                    relatedEntityType: "Task",
-                    link: `/tasks/${task.id}`
-                });
-            }
         }
 
         if (data.status) task.status = data.status;
@@ -154,16 +142,23 @@ export class TaskAssignmentService extends TaskBaseService {
         if (!plannedEndDate || Number.isNaN(plannedEndDate.getTime())) {
             throw this.httpError("Vui lòng nhập deadline", 400);
         }
+        const uniqueTaskIds = [...new Set(taskIds)].sort();
 
         // Chặn trước khi mở transaction: nếu BẤT KỲ task nào thuộc dự án ON_HOLD
         // thì chặn toàn bộ, không ghi nửa vời.
-        await this.assertProjectNotOnHoldForTasks(taskIds);
+        await this.assertProjectNotOnHoldForTasks(uniqueTaskIds);
 
         const results = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const results = [];
             const contractCostUpdates = new Map<string, number>();
 
-            for (const id of taskIds) {
+            for (const id of uniqueTaskIds) {
+                // Khóa hàng trước khi đọc đầy đủ quan hệ để hai Lead không thể
+                // đồng thời nhận quyền phân công cùng một task.
+                await transactionalEntityManager.findOne(Tasks, {
+                    where: { id },
+                    lock: { mode: "pessimistic_write" }
+                });
                 const task = await transactionalEntityManager.findOne(Tasks, {
                     where: { id },
                     relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunity", "opportunityServiceJob", "job"]
@@ -200,11 +195,12 @@ export class TaskAssignmentService extends TaskBaseService {
                         link: `/tasks/${task.id}`
                     }, transactionalEntityManager);
                 } else {
-                    const canAssignMainPerformer = isProjectManagementRole(currentUser?.role) ||
-                        this.isProjectOperatorFromTeam(task.project?.team, currentUser);
-                    if (!canAssignMainPerformer) {
-                        throw this.httpError("Bạn không có quyền phân công công việc trong dự án này", 403);
-                    }
+                    const hadMainPerformer = Boolean(task.assigneeId || task.vendor);
+                    const actorUserId = await this.assertCanManageTaskAssignment(
+                        task,
+                        currentUser,
+                        transactionalEntityManager
+                    );
 
                     // Clear support fields when reassigning the main performer
                     task.isSupportRequested = false;
@@ -273,6 +269,13 @@ export class TaskAssignmentService extends TaskBaseService {
                         task.supportLeadId = null as any;
                         task.supportRequestType = null;
                     }
+
+                    // Lead giao lần đầu (hoặc nhận task cũ chưa có chủ sở hữu)
+                    // trở thành chủ của quyền phân công. ADMIN ghi đè task đã có
+                    // chủ nhưng không chiếm quyền của Lead ban đầu.
+                    if (!hadMainPerformer || !task.assignerId) {
+                        task.assignerId = actorUserId;
+                    }
                 }
 
                 task.plannedEndDate = plannedEndDate;
@@ -280,16 +283,10 @@ export class TaskAssignmentService extends TaskBaseService {
                 if (data.description) task.description = data.description;
                 if (data.attachments) task.attachments = data.attachments;
 
-                if (task.project?.contract) {
+                if (!isSupportAssign && task.project?.contract) {
                     const contractId = task.project.contract.id;
                     const diff = newCost - oldCost;
                     contractCostUpdates.set(contractId, (contractCostUpdates.get(contractId) || 0) + diff);
-                }
-
-                if (currentUser) {
-                    const assignerId = await this.resolveActorUserId(currentUser, transactionalEntityManager);
-                    if (!assignerId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để phân công công việc", 401);
-                    task.assignerId = assignerId;
                 }
 
                 results.push(await transactionalEntityManager.save(task));
@@ -342,19 +339,17 @@ export class TaskAssignmentService extends TaskBaseService {
 
             this.assertTaskProjectNotOnHold({ project });
 
-            const currentUserId = currentUser?.userId || currentUser?.id;
-            const isAdminOrBod = isProjectManagementRole(currentUser?.role);
-            const isProjectLead = this.isProjectOperatorFromTeam(project.team, currentUser);
-
-            if (!isAdminOrBod && !isProjectLead) {
-                throw this.httpError("Bạn không có quyền xoá phân công trong dự án này", 403);
-            }
-
             if (![ProjectStatus.CONFIRMED, ProjectStatus.IN_PROGRESS].includes(project.status)) {
                 throw this.httpError("Dự án không ở trạng thái cho phép xoá phân công", 400);
             }
 
-            const uniqueTaskIds = [...new Set(taskIds)];
+            const uniqueTaskIds = [...new Set(taskIds)].sort();
+            for (const taskId of uniqueTaskIds) {
+                await transactionalEntityManager.findOne(Tasks, {
+                    where: { id: taskId },
+                    lock: { mode: "pessimistic_write" }
+                });
+            }
             const tasks = await transactionalEntityManager.find(Tasks, {
                 where: { id: In(uniqueTaskIds) },
                 relations: ["project", "assignee", "vendor", "reviews", "iterations"]
@@ -379,6 +374,7 @@ export class TaskAssignmentService extends TaskBaseService {
                     skipped.push({ id: task.id, reason: "Công việc không thuộc dự án hiện tại" });
                     continue;
                 }
+                task.project = project;
                 if (task.status !== TaskStatus.DOING) {
                     skip("Công việc không ở trạng thái đang thực hiện");
                     continue;
@@ -386,6 +382,15 @@ export class TaskAssignmentService extends TaskBaseService {
                 if (!task.assigneeId && !task.vendor) {
                     skip("Công việc chưa có người hoặc vendor được phân công");
                     continue;
+                }
+                try {
+                    await this.assertCanManageTaskAssignment(task, currentUser, transactionalEntityManager);
+                } catch (error: any) {
+                    if (error.statusCode === 409 || error.statusCode === 403) {
+                        skip(error.message);
+                        continue;
+                    }
+                    throw error;
                 }
                 if (task.result || task.actualStartDate || task.actualEndDate || task.lastSubmittedById) {
                     skip("Công việc đã phát sinh kết quả thực hiện");
@@ -459,141 +464,135 @@ export class TaskAssignmentService extends TaskBaseService {
         performerType: PerformerType;
         reason: string;
     }, currentUser: { id: string; userId?: string; role?: string }) {
-        const task = await this.taskRepository.findOne({
-            where: { id },
-            relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job", "assignee", "vendor"]
-        });
+        const savedTask = await AppDataSource.transaction(async (manager) => {
+            await manager.findOne(Tasks, {
+                where: { id },
+                lock: { mode: "pessimistic_write" }
+            });
+            const task = await manager.findOne(Tasks, {
+                where: { id },
+                relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "job", "assignee", "vendor"]
+            });
 
-        if (!task) throw new Error("Không tìm thấy công việc");
-        this.assertTaskProjectNotOnHold(task);
+            if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+            this.assertTaskProjectNotOnHold(task);
 
-        // Identify old performer info for notification
-        let oldPerformerName = "";
-        let oldRecipient: Users | null = null;
-        if (task.performerType === PerformerType.INTERNAL && task.assignee) {
-            oldPerformerName = task.assignee.fullName;
-            oldRecipient = task.assignee;
-        } else if (task.performerType === PerformerType.VENDOR && task.vendor) {
-            oldPerformerName = task.vendor.name;
-        }
-
-        const oldCost = Number(task.cost || 0);
-        let newCost = 0;
-        let newPerformerName = "";
-        let newRecipient: Users | null = null;
-
-        const isSupportReassign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.isSupportAccepted && currentUser &&
-            (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
-
-        if (isSupportReassign) {
-            const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-            if (!user) throw new Error("Người hỗ trợ không tồn tại");
-
-            task.helperId = data.assigneeId;
-            task.isSupportReturnRequested = false;
-            newPerformerName = user.fullName;
-            newRecipient = user;
-        } else {
-            const canReassignMainPerformer = isProjectManagementRole(currentUser?.role) ||
-                this.isProjectOperatorFromTeam(task.project?.team, currentUser);
-            if (!canReassignMainPerformer) {
-                throw this.httpError("Bạn không có quyền chuyển giao công việc trong dự án này", 403);
+            const oldAssigneeId = task.assigneeId;
+            let oldRecipient: Users | null = null;
+            if (task.performerType === PerformerType.INTERNAL && task.assignee) {
+                oldRecipient = task.assignee;
             }
 
-            // Clear support fields when reassigning the main performer
-            if (task.status === TaskStatus.AWAITING_SUPPORT) {
-                task.status = TaskStatus.DOING;
-            }
-            task.isSupportRequested = false;
-            task.isSupportAccepted = false;
-            task.supportTeamId = null as any;
-            task.supportLeadId = null as any;
-            task.helperId = null as any;
-            task.isSupportReturnRequested = false;
-            task.supportRequestNote = null as any;
-            task.supportReturnNote = null as any;
-            task.supportRequestType = null;
+            const oldCost = Number(task.cost || 0);
+            let newCost = 0;
+            let newPerformerName = "";
+            let newRecipient: Users | null = null;
 
-            if (data.performerType === PerformerType.VENDOR) {
-                const vendor = await this.vendorRepository.findOneBy({ id: data.assigneeId });
-                if (!vendor) throw new Error("Vendor không tồn tại");
+            const isSupportReassign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.isSupportAccepted &&
+                (task.supportLeadId === currentUser.id || currentUser.userId === task.supportLeadId);
 
-                const vendorJob = await this.vendorJobRepository.findOneBy({
-                    vendor: { id: vendor.id },
-                    job: { id: task.job.id }
-                });
+            if (isSupportReassign) {
+                const user = await manager.findOneBy(Users, { id: data.assigneeId });
+                if (!user) throw this.httpError("Người hỗ trợ không tồn tại", 404);
 
-                if (!vendorJob) {
-                    throw new Error(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`);
-                }
-
-                newCost = Number(vendorJob.price);
-                newPerformerName = vendor.name;
-                task.vendor = vendor;
-                task.assignee = null as any;
-                task.performerType = PerformerType.VENDOR;
-                task.cost = newCost;
-            } else {
-                const user = await this.userRepository.findOneBy({ id: data.assigneeId });
-                if (!user) throw new Error("Người thực hiện không tồn tại");
-
+                task.helperId = data.assigneeId;
+                task.isSupportReturnRequested = false;
                 newPerformerName = user.fullName;
                 newRecipient = user;
-                task.assignee = user;
-                task.vendor = null as any;
-                task.performerType = PerformerType.INTERNAL;
-                task.cost = 0;
+            } else {
+                const actorUserId = await this.assertCanManageTaskAssignment(task, currentUser, manager);
+
+                if (task.status === TaskStatus.AWAITING_SUPPORT) task.status = TaskStatus.DOING;
+                task.isSupportRequested = false;
+                task.isSupportAccepted = false;
+                task.supportTeamId = null as any;
+                task.supportLeadId = null as any;
+                task.helperId = null as any;
+                task.isSupportReturnRequested = false;
+                task.supportRequestNote = null as any;
+                task.supportReturnNote = null as any;
+                task.supportRequestType = null;
+
+                if (data.performerType === PerformerType.VENDOR) {
+                    const vendor = await manager.findOneBy(Vendors, { id: data.assigneeId });
+                    if (!vendor) throw this.httpError("Vendor không tồn tại", 404);
+
+                    const vendorJob = await manager.findOneBy(VendorJobs, {
+                        vendor: { id: vendor.id },
+                        job: { id: task.job.id }
+                    });
+                    if (!vendorJob) {
+                        throw this.httpError(`Vendor ${vendor.name} chưa được thiết lập giá cho hạng mục ${task.job.name}`, 400);
+                    }
+
+                    newCost = Number(vendorJob.price);
+                    newPerformerName = vendor.name;
+                    task.vendor = vendor;
+                    task.assignee = null as any;
+                    task.performerType = PerformerType.VENDOR;
+                    task.cost = newCost;
+                } else {
+                    const user = await manager.findOneBy(Users, { id: data.assigneeId });
+                    if (!user) throw this.httpError("Người thực hiện không tồn tại", 404);
+
+                    newPerformerName = user.fullName;
+                    newRecipient = user;
+                    task.assignee = user;
+                    task.vendor = null as any;
+                    task.performerType = PerformerType.INTERNAL;
+                    task.cost = 0;
+                }
+
+                // Task legacy chưa có chủ sở hữu sẽ thuộc Lead thực hiện lần chuyển giao này.
+                // ADMIN thay đổi task đã có chủ vẫn giữ nguyên assignerId ban đầu.
+                if (!task.assignerId) task.assignerId = actorUserId;
+
+                if (task.plannedEndDate && new Date() > task.plannedEndDate && oldAssigneeId) {
+                    await this.recordViolation({
+                        taskId: task.id,
+                        userId: oldAssigneeId,
+                        type: ViolationType.LATE_UNFINISHED,
+                        description: "Task quá hạn được chuyển giao cho người khác.",
+                        manager
+                    });
+                }
             }
-        }
 
-        // Check for late reassignment (Violation for OLD assignee)
-        if (task.plannedEndDate && new Date() > task.plannedEndDate && task.assigneeId) {
-            await this.recordViolation({
-                taskId: task.id,
-                userId: task.assigneeId,
-                type: ViolationType.LATE_UNFINISHED,
-                description: `Task quá hạn được chuyển giao cho người khác.`
-            });
-        }
+            task.reassignNote = data.reason;
 
-        task.reassignNote = data.reason;
-        const assignerId = await this.resolveActorUserId(currentUser);
-        if (!assignerId) throw this.httpError("Tài khoản chưa được liên kết nhân sự để chuyển giao công việc", 401);
-        task.assignerId = assignerId;
+            if (!isSupportReassign && oldCost !== newCost && task.project?.contract) {
+                const contract = task.project.contract;
+                contract.cost = Number(contract.cost || 0) - oldCost + newCost;
+                await manager.save(contract);
+            }
 
-        // Update Contract Cost if changed
-        if (oldCost !== newCost && task.project?.contract) {
-            const contract = task.project.contract;
-            contract.cost = Number(contract.cost || 0) - oldCost + newCost;
-            await this.contractRepository.save(contract);
-        }
+            const saved = await manager.save(task);
 
-        const savedTask = await this.taskRepository.save(task);
+            if (oldRecipient) {
+                await this.notificationService.createNotification({
+                    title: "Công việc đã được chuyển giao",
+                    content: `Công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}) đã được chuyển giao cho ${newPerformerName}`,
+                    type: "TASK_REASSIGNED",
+                    recipient: oldRecipient,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                }, manager);
+            }
 
-        // Notify OLD performer (if Internal)
-        if (oldRecipient) {
-            await this.notificationService.createNotification({
-                title: "Công việc đã được chuyển giao",
-                content: `Công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}) đã được chuyển giao cho ${newPerformerName}`,
-                type: "TASK_REASSIGNED",
-                recipient: oldRecipient,
-                relatedEntityId: task.id.toString(),
-                relatedEntityType: "Task",
-            });
-        }
+            if (newRecipient) {
+                await this.notificationService.createNotification({
+                    title: "Công việc được chuyển giao mới",
+                    content: `Bạn được giao công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}).`,
+                    type: "TASK_ASSIGNED",
+                    recipient: newRecipient,
+                    relatedEntityId: task.id.toString(),
+                    relatedEntityType: "Task",
+                    link: `/tasks/${task.id}`
+                }, manager);
+            }
 
-        // Notify NEW performer (if Internal)
-        if (newRecipient) {
-            await this.notificationService.createNotification({
-                title: "Công việc được chuyển giao mới",
-                content: `Bạn được giao công việc: ${this.taskDisplayName(task)} của dự án ${task.project?.name} (Mã: ${task.code}).`,
-                type: "TASK_ASSIGNED",
-                recipient: newRecipient,
-                relatedEntityId: task.id.toString(),
-                relatedEntityType: "Task",
-                link: `/tasks/${task.id}`
-            });
-        }
+            return saved;
+        });
 
         taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);
         return savedTask;
