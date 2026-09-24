@@ -60,6 +60,8 @@ import { ChatRooms } from "./modules/chat-room/entities/ChatRoom.entity"
 import { ChatParticipants } from "./modules/chat-room/entities/ChatParticipant.entity"
 import { ChatMessages } from "./modules/chat-room/entities/ChatMessage.entity"
 import { ProjectPauseRequests } from "./modules/project/entities/ProjectPauseRequest.entity"
+import { AcceptanceMinutes } from "./modules/finance-document/entities/AcceptanceMinute.entity"
+import { VatInvoices } from "./modules/finance-document/entities/VatInvoice.entity"
 
 import * as dotenv from "dotenv"
 dotenv.config()
@@ -147,6 +149,8 @@ export const AppDataSource = new DataSource({
         ChatRooms,
         ChatParticipants,
         ChatMessages,
+        AcceptanceMinutes,
+        VatInvoices,
     ],
 
     migrations: [],

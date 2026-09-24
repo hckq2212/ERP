@@ -4,6 +4,7 @@ import { Contracts, ContractStatus } from "../../contract/entities/Contract.enti
 import { Debts, DebtStatus } from "../../debt/entities/Debt.entity";
 import { ProjectStatus } from "../../project/entities/Project.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
+import { getContractCollectibleTotal } from "../../../shared/helpers/PricingTax.helper";
 
 export class PaymentMilestoneService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
@@ -117,7 +118,7 @@ export class PaymentMilestoneService {
         const savedMilestones = [];
 
         for (const item of milestones) {
-            const amount = (Number(contract.sellingPrice) * Number(item.percentage)) / 100;
+            const amount = (getContractCollectibleTotal(contract) * Number(item.percentage)) / 100;
 
             const milestone: PaymentMilestones = this.milestoneRepository.create({
                 contract,
@@ -179,7 +180,7 @@ export class PaymentMilestoneService {
 
             // Recalculate amount
             milestone.percentage = data.percentage;
-            milestone.amount = (Number(contract.sellingPrice) * Number(data.percentage)) / 100;
+            milestone.amount = (getContractCollectibleTotal(contract) * Number(data.percentage)) / 100;
         }
 
         if (data.name) milestone.name = data.name;
@@ -278,7 +279,7 @@ export class PaymentMilestoneService {
             // B. Upsert (update existing or create new)
             const savedMilestones = [];
             for (const item of milestones) {
-                const amount = (Number(contract.sellingPrice) * Number(item.percentage)) / 100;
+                const amount = (getContractCollectibleTotal(contract) * Number(item.percentage)) / 100;
 
                 if (item.id) {
                     const existing = existingMilestones.find(m => String(m.id) === String(item.id));

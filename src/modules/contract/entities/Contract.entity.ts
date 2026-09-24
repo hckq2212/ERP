@@ -9,6 +9,8 @@ import { ContractServices } from "./ContractService.entity";
 import { ReferralPartners } from "../../referral-partner/entities/ReferralPartner.entity";
 import { ContractAddendums } from "../../contract-addendum/entities/ContractAddendum.entity";
 import { Users } from "../../user/entities/User.entity";
+import { AcceptanceMinutes } from "../../finance-document/entities/AcceptanceMinute.entity";
+import { VatInvoices } from "../../finance-document/entities/VatInvoice.entity";
 
 export enum ContractStatus {
     DRAFT = "DRAFT",
@@ -53,6 +55,16 @@ export class Contracts extends BaseEntity {
 
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     sellingPrice: number;
+
+    @Column({ type: "decimal", precision: 5, scale: 2, default: 8 })
+    vatRate: number;
+
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
+    vatAmount: number;
+
+    /** Tổng khách hàng phải thanh toán, đã gồm VAT. */
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
+    totalWithVat: number;
 
     // Partner Commission Info
     @ManyToOne(() => ReferralPartners, { nullable: true })
@@ -100,6 +112,12 @@ export class Contracts extends BaseEntity {
 
     @OneToMany(() => ContractAddendums, (addendum) => addendum.contract)
     addendums: ContractAddendums[];
+
+    @OneToMany(() => AcceptanceMinutes, (minute) => minute.contract)
+    acceptanceMinutes: AcceptanceMinutes[];
+
+    @OneToMany(() => VatInvoices, (invoice) => invoice.contract)
+    vatInvoices: VatInvoices[];
 
     @Column({ type: "text", nullable: true })
     rejectionReason: string;

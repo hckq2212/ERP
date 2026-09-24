@@ -23,7 +23,7 @@ export class QuotationDetails extends BaseEntity {
     @Column({ type: "int", default: 1 })
     quantity: number;
 
-    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
     sellingPrice: number; // Proposed selling price per unit
 
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
