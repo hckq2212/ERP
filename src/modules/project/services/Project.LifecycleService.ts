@@ -142,6 +142,10 @@ export class ProjectLifecycleService extends ProjectBaseService {
 
         await this.assertProjectNotOnHold([project.id]);
 
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
+            throw this.httpError("Dự án đã hoàn tất hoặc đã đóng, không thể chỉnh sửa tài liệu làm việc", 400);
+        }
+
         let creatorName = "";
         if (actor) {
             try {

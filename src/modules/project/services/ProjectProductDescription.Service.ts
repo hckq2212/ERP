@@ -3,7 +3,7 @@ import { AppDataSource } from "../../../data-source";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { UserRole } from "../../account/entities/Account.entity";
 import { Users } from "../../user/entities/User.entity";
-import { Projects } from "../entities/Project.entity";
+import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { MemberRole, memberHasRole } from "../entities/TeamMember.entity";
 import { ulid } from "ulid";
 import {
@@ -100,6 +100,9 @@ export class ProjectProductDescriptionService {
     }
 
     private assertCanEditProductDescription(project: Projects, actor?: Actor) {
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
+            throw this.httpError("Dự án đã hoàn tất hoặc đã đóng, không thể chỉnh sửa thông tin chuẩn sản phẩm", 400);
+        }
         const actorUserId = this.getActorUserId(actor);
         const isBd = actor?.role === UserRole.BD;
         const isProjectLead = project.team?.teamLead?.id === actorUserId;
@@ -414,6 +417,9 @@ export class ProjectProductDescriptionService {
 
     async approve(projectId: string, submissionId: string, actor?: Actor) {
         const project = await this.assertProjectAccess(projectId, actor);
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
+            throw this.httpError("Dự án đã hoàn tất hoặc đã đóng, không thể duyệt thông tin chuẩn sản phẩm", 400);
+        }
         this.assertAssignedPm(project, actor);
         const actorUserId = this.getActorUserId(actor);
         const reviewer = await this.userRepository.findOneBy({ id: actorUserId });
@@ -444,6 +450,9 @@ export class ProjectProductDescriptionService {
 
     async reject(projectId: string, submissionId: string, payload: ProductDescriptionPayload, actor?: Actor) {
         const project = await this.assertProjectAccess(projectId, actor);
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
+            throw this.httpError("Dự án đã hoàn tất hoặc đã đóng, không thể duyệt thông tin chuẩn sản phẩm", 400);
+        }
         this.assertAssignedPm(project, actor);
         const actorUserId = this.getActorUserId(actor);
         const reviewer = await this.userRepository.findOneBy({ id: actorUserId });
