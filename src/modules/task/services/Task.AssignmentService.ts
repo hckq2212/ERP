@@ -182,21 +182,13 @@ export class TaskAssignmentService extends TaskBaseService {
         assigneeId: string;
         performerType?: PerformerType;
         plannedEndDate: Date;
-        plannedStartDate: Date;
+        plannedStartDate?: Date;
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
     }, currentUser?: { id: string; userId?: string; role?: string }) {
-        const plannedStartDate = data.plannedStartDate ? new Date(data.plannedStartDate) : null;
-        if (!plannedStartDate || Number.isNaN(plannedStartDate.getTime())) {
-            throw this.httpError("Vui lòng nhập ngày dự kiến bắt đầu", 400);
-        }
-
         const plannedEndDate = data.plannedEndDate ? new Date(data.plannedEndDate) : null;
         if (!plannedEndDate || Number.isNaN(plannedEndDate.getTime())) {
             throw this.httpError("Vui lòng nhập deadline", 400);
-        }
-        if (getVietnamCalendarDateKey(plannedEndDate) <= getVietnamCalendarDateKey(plannedStartDate)) {
-            throw this.httpError("Deadline phải sau ngày dự kiến bắt đầu ít nhất 1 ngày", 400);
         }
         const uniqueTaskIds = [...new Set(taskIds)].sort();
 
@@ -207,6 +199,7 @@ export class TaskAssignmentService extends TaskBaseService {
         const vendorExpenseTasks: { projectId: string; taskId: string; vendorId: string; vendorName: string; taskName: string; taskCode?: string | null; projectName?: string; amount: number; dueDate: Date; requesterId: string }[] = [];
 
         const results = await AppDataSource.transaction(async (transactionalEntityManager) => {
+            const assignedAt = new Date();
             const results = [];
             const contractCostUpdates = new Map<string, number>();
 
@@ -227,6 +220,13 @@ export class TaskAssignmentService extends TaskBaseService {
                     task,
                     "phân công subtask"
                 );
+
+                const plannedStartDate = task.plannedStartDate
+                    ? new Date(task.plannedStartDate)
+                    : assignedAt;
+                if (getVietnamCalendarDateKey(plannedEndDate) <= getVietnamCalendarDateKey(plannedStartDate)) {
+                    throw this.httpError("Deadline phải sau ngày dự kiến bắt đầu ít nhất 1 ngày", 400);
+                }
 
                 const oldCost = Number(task.cost || 0);
                 let newCost = 0;
@@ -410,7 +410,7 @@ export class TaskAssignmentService extends TaskBaseService {
         assigneeId: string;
         performerType?: PerformerType;
         plannedEndDate: Date;
-        plannedStartDate: Date;
+        plannedStartDate?: Date;
         description?: string;
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[];
     }, currentUser?: { id: string; userId?: string; role?: string }) {

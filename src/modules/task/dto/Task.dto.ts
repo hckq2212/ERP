@@ -95,9 +95,9 @@ export class TaskAssignmentDTO {
     performerType?: PerformerType;
 
     @IsDate({ message: "Ngày bắt đầu không hợp lệ" })
-    @IsNotEmpty({ message: "Vui lòng nhập ngày dự kiến bắt đầu" })
+    @IsOptional()
     @Type(() => Date)
-    plannedStartDate: Date;
+    plannedStartDate?: Date;
 
     @IsDate({ message: "Ngày kết thúc không hợp lệ" })
     @IsNotEmpty({ message: "Vui lòng nhập deadline" })

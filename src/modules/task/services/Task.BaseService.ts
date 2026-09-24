@@ -266,6 +266,7 @@ export class TaskBaseService {
                 "job",
                 "job.criteria",
                 "assignee",
+                "assigner",
                 "helper",
                 "quotation",
                 "supervisor",
