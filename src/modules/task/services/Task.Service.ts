@@ -29,6 +29,10 @@ export class TaskService {
         return this.queryService.getOne(id, currentUser);
     }
 
+    getDailyWorkloadByAssignee(userId: string, startDate?: string, endDate?: string) {
+        return this.queryService.getDailyWorkloadByAssignee(userId, startDate, endDate);
+    }
+
     createInternalTask(data: Parameters<TaskCreationService["createInternalTask"]>[0], currentUser?: { id: string; userId?: string; role?: string }) {
         return this.creationService.createInternalTask(data, currentUser);
     }

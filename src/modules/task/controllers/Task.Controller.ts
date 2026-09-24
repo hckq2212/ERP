@@ -27,6 +27,20 @@ export class TaskController {
         }
     }
 
+    getDailyWorkloadByAssignee = async (req: Request, res: Response) => {
+        try {
+            const { startDate, endDate } = req.query;
+            const result = await this.taskService.getDailyWorkloadByAssignee(
+                req.params.userId as string,
+                startDate as string | undefined,
+                endDate as string | undefined
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     create = async (req: Request, res: Response) => {
         try {
             const user = (req as any).user;

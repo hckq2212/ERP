@@ -22,6 +22,7 @@ import { validationMiddleware } from "../../../shared/middlewares/Validation.Mid
 import { BulkUnassignTasksDTO, CreateSubtaskDTO, CreateTaskDTO, RequestTaskStaffingDTO, RespondSubtaskPlanDTO, RespondTaskStaffingDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
 
 router.get("/", taskController.getAll);
+router.get("/assignee/:userId/daily-workload", taskController.getDailyWorkloadByAssignee);
 router.get("/:id", taskController.getOne);
 router.post("/", validationMiddleware(CreateTaskDTO), taskController.create);
 router.post("/internal", taskController.createInternal);
