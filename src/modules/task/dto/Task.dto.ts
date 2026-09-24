@@ -142,8 +142,8 @@ export class CreateSubtaskDTO {
     name: string;
 
     @IsString()
-    @IsNotEmpty({ message: "Vui lòng chọn người thực hiện" })
-    assigneeId: string;
+    @IsOptional()
+    assigneeId?: string;
 
     @IsNumber({ maxDecimalPlaces: 2 }, { message: "% phân bổ không hợp lệ" })
     @Min(0.01, { message: "% phân bổ phải lớn hơn 0" })

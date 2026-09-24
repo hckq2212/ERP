@@ -14,7 +14,7 @@ type TaskActor = { id: string; userId?: string; role?: string };
 
 type CreateSubtaskInput = {
     name: string;
-    assigneeId: string;
+    assigneeId?: string;
     allocationPercent: number;
     description?: string;
 };
@@ -96,7 +96,7 @@ export class TaskDelegationService extends TaskBaseService {
                 409
             );
         }
-        if (requireComplete && !subtasks.some(subtask => subtask.assigneeId === parent.assigneeId)) {
+        if (requireComplete && parent.assigneeId && !subtasks.some(subtask => subtask.assigneeId === parent.assigneeId)) {
             throw this.httpError("Người chịu trách nhiệm task cha phải thực hiện ít nhất một subtask", 409);
         }
 
@@ -252,9 +252,6 @@ export class TaskDelegationService extends TaskBaseService {
             if (parent.parentTaskId) throw this.httpError("Không thể chia nhỏ một subtask", 400);
             if (!parent.project?.team) throw this.httpError("Công việc chưa thuộc đội dự án", 400);
             if (!parent.job) throw this.httpError("Công việc chưa có hạng mục để xác định quỹ Vinicoin", 400);
-            if (!parent.assigneeId) {
-                throw this.httpError("Cần phân công người thực hiện task chính trước khi chia subtask", 409);
-            }
             if (!data.name?.trim()) throw this.httpError("Tên subtask không được để trống", 400);
             this.assertTaskCanBeSplit(parent);
             if (SUBTASK_PM_APPROVAL_ENABLED && [SubtaskPlanStatus.PENDING_APPROVAL, SubtaskPlanStatus.APPROVED].includes(parent.subtaskPlanStatus as SubtaskPlanStatus)) {
@@ -264,12 +261,17 @@ export class TaskDelegationService extends TaskBaseService {
             const actorUserId = await this.resolveActorUserId(actor, manager);
             this.assertAccountCanDelegate(parent, actor, actorUserId);
 
-            const assigneeIsMember = parent.project.team.members?.some(member => member.user?.id === data.assigneeId);
-            if (!assigneeIsMember) {
-                throw this.httpError("Người được phân công chưa thuộc đội dự án. PM cần thêm nhân sự trước.", 400);
+            let assignee: Users | null = null;
+            let assigneeId: string | null = null;
+            if (data.assigneeId) {
+                const assigneeIsMember = parent.project.team.members?.some(member => member.user?.id === data.assigneeId);
+                if (!assigneeIsMember) {
+                    throw this.httpError("Người được phân công chưa thuộc đội dự án. PM cần thêm nhân sự trước.", 400);
+                }
+                assignee = await manager.getRepository(Users).findOneBy({ id: data.assigneeId });
+                if (!assignee) throw this.httpError("Không tìm thấy người thực hiện", 404);
+                assigneeId = assignee.id;
             }
-            const assignee = await manager.getRepository(Users).findOneBy({ id: data.assigneeId });
-            if (!assignee) throw this.httpError("Không tìm thấy người thực hiện", 404);
 
             const allocationPercent = Number(data.allocationPercent);
             if (!Number.isFinite(allocationPercent) || allocationPercent <= 0 || allocationPercent > 100) {
@@ -297,11 +299,11 @@ export class TaskDelegationService extends TaskBaseService {
                 contractService: parent.contractService,
                 quotation: parent.quotation,
                 mappedService: parent.mappedService,
-                assignee,
-                assigneeId: assignee.id,
+                assignee: assignee || null,
+                assigneeId: assigneeId || null,
                 assignerId: actorUserId,
                 performerType: PerformerType.INTERNAL,
-                status: TaskStatus.NOT_STARTED,
+                status: assigneeId ? TaskStatus.NOT_STARTED : TaskStatus.PENDING,
                 description: data.description?.trim() || null,
                 plannedStartDate: parent.plannedStartDate,
                 plannedEndDate: parent.plannedEndDate,
@@ -332,7 +334,7 @@ export class TaskDelegationService extends TaskBaseService {
             const savedParent = await taskRepo.save(parent);
             const saved = await taskRepo.save(subtask);
 
-            if (!SUBTASK_PM_APPROVAL_ENABLED) {
+            if (!SUBTASK_PM_APPROVAL_ENABLED && assignee) {
                 await this.notificationService.createNotification({
                     title: "Bạn được phân công công việc con",
                     content: `Bạn được giao công việc ${saved.name} thuộc ${this.taskDisplayName(parent)} với ${allocationPercent.toLocaleString("vi-VN")}% phân bổ.`,
@@ -411,13 +413,25 @@ export class TaskDelegationService extends TaskBaseService {
             if (!Number.isFinite(allocationPercent) || allocationPercent <= 0 || allocationPercent > 100) {
                 throw this.httpError("% phân bổ phải lớn hơn 0 và không vượt quá 100", 400);
             }
-            const assigneeIsMember = parent.project.team.members?.some(member => member.user?.id === data.assigneeId);
-            if (!assigneeIsMember) {
-                throw this.httpError("Người được phân công chưa thuộc đội dự án", 400);
+            if (data.assigneeId !== undefined) {
+                if (data.assigneeId) {
+                    const assigneeIsMember = parent.project.team.members?.some(member => member.user?.id === data.assigneeId);
+                    if (!assigneeIsMember) {
+                        throw this.httpError("Người được phân công chưa thuộc đội dự án", 400);
+                    }
+                    const assignee = await manager.getRepository(Users).findOneBy({ id: data.assigneeId });
+                    if (!assignee) throw this.httpError("Không tìm thấy người thực hiện", 404);
+                    subtask.assignee = assignee;
+                    subtask.assigneeId = assignee.id;
+                    if (subtask.status === TaskStatus.PENDING) {
+                        subtask.status = TaskStatus.NOT_STARTED;
+                    }
+                } else {
+                    subtask.assignee = null as any;
+                    subtask.assigneeId = null as any;
+                    subtask.status = TaskStatus.PENDING;
+                }
             }
-            const assignee = await manager.getRepository(Users).findOneBy({ id: data.assigneeId });
-            if (!assignee) throw this.httpError("Không tìm thấy người thực hiện", 404);
-
             const siblingSubtasks = await taskRepo.find({ where: { parentTaskId: parent.id } });
             const otherSubtasks = siblingSubtasks.filter(candidate => candidate.id !== subtask.id);
             const allocatedBasisPoints = this.assertValidSubtaskPlan(parent, otherSubtasks, false);
@@ -426,14 +440,9 @@ export class TaskDelegationService extends TaskBaseService {
             }
 
             subtask.name = data.name.trim();
-            subtask.assignee = assignee;
-            subtask.assigneeId = assignee.id;
             subtask.description = data.description?.trim() || null as any;
             subtask.allocationPercent = allocationPercent;
             subtask.rewardVinicoin = null;
-            if (subtask.status === TaskStatus.PENDING) {
-                subtask.status = TaskStatus.NOT_STARTED;
-            }
             subtask.subtaskPlanStatus = SUBTASK_PM_APPROVAL_ENABLED ? SubtaskPlanStatus.DRAFT : null;
             const savedSubtask = await taskRepo.save(subtask);
 
