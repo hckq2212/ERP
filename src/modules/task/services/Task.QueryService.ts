@@ -22,6 +22,34 @@ import { MemberRole } from "../../project/entities/TeamMember.entity";
 import { TaskBaseService } from "./Task.BaseService";
 
 export class TaskQueryService extends TaskBaseService {
+    private formatDateKey(date: Date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
+
+    private startOfDay(date: Date) {
+        const value = new Date(date);
+        value.setHours(0, 0, 0, 0);
+        return value;
+    }
+
+    private endOfDay(date: Date) {
+        const value = new Date(date);
+        value.setHours(23, 59, 59, 999);
+        return value;
+    }
+
+    private parseDateOnly(value: string | undefined, fieldName: string) {
+        if (!value) throw this.httpError(`Vui lòng cung cấp ${fieldName}`, 400);
+        const parsed = new Date(`${value}T00:00:00.000`);
+        if (Number.isNaN(parsed.getTime())) {
+            throw this.httpError(`${fieldName} không hợp lệ`, 400);
+        }
+        return parsed;
+    }
+
     private applyProjectFilter(where: any, projectId: string) {
         where.project = {
             ...(where.project || {}),
@@ -195,6 +223,81 @@ export class TaskQueryService extends TaskBaseService {
                 limit,
                 totalPages: Math.ceil(total / limit)
             }
+        };
+    }
+
+    async getDailyWorkloadByAssignee(userId: string, startDate: string | undefined, endDate: string | undefined) {
+        if (!userId) throw this.httpError("Vui lòng cung cấp người thực hiện", 400);
+
+        const start = this.startOfDay(this.parseDateOnly(startDate, "ngày bắt đầu"));
+        const end = this.endOfDay(this.parseDateOnly(endDate, "ngày kết thúc"));
+        if (start > end) {
+            throw this.httpError("Ngày bắt đầu không được lớn hơn ngày kết thúc", 400);
+        }
+
+        const excludedStatuses = [
+            TaskStatus.INTERNAL_COMPLETED,
+            TaskStatus.COMPLETED,
+            TaskStatus.ACCEPTED,
+            TaskStatus.CANCELLED,
+            TaskStatus.ON_HOLD,
+            TaskStatus.AWAITING_PRICING
+        ];
+
+        const tasks = await this.taskRepository
+            .createQueryBuilder("task")
+            .select([
+                "task.id",
+                "task.code",
+                "task.name",
+                "task.nickname",
+                "task.status",
+                "task.plannedStartDate",
+                "task.plannedEndDate"
+            ])
+            .where("task.assigneeId = :userId", { userId })
+            .andWhere("task.performerType = :performerType", { performerType: PerformerType.INTERNAL })
+            .andWhere("task.plannedStartDate IS NOT NULL")
+            .andWhere("task.plannedEndDate IS NOT NULL")
+            .andWhere("task.plannedStartDate <= :end", { end })
+            .andWhere("task.plannedEndDate >= :start", { start })
+            .andWhere("task.status NOT IN (:...excludedStatuses)", { excludedStatuses })
+            .orderBy("task.plannedEndDate", "ASC")
+            .getMany();
+
+        const days: {
+            date: string;
+            taskCount: number;
+            tasks: Pick<Tasks, "id" | "code" | "name" | "nickname" | "status" | "plannedStartDate" | "plannedEndDate">[];
+        }[] = [];
+
+        for (const cursor = this.startOfDay(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+            const dayStart = this.startOfDay(cursor);
+            const dayEnd = this.endOfDay(cursor);
+            const overlappingTasks = tasks.filter(task =>
+                task.plannedStartDate <= dayEnd && task.plannedEndDate >= dayStart
+            );
+
+            days.push({
+                date: this.formatDateKey(dayStart),
+                taskCount: overlappingTasks.length,
+                tasks: overlappingTasks.map(task => ({
+                    id: task.id,
+                    code: task.code,
+                    name: task.name,
+                    nickname: task.nickname,
+                    status: task.status,
+                    plannedStartDate: task.plannedStartDate,
+                    plannedEndDate: task.plannedEndDate
+                }))
+            });
+        }
+
+        return {
+            userId,
+            startDate: this.formatDateKey(start),
+            endDate: this.formatDateKey(end),
+            days
         };
     }
 }

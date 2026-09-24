@@ -24,6 +24,7 @@ import { Tasks } from "./modules/task/entities/Task.entity"
 import { PaymentMilestones } from "./modules/payment-milestone/entities/PaymentMilestone.entity"
 import { Debts } from "./modules/debt/entities/Debt.entity"
 import { DebtPayments } from "./modules/debt/entities/DebtPayment.entity"
+import { PaymentRequests } from "./modules/payment-request/entities/PaymentRequest.entity"
 import { Notifications } from "./modules/notification/entities/Notification.entity"
 import { Announcements } from "./modules/announcement/entities/Announcement.entity"
 import { AnnouncementRecipients } from "./modules/announcement/entities/AnnouncementRecipient.entity"
@@ -116,6 +117,7 @@ export const AppDataSource = new DataSource({
         PaymentMilestones,
         Debts,
         DebtPayments,
+        PaymentRequests,
         Notifications,
         Announcements,
         AnnouncementRecipients,

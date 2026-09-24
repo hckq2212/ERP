@@ -27,6 +27,32 @@ export class TaskController {
         }
     }
 
+    getDailyWorkloadByAssignee = async (req: Request, res: Response) => {
+        try {
+            const { startDate, endDate } = req.query;
+            const result = await this.taskService.getDailyWorkloadByAssignee(
+                req.params.userId as string,
+                startDate as string | undefined,
+                endDate as string | undefined
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
+    // Trả về danh sách task theo dự án (dùng cho form chọn công việc, ví dụ: yêu cầu thanh toán).
+    getByProject = async (req: any, res: Response) => {
+        try {
+            const userInfo = (req as any).user;
+            const filters = { ...req.query, projectId: req.params.projectId, limit: req.query.limit || 500 };
+            const result = await this.taskService.getAll(filters, userInfo);
+            res.status(200).json(result.data);
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
+        }
+    }
+
     create = async (req: Request, res: Response) => {
         try {
             const user = (req as any).user;
@@ -125,21 +151,21 @@ export class TaskController {
                     checklist: bodyResult.checklist || []
                 };
             } else
-            if (bodyResult && bodyResult.url) {
-                resultData = {
-                    type: bodyResult.type || "FILE",
-                    name: bodyResult.name || "Kết quả công việc",
-                    url: bodyResult.url,
-                    size: bodyResult.size,
-                    publicId: bodyResult.publicId
-                };
-            } else if (link) {
-                resultData = {
-                    type: "LINK",
-                    name: link,
-                    url: link
-                };
-            }
+                if (bodyResult && bodyResult.url) {
+                    resultData = {
+                        type: bodyResult.type || "FILE",
+                        name: bodyResult.name || "Kết quả công việc",
+                        url: bodyResult.url,
+                        size: bodyResult.size,
+                        publicId: bodyResult.publicId
+                    };
+                } else if (link) {
+                    resultData = {
+                        type: "LINK",
+                        name: link,
+                        url: link
+                    };
+                }
 
             if (!resultData) {
                 return res.status(400).json({ message: "Vui lòng cung cấp link hoặc file kết quả" });
@@ -255,7 +281,7 @@ export class TaskController {
             res.status(500).json({ message: error.message });
         }
     }
-
+ 
     returnSupport = async (req: Request, res: Response) => {
         try {
             const result = await this.taskService.returnSupport(req.params.id as string);
@@ -264,7 +290,7 @@ export class TaskController {
             res.status(500).json({ message: error.message });
         }
     }
-
+ 
     requestReturnSupport = async (req: Request, res: Response) => {
         try {
             const result = await this.taskService.requestReturnSupport(req.params.id as string, req.body.note);
@@ -273,7 +299,7 @@ export class TaskController {
             res.status(500).json({ message: error.message });
         }
     }
-
+ 
     assignSupportTeam = async (req: Request, res: Response) => {
         try {
             const result = await this.taskService.assignSupportTeam(req.params.id as string, req.body.teamId);

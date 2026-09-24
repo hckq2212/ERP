@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { TaskBaseService } from "../services/Task.BaseService";
 import { UserRole } from "../../account/entities/Account.entity";
 import { MemberRole } from "../../project/entities/TeamMember.entity";
+import { ProjectStatus } from "../../project/entities/Project.entity";
 
 class TestTaskBaseService extends TaskBaseService {
     protected async resolveActorUserId(actor?: { id?: string; userId?: string }) {
@@ -39,6 +40,17 @@ test("mọi Lead dự án trong team đều có thể giao task chưa được p
     assert.equal(
         await service.authorize(task(), { userId: leadB.id, role: UserRole.STAFF_A }),
         leadB.id
+    );
+});
+
+test("không được phân công task khi dự án chưa được chấp nhận", async () => {
+    await assert.rejects(
+        service.authorize(
+            task({ project: { team, status: ProjectStatus.PENDING_CONFIRMATION } }),
+            { userId: leadA.id, role: UserRole.STAFF_A }
+        ),
+        (error: any) => error.statusCode === 409
+            && error.message === "Dự án chưa được chấp nhận, chưa thể phân công công việc"
     );
 });
 

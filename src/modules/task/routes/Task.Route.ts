@@ -22,6 +22,9 @@ import { validationMiddleware } from "../../../shared/middlewares/Validation.Mid
 import { BulkTaskAssignmentDTO, BulkUnassignTasksDTO, CreateSubtaskDTO, CreateTaskDTO, RequestTaskStaffingDTO, RespondSubtaskPlanDTO, RespondTaskStaffingDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
 
 router.get("/", taskController.getAll);
+router.get("/assignee/:userId/daily-workload", taskController.getDailyWorkloadByAssignee);
+// Đặt trước "/:id" vì đây là route 2 segment, tránh nhầm với việc thêm route "/:id/..." khác sau này.
+router.get("/project/:projectId", taskController.getByProject);
 router.get("/:id", taskController.getOne);
 router.post("/", validationMiddleware(CreateTaskDTO), taskController.create);
 router.post("/internal", taskController.createInternal);
