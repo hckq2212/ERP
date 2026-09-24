@@ -5,6 +5,7 @@ export enum PerformerType {
 
 export enum TaskStatus {
     PENDING = "PENDING",
+    NOT_STARTED = "NOT_STARTED",
     DOING = "DOING",
     AWAITING_ACCEPTANCE = "AWAITING_ACCEPTANCE",
     INTERNAL_COMPLETED = "INTERNAL_COMPLETED",

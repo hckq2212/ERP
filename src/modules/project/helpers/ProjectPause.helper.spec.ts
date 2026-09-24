@@ -73,7 +73,7 @@ test("INTERNAL_COMPLETED KHÔNG bị đổi trạng thái và KHÔNG được th
 
 test("task dở dang ở MỌI status (không phải 3 cuối) đều thành ON_HOLD rồi CANCELLED", () => {
     const inProgressStatuses = [
-        TaskStatus.PENDING, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE,
+        TaskStatus.PENDING, TaskStatus.NOT_STARTED, TaskStatus.DOING, TaskStatus.AWAITING_ACCEPTANCE,
         TaskStatus.AWAITING_REVIEW, TaskStatus.REJECTED, TaskStatus.REJECTED_BILLABLE,
         TaskStatus.REJECTED_SUPPORT, TaskStatus.OVERDUE, TaskStatus.AWAITING_PRICING,
         TaskStatus.AWAITING_SUPPORT, TaskStatus.REWORKING, TaskStatus.SUPPORT_PENDING,

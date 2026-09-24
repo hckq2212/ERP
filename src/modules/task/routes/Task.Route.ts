@@ -28,6 +28,7 @@ router.post("/internal", taskController.createInternal);
 router.put("/bulk-assign", validationMiddleware(BulkTaskAssignmentDTO), taskController.bulkAssign);
 router.patch("/bulk-unassign", validationMiddleware(BulkUnassignTasksDTO), taskController.bulkUnassign);
 router.patch("/:id/nickname", validationMiddleware(UpdateTaskNicknameDTO), taskController.updateNickname);
+router.patch("/:id/start", taskController.start);
 router.put("/:id", taskController.update);
 router.put("/:id/assign", validationMiddleware(TaskAssignmentDTO), taskController.assign);
 router.patch("/:id/submit-result", taskController.submitResult);

@@ -24,6 +24,10 @@ export class TaskSupportService extends TaskBaseService {
     async requestSupport(id: string, note: string) {
         const task = await this.getOne(id);
         this.assertTaskProjectNotOnHold(task);
+        const supportableStatuses = [TaskStatus.DOING, TaskStatus.REWORKING, TaskStatus.OVERDUE];
+        if (!supportableStatuses.includes(task.status)) {
+            throw this.httpError("Công việc phải được bắt đầu trước khi yêu cầu hỗ trợ", 409);
+        }
         task.isSupportRequested = true;
         task.supportRequestNote = note;
         task.supportRequestType = "EXECUTION";

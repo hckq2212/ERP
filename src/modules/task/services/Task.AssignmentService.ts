@@ -34,6 +34,32 @@ const getVietnamCalendarDateKey = (date: Date) => {
 };
 
 export class TaskAssignmentService extends TaskBaseService {
+    async start(id: string, currentUser?: { id: string; userId?: string; role?: string }) {
+        const task = await this.taskRepository.findOne({
+            where: { id },
+            relations: ["project", "assignee", "helper"]
+        });
+
+        if (!task) throw this.httpError("Không tìm thấy công việc", 404);
+        this.assertTaskProjectNotOnHold(task);
+        await assertSubtaskPlanApproved(this.taskRepository, task, "bắt đầu công việc");
+        if (task.status !== TaskStatus.NOT_STARTED) {
+            throw this.httpError("Chỉ có thể bắt đầu công việc đang ở trạng thái Chưa thực hiện", 409);
+        }
+
+        const actorUserId = await this.resolveActorUserId(currentUser);
+        const isPerformer = Boolean(actorUserId) && [task.assigneeId, task.helperId].includes(actorUserId as string);
+        if (!isPerformer) {
+            throw this.httpError("Chỉ người được giao công việc mới có thể bắt đầu", 403);
+        }
+
+        task.status = TaskStatus.DOING;
+        task.actualStartDate = new Date();
+        const saved = await this.taskRepository.save(task);
+        taskEmitter.emit(TASK_EVENTS.UPDATED, saved);
+        return saved;
+    }
+
     async updateNickname(
         id: string,
         nickname: string | null | undefined,
@@ -75,6 +101,15 @@ export class TaskAssignmentService extends TaskBaseService {
 
         if (data.assigneeId !== undefined && data.assigneeId !== task.assigneeId) {
             throw this.httpError("Vui lòng dùng chức năng phân công hoặc chuyển giao để thay đổi người thực hiện", 400);
+        }
+        if (task.status === TaskStatus.NOT_STARTED && data.status && data.status !== TaskStatus.NOT_STARTED) {
+            throw this.httpError("Vui lòng dùng chức năng Bắt đầu công việc để chuyển sang Đang thực hiện", 409);
+        }
+        if (task.status === TaskStatus.PENDING && data.status === TaskStatus.DOING) {
+            throw this.httpError("Cần phân công người thực hiện trước khi bắt đầu công việc", 409);
+        }
+        if (task.status === TaskStatus.NOT_STARTED && data.actualStartDate) {
+            throw this.httpError("Ngày bắt đầu thực tế chỉ được ghi khi bắt đầu công việc", 409);
         }
 
         const completionStatuses = [
@@ -282,7 +317,9 @@ export class TaskAssignmentService extends TaskBaseService {
                     }
 
                     if (task.status === TaskStatus.PENDING || task.status === TaskStatus.AWAITING_SUPPORT) {
-                        task.status = TaskStatus.DOING;
+                        task.status = task.status === TaskStatus.PENDING
+                            ? TaskStatus.NOT_STARTED
+                            : TaskStatus.DOING;
                         task.isSupportRequested = false;
                         task.isSupportAccepted = false;
                         task.supportLeadId = null as any;
@@ -394,8 +431,8 @@ export class TaskAssignmentService extends TaskBaseService {
                     continue;
                 }
                 task.project = project;
-                if (task.status !== TaskStatus.DOING) {
-                    skip("Công việc không ở trạng thái đang thực hiện");
+                if (![TaskStatus.NOT_STARTED, TaskStatus.DOING].includes(task.status)) {
+                    skip("Công việc không ở trạng thái chưa thực hiện hoặc đang thực hiện");
                     continue;
                 }
                 if (!task.assigneeId && !task.vendor) {

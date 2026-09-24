@@ -33,6 +33,7 @@ export class CronHelper {
                 // tự chuyển sang OVERDUE (sẽ phá vỡ trạng thái tạm dừng).
                 const activeStatuses = [
                     TaskStatus.PENDING,
+                    TaskStatus.NOT_STARTED,
                     TaskStatus.DOING,
                     TaskStatus.REWORKING,
                     TaskStatus.AWAITING_PRICING,
@@ -224,6 +225,7 @@ export class CronHelper {
         const now = new Date();
         const activeStatuses = [
             TaskStatus.PENDING,
+            TaskStatus.NOT_STARTED,
             TaskStatus.DOING,
             TaskStatus.REWORKING,
             TaskStatus.AWAITING_PRICING,
