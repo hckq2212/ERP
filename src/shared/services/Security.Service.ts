@@ -114,8 +114,9 @@ export class SecurityService {
     static getProjectFilters(userInfo: ActorInfo): any {
         const { id, role } = userInfo;
 
-        // Full access for internal management roles
-        if (isManagementRole(role)) {
+        // Full access for internal management roles + sales admin (khớp với getPaymentMilestoneFilters/
+        // getDebtFilters: Admin Sale cần thấy toàn bộ dự án để lọc/duyệt yêu cầu thanh toán)
+        if (isManagementRole(role) || role === UserRole.ADMIN_SALE) {
             return SecurityService.getTenantWhere(userInfo);
         }
 

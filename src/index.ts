@@ -26,6 +26,7 @@ import customerRoute from "./modules/customer/routes/Customer.Route"
 import vendorRoute from "./modules/vendor/routes/Vendor.Route"
 import referralPartnerRoute from "./modules/referral-partner/routes/ReferralPartner.Route"
 import debtRoute from "./modules/debt/routes/Debt.Route"
+import paymentRequestRoute from "./modules/payment-request/routes/PaymentRequest.Route"
 import contractAddendumRoute from "./modules/contract-addendum/routes/ContractAddendum.Route"
 import jobCriteriaRoute from "./modules/job-criteria/routes/JobCriteria.Route"
 import taskReviewRoute from "./modules/task/routes/TaskReview.Route"
@@ -122,6 +123,7 @@ app.use("/api/customers", authMiddleware, writeRateLimitMiddleware, customerRout
 app.use("/api/vendors", authMiddleware, writeRateLimitMiddleware, vendorRoute)
 app.use("/api/referral-partners", authMiddleware, writeRateLimitMiddleware, referralPartnerRoute)
 app.use("/api/debts", authMiddleware, writeRateLimitMiddleware, debtRoute)
+app.use("/api/payment-requests", authMiddleware, writeRateLimitMiddleware, paymentRequestRoute)
 app.use("/api/contract-addendums", authMiddleware, writeRateLimitMiddleware, contractAddendumRoute)
 app.use("/api/job-criteria", authMiddleware, writeRateLimitMiddleware, jobCriteriaRoute)
 app.use("/api/task-reviews", authMiddleware, writeRateLimitMiddleware, taskReviewRoute)

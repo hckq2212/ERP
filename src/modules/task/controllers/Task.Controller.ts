@@ -36,6 +36,17 @@ export class TaskController {
                 endDate as string | undefined
             );
             res.status(200).json(result);
+        }catch((error: any)){
+               res.status(error.statusCode || 500).json({ message: error.message });
+        }
+        
+    // Trả về danh sách task theo dự án (dùng cho form chọn công việc, ví dụ: yêu cầu thanh toán).
+    getByProject = async (req: any, res: Response) => {
+        try {
+            const userInfo = (req as any).user;
+            const filters = { ...req.query, projectId: req.params.projectId, limit: req.query.limit || 500 };
+            const result = await this.taskService.getAll(filters, userInfo);
+            res.status(200).json(result.data);
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ message: error.message });
         }

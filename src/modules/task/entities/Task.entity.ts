@@ -164,6 +164,9 @@ export class Tasks extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     cost: number;
 
+    @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
+    spentAmount: number;
+
     /** Contribution share of a subtask in its parent task. */
     @Column({ type: "decimal", precision: 5, scale: 2, default: 0 })
     allocationPercent: number;
