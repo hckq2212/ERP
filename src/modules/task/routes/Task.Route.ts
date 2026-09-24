@@ -19,7 +19,7 @@ const upload = multer({
 });
 
 import { validationMiddleware } from "../../../shared/middlewares/Validation.Middleware";
-import { BulkUnassignTasksDTO, CreateSubtaskDTO, CreateTaskDTO, RequestTaskStaffingDTO, RespondSubtaskPlanDTO, RespondTaskStaffingDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
+import { BulkTaskAssignmentDTO, BulkUnassignTasksDTO, CreateSubtaskDTO, CreateTaskDTO, RequestTaskStaffingDTO, RespondSubtaskPlanDTO, RespondTaskStaffingDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
 
 router.get("/", taskController.getAll);
 router.get("/assignee/:userId/daily-workload", taskController.getDailyWorkloadByAssignee);
@@ -28,9 +28,10 @@ router.get("/project/:projectId", taskController.getByProject);
 router.get("/:id", taskController.getOne);
 router.post("/", validationMiddleware(CreateTaskDTO), taskController.create);
 router.post("/internal", taskController.createInternal);
-router.put("/bulk-assign", taskController.bulkAssign);
+router.put("/bulk-assign", validationMiddleware(BulkTaskAssignmentDTO), taskController.bulkAssign);
 router.patch("/bulk-unassign", validationMiddleware(BulkUnassignTasksDTO), taskController.bulkUnassign);
 router.patch("/:id/nickname", validationMiddleware(UpdateTaskNicknameDTO), taskController.updateNickname);
+router.patch("/:id/start", taskController.start);
 router.put("/:id", taskController.update);
 router.put("/:id/assign", validationMiddleware(TaskAssignmentDTO), taskController.assign);
 router.patch("/:id/submit-result", taskController.submitResult);

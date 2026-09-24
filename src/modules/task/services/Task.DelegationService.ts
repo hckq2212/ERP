@@ -22,6 +22,7 @@ type CreateSubtaskInput = {
 export class TaskDelegationService extends TaskBaseService {
     private readonly splittableStatuses = [
         TaskStatus.PENDING,
+        TaskStatus.NOT_STARTED,
         TaskStatus.DOING,
         TaskStatus.REWORKING,
         TaskStatus.OVERDUE,
@@ -300,7 +301,7 @@ export class TaskDelegationService extends TaskBaseService {
                 assigneeId: assignee.id,
                 assignerId: actorUserId,
                 performerType: PerformerType.INTERNAL,
-                status: SUBTASK_PM_APPROVAL_ENABLED ? TaskStatus.PENDING : TaskStatus.DOING,
+                status: TaskStatus.NOT_STARTED,
                 description: data.description?.trim() || null,
                 plannedStartDate: parent.plannedStartDate,
                 plannedEndDate: parent.plannedEndDate,
@@ -430,8 +431,8 @@ export class TaskDelegationService extends TaskBaseService {
             subtask.description = data.description?.trim() || null as any;
             subtask.allocationPercent = allocationPercent;
             subtask.rewardVinicoin = null;
-            if (!SUBTASK_PM_APPROVAL_ENABLED && subtask.status === TaskStatus.PENDING) {
-                subtask.status = TaskStatus.DOING;
+            if (subtask.status === TaskStatus.PENDING) {
+                subtask.status = TaskStatus.NOT_STARTED;
             }
             subtask.subtaskPlanStatus = SUBTASK_PM_APPROVAL_ENABLED ? SubtaskPlanStatus.DRAFT : null;
             const savedSubtask = await taskRepo.save(subtask);
@@ -570,7 +571,7 @@ export class TaskDelegationService extends TaskBaseService {
                 parent.subtaskPlanReviewNote = note?.trim() || null;
 
                 for (const subtask of subtasks) {
-                    subtask.status = TaskStatus.DOING;
+                    subtask.status = TaskStatus.NOT_STARTED;
                     subtask.subtaskPlanStatus = SubtaskPlanStatus.APPROVED;
                     await taskRepo.save(subtask);
                     if (subtask.assignee) {

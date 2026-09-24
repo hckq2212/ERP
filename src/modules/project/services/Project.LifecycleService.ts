@@ -1,9 +1,8 @@
 import { AppDataSource } from "../../../data-source";
-import { Like, ILike, In, IsNull, Not } from "typeorm";
+import { EntityManager, Like, ILike, In, IsNull, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { Contracts, ContractStatus } from "../../contract/entities/Contract.entity";
 import { ProjectTeams } from "../entities/ProjectTeam.entity";
-import { TeamMembers } from "../entities/TeamMember.entity";
 import { Users } from "../../user/entities/User.entity";
 import { OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
 import { ContractServices } from "../../contract/entities/ContractService.entity";
@@ -16,13 +15,14 @@ import { PerformerType } from "../../../shared/entities/Enums";
 import { NotificationService } from "../../notification/services/Notification.Service";
 
 import { SecurityService } from "../../../shared/services/Security.Service";
-import { Accounts, UserRole } from "../../account/entities/Account.entity";
+import { Accounts } from "../../account/entities/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 // Google Sheet integration is temporarily disabled.
 // import { GoogleSheetService } from "../../../shared/services/GoogleSheet.Service";
 
 import { ProjectBaseService } from "./Project.BaseService";
+import { canConfirmProject } from "../helpers/ProjectConfirmation.helper";
 
 type ActorInfo = { id: string; userId?: string; role: string };
 
@@ -34,19 +34,22 @@ export class ProjectLifecycleService extends ProjectBaseService {
         throw new Error("Google Sheet integration is temporarily disabled");
     }
 
-    private async resolveActorUser(actor: ActorInfo) {
+    private async resolveActorUser(actor: ActorInfo, manager?: EntityManager) {
+        const userRepository = manager?.getRepository(Users) || this.userRepository;
+        const accountRepository = manager?.getRepository(Accounts) || AppDataSource.getRepository(Accounts);
+
         if (actor.userId) {
-            const user = await this.userRepository.findOneBy({ id: actor.userId });
+            const user = await userRepository.findOneBy({ id: actor.userId });
             if (user) return user;
         }
 
-        const account = await AppDataSource.getRepository(Accounts).findOne({
+        const account = await accountRepository.findOne({
             where: { id: actor.id },
             relations: ["user"]
         });
         if (account?.user) return account.user;
         if (account?.userId) {
-            const user = await this.userRepository.findOneBy({ id: account.userId });
+            const user = await userRepository.findOneBy({ id: account.userId });
             if (user) return user;
         }
 
@@ -54,46 +57,62 @@ export class ProjectLifecycleService extends ProjectBaseService {
     }
 
     async confirm(id: string, actor: ActorInfo) {
-        const userConfirming = await this.resolveActorUser(actor);
-        const project = await this.projectRepository.findOne({
-            where: SecurityService.withTenant({ id }),
-            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user"]
-        });
-        if (!project) throw this.httpError("Không tìm thấy dự án", 404);
+        const { savedProject, userConfirming, updatedOpportunity } = await AppDataSource.transaction(async (manager) => {
+            // Khoá hàng dự án để hai Account bấm đồng thời không thể cùng thành công.
+            const lockedProject = await manager
+                .createQueryBuilder(Projects, "project")
+                .select("project.id")
+                .where("project.id = :id", { id })
+                .setLock("pessimistic_write")
+                .getOne();
+            if (!lockedProject) throw this.httpError("Không tìm thấy dự án", 404);
 
-        if (project.status !== ProjectStatus.PENDING_CONFIRMATION) {
-            throw new Error("Dự án không ở trạng thái chờ xác nhận");
-        }
+            const project = await manager.getRepository(Projects).findOne({
+                where: SecurityService.withTenant({ id }),
+                relations: [
+                    "contract",
+                    "contract.opportunity",
+                    "team",
+                    "team.teamLead",
+                    "team.members",
+                    "team.members.roles",
+                    "team.members.user"
+                ]
+            });
+            if (!project) throw this.httpError("Không tìm thấy dự án", 404);
 
-        const isTeamLead = project.team?.teamLead?.id === userConfirming.id;
-        const isSystemManager = actor.role === UserRole.ADMIN;
+            if (project.status !== ProjectStatus.PENDING_CONFIRMATION) {
+                throw this.httpError("Dự án đã được chấp nhận trước đó", 409);
+            }
 
-        if (!isSystemManager && !isTeamLead) {
-            throw this.httpError("Bạn không có quyền chấp nhận dự án này", 403);
-        }
+            const userConfirming = await this.resolveActorUser(actor, manager);
+            if (!canConfirmProject(project, userConfirming.id, actor.role)) {
+                throw this.httpError("Bạn không có quyền chấp nhận dự án này", 403);
+            }
 
-        // Check if contract is already signed
-        const contract = await this.contractRepository.findOneBy({ id: project.contract.id });
-        if (contract?.status === ContractStatus.SIGNED) {
+            const confirmedAt = new Date();
             project.status = ProjectStatus.IN_PROGRESS;
-            project.actualStartDate = new Date();
+            project.confirmedBy = userConfirming;
+            project.confirmedById = userConfirming.id;
+            project.confirmedAt = confirmedAt;
 
-            // Update Opportunity Status
-            if (contract.opportunity) {
-                const fullContract = await this.contractRepository.findOne({ where: { id: contract.id }, relations: ["opportunity"] });
-                if (fullContract?.opportunity) {
-                    const oppRepo = AppDataSource.getRepository(fullContract.opportunity.constructor);
-                    fullContract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
-                    await oppRepo.save(fullContract.opportunity);
-                    opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, fullContract.opportunity);
+            let updatedOpportunity = null;
+            if (project.contract?.status === ContractStatus.SIGNED) {
+                project.actualStartDate = confirmedAt;
+                if (project.contract.opportunity) {
+                    project.contract.opportunity.status = OpportunityStatus.IMPLEMENTATION;
+                    updatedOpportunity = await manager.save(project.contract.opportunity);
                 }
             }
-        } else {
-            project.status = ProjectStatus.IN_PROGRESS;
-        }
 
-        const savedProject = await this.projectRepository.save(project);
+            const savedProject = await manager.save(project);
+            return { savedProject, userConfirming, updatedOpportunity };
+        });
+
         projectEmitter.emit(PROJECT_EVENTS.UPDATED, savedProject);
+        if (updatedOpportunity) {
+            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, updatedOpportunity);
+        }
 
         // Notify BOD members
         // ... (rest of notification logic)

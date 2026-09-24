@@ -537,7 +537,8 @@ export class ProjectBaseService {
                 "team.teamLead",
                 "team.members",
                 "team.members.user",
-                "team.members.user.accounts"
+                "team.members.user.accounts",
+                "confirmedBy"
             ],
             select: {
                 id: true,
@@ -556,6 +557,12 @@ export class ProjectBaseService {
                 googleSheetError: true,
                 googleSheetCreatedAt: true,
                 workingFiles: true,
+                confirmedById: true,
+                confirmedAt: true,
+                confirmedBy: {
+                    id: true,
+                    fullName: true
+                },
                 contract: {
                     id: true,
                     name: true,

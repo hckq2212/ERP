@@ -49,6 +49,10 @@ export class TaskService {
         return this.assignmentService.update(id, data, currentUser);
     }
 
+    start(id: string, currentUser?: { id: string; userId?: string; role?: string }) {
+        return this.assignmentService.start(id, currentUser);
+    }
+
     bulkAssign(taskIds: string[], data: Parameters<TaskAssignmentService["bulkAssign"]>[1], currentUser?: { id: string, userId?: string; role?: string }) {
         return this.assignmentService.bulkAssign(taskIds, data, currentUser);
     }

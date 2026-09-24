@@ -67,7 +67,7 @@ export class TaskCreationService extends TaskBaseService {
             job: null,
             assignee: assignee,
             supervisor: supervisor,
-            status: TaskStatus.DOING,
+            status: TaskStatus.NOT_STARTED,
             plannedStartDate: data.plannedStartDate,
             plannedEndDate: data.plannedEndDate,
             description: data.description,
@@ -200,7 +200,7 @@ export class TaskCreationService extends TaskBaseService {
             status: data.isExtra
                 ? TaskStatus.AWAITING_PRICING
                 : data.assigneeId
-                    ? TaskStatus.DOING
+                    ? TaskStatus.NOT_STARTED
                     : TaskStatus.PENDING,
             performerType: data.performerType || job.defaultPerformerType,
             description: data.description,

@@ -54,8 +54,9 @@ export class TaskPricingService extends TaskBaseService {
                 contract.cost = Number(contract.cost || 0) + task.cost;
                 await AppDataSource.getRepository("Contracts").save(contract);
             }
-            task.status = TaskStatus.PENDING;
         }
+
+        task.status = task.assigneeId ? TaskStatus.NOT_STARTED : TaskStatus.PENDING;
 
         const savedTask = await this.taskRepository.save(task);
         taskEmitter.emit(TASK_EVENTS.UPDATED, savedTask);

@@ -60,6 +60,17 @@ export class Projects extends BaseEntity {
     @ManyToOne(() => Users)
     createdBy: Users;
 
+    /** Account đầu tiên chấp nhận dự án. */
+    @ManyToOne(() => Users, { nullable: true })
+    @JoinColumn({ name: "confirmedById" })
+    confirmedBy: Users;
+
+    @Column({ type: "varchar", length: 26, nullable: true })
+    confirmedById: string;
+
+    @Column({ type: "timestamptz", nullable: true })
+    confirmedAt: Date;
+
     @Column({ nullable: true })
     googleSheetId: string;
 

@@ -53,6 +53,15 @@ export class TaskResultService extends TaskBaseService {
     async submitResult(id: string, data: SubmitResultData, currentUser?: { id: string, userId?: string; role?: string }) {
         const task = await this.getOne(id);
         this.assertTaskProjectNotOnHold(task);
+        const submittableStatuses = [
+            TaskStatus.DOING,
+            TaskStatus.REJECTED,
+            TaskStatus.REWORKING,
+            TaskStatus.OVERDUE
+        ];
+        if (!submittableStatuses.includes(task.status)) {
+            throw this.httpError("Công việc phải được bắt đầu trước khi nộp kết quả", 409);
+        }
         await assertSubtaskPlanApproved(this.taskRepository, task, "nộp kết quả");
         await assertSubtasksCompleted(this.taskRepository, task, "nộp kết quả");
         const currentId = await this.resolveActorUserId(currentUser);

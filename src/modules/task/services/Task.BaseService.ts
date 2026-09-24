@@ -188,6 +188,10 @@ export class TaskBaseService {
             throw this.httpError("Tài khoản chưa được liên kết nhân sự để phân công công việc", 401);
         }
 
+        if (task.project?.status === ProjectStatus.PENDING_CONFIRMATION) {
+            throw this.httpError("Dự án chưa được chấp nhận, chưa thể phân công công việc", 409);
+        }
+
         if (actor.role === UserRole.ADMIN) return actorUserId;
 
         if (task.project) {
