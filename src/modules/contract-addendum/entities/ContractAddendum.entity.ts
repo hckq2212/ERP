@@ -65,6 +65,15 @@ export class ContractAddendums extends BaseEntity {
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     sellingPrice: number; // Có thể âm nếu là phụ lục cắt giảm
 
+    @Column({ type: "decimal", precision: 5, scale: 2, default: 8 })
+    vatRate: number;
+
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
+    vatAmount: number;
+
+    @Column({ type: "decimal", precision: 18, scale: 6, default: 0 })
+    totalWithVat: number;
+
     @Column({ type: "decimal", precision: 15, scale: 3, default: 0 })
     cost: number;
 

@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { ContractController } from "../controllers/Contract.Controller";
 import { validationMiddleware } from "../../../shared/middlewares/Validation.Middleware";
-import { CreateContractDTO, UpdateContractDTO } from "../dto/Contract.dto";
+import { CreateContractDTO, UpdateContractServiceNicknameDTO } from "../dto/Contract.dto";
 
 const router = Router();
 const contractController = new ContractController();
 
 router.get("/", contractController.getAll);
+router.patch("/services/:id/nickname", validationMiddleware(UpdateContractServiceNicknameDTO), contractController.updateServiceNickname);
 router.get("/:id", contractController.getOne);
 router.post("/", validationMiddleware(CreateContractDTO), contractController.create);
 router.delete("/:id", contractController.delete);

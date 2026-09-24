@@ -118,6 +118,13 @@ export class AcceptanceService {
     const project = await this.projectRepo.findOneBy({ id: projectId });
     if (!project) throw new Error("Dự án không tồn tại");
 
+    if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(project.status)) {
+      throw this.httpError("Dự án đã hoàn tất hoặc đã đóng, không thể gửi yêu cầu nghiệm thu", 400);
+    }
+    if (project.status === ProjectStatus.ON_HOLD || Boolean(project.isOnHold)) {
+      throw this.httpError(`Dự án "${project.name}" đang tạm dừng, không thể gửi yêu cầu nghiệm thu`, 409);
+    }
+
     const services = await this.serviceRepo.find({
       where: { id: In(serviceIds) },
       relations: ["contract", "contract.project", "tasks"],
@@ -257,6 +264,15 @@ export class AcceptanceService {
         .findOneBy({ id: approverId });
       if (!approver) throw this.httpError("Người duyệt không tồn tại", 404);
 
+      if (request.project) {
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(request.project.status)) {
+          throw this.httpError(`Dự án "${request.project.name}" đã hoàn tất hoặc đã đóng, không thể duyệt nghiệm thu`, 400);
+        }
+        if (request.project.status === ProjectStatus.ON_HOLD || Boolean(request.project.isOnHold)) {
+          throw this.httpError(`Dự án "${request.project.name}" đang tạm dừng, không thể duyệt nghiệm thu`, 409);
+        }
+      }
+
       request.status = AcceptanceStatus.APPROVED;
       request.approver = approver;
       request.feedback = feedback || "";
@@ -325,6 +341,15 @@ export class AcceptanceService {
         .getRepository(Users)
         .findOneBy({ id: approverId });
       if (!approver) throw this.httpError("Người duyệt không tồn tại", 404);
+
+      if (request.project) {
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(request.project.status)) {
+          throw this.httpError(`Dự án "${request.project.name}" đã hoàn tất hoặc đã đóng, không thể từ chối nghiệm thu`, 400);
+        }
+        if (request.project.status === ProjectStatus.ON_HOLD || Boolean(request.project.isOnHold)) {
+          throw this.httpError(`Dự án "${request.project.name}" đang tạm dừng, không thể từ chối nghiệm thu`, 409);
+        }
+      }
 
       request.status = AcceptanceStatus.REJECTED;
       request.approver = approver;
@@ -396,6 +421,15 @@ export class AcceptanceService {
         .getRepository(Users)
         .findOneBy({ id: approverId });
       if (!approver) throw this.httpError("Người duyệt không tồn tại", 404);
+
+      if (request.project) {
+        if ([ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(request.project.status)) {
+          throw this.httpError(`Dự án "${request.project.name}" đã hoàn tất hoặc đã đóng, không thể xử lý nghiệm thu`, 400);
+        }
+        if (request.project.status === ProjectStatus.ON_HOLD || Boolean(request.project.isOnHold)) {
+          throw this.httpError(`Dự án "${request.project.name}" đang tạm dừng, không thể xử lý nghiệm thu`, 409);
+        }
+      }
 
       let anyApproved = false;
       let anyRejectedGlobal = false;
