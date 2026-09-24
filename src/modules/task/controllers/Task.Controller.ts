@@ -39,6 +39,7 @@ export class TaskController {
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ message: error.message });
         }
+
     }
 
     // Trả về danh sách task theo dự án (dùng cho form chọn công việc, ví dụ: yêu cầu thanh toán).
