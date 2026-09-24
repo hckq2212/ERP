@@ -66,6 +66,74 @@ export class ContractAddendumService {
         }
     }
 
+    private async notifyProjectStakeholders(
+        addendum: ContractAddendums,
+        data: { title: string, content: string, type: string },
+        manager?: EntityManager
+    ) {
+        const projectId = addendum.project?.id;
+        if (!projectId) return;
+
+        const projectRepository = manager
+            ? manager.getRepository(Projects)
+            : AppDataSource.getRepository(Projects);
+        const project = await projectRepository.findOne({
+            where: { id: projectId },
+            relations: [
+                "contract",
+                "contract.createdBy",
+                "contract.createdBy.accounts",
+                "contract.opportunity",
+                "contract.opportunity.createdBy",
+                "contract.opportunity.createdBy.accounts",
+                "contract.customer",
+                "contract.customer.createdBy",
+                "contract.customer.createdBy.accounts",
+                "team",
+                "team.members",
+                "team.members.roles",
+                "team.members.user"
+            ]
+        });
+        if (!project) return;
+
+        const recipients: Users[] = [];
+        const addRecipient = (user?: Users | null) => {
+            if (user?.id && !recipients.some(item => item.id === user.id)) {
+                recipients.push(user);
+            }
+        };
+        const addBdRecipient = (user?: Users | null) => {
+            const isBd = user?.accounts?.some(account => account.role === UserRole.BD);
+            if (isBd) addRecipient(user);
+        };
+
+        addBdRecipient(project.contract?.createdBy);
+        addBdRecipient(project.contract?.opportunity?.createdBy);
+        addBdRecipient(project.contract?.customer?.createdBy);
+
+        for (const member of project.team?.members || []) {
+            if (
+                memberHasRole(member, MemberRole.ACCOUNT) ||
+                memberHasRole(member, MemberRole.PROJECT_MANAGER)
+            ) {
+                addRecipient(member.user);
+            }
+        }
+
+        for (const recipient of recipients) {
+            await this.notificationService.createNotification({
+                title: data.title,
+                content: data.content,
+                type: data.type,
+                recipient,
+                relatedEntityId: addendum.id,
+                relatedEntityType: "ContractAddendum",
+                link: `/projects/${projectId}`
+            }, manager);
+        }
+    }
+
     async create(data: { contractId: string, name: string, description?: string }) {
         const contract = await this.contractRepository.findOneBy({ id: data.contractId });
         if (!contract) throw new Error("Không tìm thấy hợp đồng");
@@ -393,6 +461,7 @@ export class ContractAddendumService {
                                 status: TaskStatus.PENDING,
                                 performerType: job.defaultPerformerType,
                                 attachments: addendum.contract.attachments || [],
+                                isExtra: addendum.type === AddendumType.ADD_SERVICES,
                                 isOutput: serviceJob.isOutput
                             });
                             await taskRepository.save(task);
@@ -408,12 +477,18 @@ export class ContractAddendumService {
             addendum.bodReviewedAt = new Date();
             addendum.bodReviewNote = note;
             const saved = await addendumRepository.save(addendum);
-            await this.notifyProjectManagers(saved, {
-                title: "Phụ lục đã được duyệt",
-                content: addendum.type === AddendumType.ADD_SERVICES
-                    ? `Phụ lục "${saved.name}" đã được duyệt và đã sinh ${createdTasks} công việc cho dịch vụ bổ sung.`
-                    : `Phụ lục "${saved.name}" đã được duyệt và đã sinh ${createdTasks} công việc tháng mới.`
-            }, manager);
+            if (addendum.type === AddendumType.ADD_SERVICES) {
+                await this.notifyProjectStakeholders(saved, {
+                    title: "Dịch vụ phát sinh đã được duyệt",
+                    content: `Phụ lục "${saved.name}" đã được duyệt và đã sinh ${createdTasks} công việc phát sinh.`,
+                    type: "SERVICE_ADDENDUM_APPROVED"
+                }, manager);
+            } else {
+                await this.notifyProjectManagers(saved, {
+                    title: "Phụ lục đã được duyệt",
+                    content: `Phụ lục "${saved.name}" đã được duyệt và đã sinh ${createdTasks} công việc tháng mới.`
+                }, manager);
+            }
             const message = addendum.type === AddendumType.ADD_SERVICES
                 ? "Đã duyệt phụ lục và sinh công việc cho dịch vụ bổ sung"
                 : "Đã duyệt phụ lục và sinh công việc tháng mới";

@@ -1,5 +1,5 @@
 import { AppDataSource } from "../../../data-source";
-import { AddendumStatus, AddendumType } from "../../contract-addendum/entities/ContractAddendum.entity";
+import { AddendumStatus, AddendumType, ContractAddendums } from "../../contract-addendum/entities/ContractAddendum.entity";
 import { Services } from "../../service/entities/Service.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
@@ -104,7 +104,14 @@ export class ProjectServiceAddendumService extends ProjectBaseService {
             ...SecurityService.getTenantWhere(userInfo)
         } as any);
 
-        const saved = await this.addendumRepository.save(addendum);
+        const saved = await this.addendumRepository.save(addendum) as unknown as ContractAddendums;
+        await this.notifyProjectStakeholders(project.id, {
+            title: "Có dịch vụ phát sinh mới",
+            content: `Dự án "${project.name}" vừa được tạo yêu cầu thêm dịch vụ "${saved.name}".`,
+            type: "SERVICE_ADDENDUM_CREATED",
+            relatedEntityId: saved.id,
+            relatedEntityType: "ContractAddendum"
+        });
         projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
         return saved;
     }

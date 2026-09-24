@@ -1,5 +1,5 @@
 import { AppDataSource } from "../../../data-source";
-import { Like, ILike, In, IsNull, Not } from "typeorm";
+import { EntityManager, Like, ILike, In, IsNull, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { Contracts, ContractStatus } from "../../contract/entities/Contract.entity";
 import { ProjectTeams } from "../entities/ProjectTeam.entity";
@@ -288,6 +288,71 @@ export class ProjectBaseService {
             checklist: task.result?.checklist,
             status: 'PENDING' as const
         };
+    }
+
+    protected async notifyProjectStakeholders(
+        projectId: string,
+        data: { title: string, content: string, type: string, relatedEntityId?: string, relatedEntityType?: string },
+        manager?: EntityManager
+    ) {
+        const projectRepository = manager
+            ? manager.getRepository(Projects)
+            : this.projectRepository;
+        const project = await projectRepository.findOne({
+            where: { id: projectId },
+            relations: [
+                "contract",
+                "contract.createdBy",
+                "contract.createdBy.accounts",
+                "contract.opportunity",
+                "contract.opportunity.createdBy",
+                "contract.opportunity.createdBy.accounts",
+                "contract.customer",
+                "contract.customer.createdBy",
+                "contract.customer.createdBy.accounts",
+                "team",
+                "team.members",
+                "team.members.roles",
+                "team.members.user"
+            ]
+        });
+        if (!project) return;
+
+        const recipients: Users[] = [];
+        const addRecipient = (user?: Users | null) => {
+            if (user?.id && !recipients.some(item => item.id === user.id)) {
+                recipients.push(user);
+            }
+        };
+        const addBdRecipient = (user?: Users | null) => {
+            const isBd = user?.accounts?.some(account => account.role === UserRole.BD);
+            if (isBd) addRecipient(user);
+        };
+
+        addBdRecipient(project.contract?.createdBy);
+        addBdRecipient(project.contract?.opportunity?.createdBy);
+        addBdRecipient(project.contract?.customer?.createdBy);
+
+        for (const member of project.team?.members || []) {
+            if (
+                memberHasRole(member, MemberRole.ACCOUNT) ||
+                memberHasRole(member, MemberRole.PROJECT_MANAGER)
+            ) {
+                addRecipient(member.user);
+            }
+        }
+
+        for (const recipient of recipients) {
+            await this.notificationService.createNotification({
+                title: data.title,
+                content: data.content,
+                type: data.type,
+                recipient,
+                relatedEntityId: data.relatedEntityId,
+                relatedEntityType: data.relatedEntityType,
+                link: `/projects/${project.id}`
+            }, manager);
+        }
     }
 
     protected shouldBackfillResult(task: Tasks) {
