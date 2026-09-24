@@ -13,6 +13,7 @@ const upload = multer({
 
 router.get("/", controller.getAll);
 router.get("/total-debt", controller.getTotalDebt);
+router.get("/task/:taskId/spent", controller.getTaskSpent);
 router.get("/:id", controller.getOne);
 router.post("/upload-invoice", upload.single("file"), controller.uploadInvoice);
 router.post("/", controller.create);
@@ -42,5 +43,7 @@ router.post(
 );
 
 router.post("/:id/payment-proofs", controller.uploadPaymentProof);
+
+router.post("/:id/cancel", controller.cancel);
 
 export default router;

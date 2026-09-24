@@ -439,8 +439,16 @@ export class TaskAssignmentService extends TaskBaseService {
                     continue;
                 }
 
+                try {
+                    await this.paymentRequestService.cancelPendingForTask(task.id, currentUserId as string, transactionalEntityManager);
+                } catch (err: any) {
+                    skip(err.message || "Còn yêu cầu thanh toán chưa xử lý cho công việc này");
+                    continue;
+                }
+
                 contractCostReduction += Number(task.cost || 0);
                 task.status = TaskStatus.PENDING;
+                task.spentAmount = 0;
                 task.assignee = null as any;
                 task.assigneeId = null as any;
                 task.vendor = null as any;
@@ -517,6 +525,8 @@ export class TaskAssignmentService extends TaskBaseService {
         let newRecipient: Users | null = null;
         let assignedVendor: Vendors | null = null;
 
+        await this.paymentRequestService.cancelPendingForTask(task.id, currentUser?.userId || currentUser?.id || "system");
+
         const isSupportReassign = task.supportRequestType !== "STAFFING" && task.isSupportRequested && task.isSupportAccepted && currentUser &&
             (task.supportLeadId === currentUser.id || (currentUser as any).userId === task.supportLeadId);
 
@@ -568,6 +578,7 @@ export class TaskAssignmentService extends TaskBaseService {
                 task.assignee = null as any;
                 task.performerType = PerformerType.VENDOR;
                 task.cost = newCost;
+                task.spentAmount = 0;
                 assignedVendor = vendor;
             } else {
                 const user = await this.userRepository.findOneBy({ id: data.assigneeId });
@@ -579,6 +590,7 @@ export class TaskAssignmentService extends TaskBaseService {
                 task.vendor = null as any;
                 task.performerType = PerformerType.INTERNAL;
                 task.cost = 0;
+                task.spentAmount = 0;
             }
         }
 

@@ -38,9 +38,11 @@ export class PaymentRequestController {
         }
     }
 
-    getAll = async (req: Request, res: Response) => {
+    getAll = async (req: AuthRequest, res: Response) => {
         try {
-            const result = await this.service.getAll(req.query as any);
+            const viewerId = req.user?.userId || req.user?.id;
+            const viewer = viewerId ? { userId: viewerId, role: req.user?.role as string } : undefined;
+            const result = await this.service.getAll(req.query as any, viewer);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(500).json({ message: error.message });
@@ -56,9 +58,20 @@ export class PaymentRequestController {
         }
     }
 
-    getOne = async (req: Request, res: Response) => {
+    getTaskSpent = async (req: Request, res: Response) => {
         try {
-            const result = await this.service.getOne(req.params.id as string);
+            const result = await this.service.getTaskSpent(req.params.taskId as string);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    getOne = async (req: AuthRequest, res: Response) => {
+        try {
+            const viewerId = req.user?.userId || req.user?.id;
+            const viewer = viewerId ? { userId: viewerId, role: req.user?.role as string } : undefined;
+            const result = await this.service.getOne(req.params.id as string, viewer);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(404).json({ message: error.message });
@@ -140,6 +153,17 @@ export class PaymentRequestController {
     uploadPaymentProof = async (req: Request, res: Response) => {
         try {
             const result = await this.service.uploadPaymentProof(req.params.id as string, req.body);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    cancel = async (req: AuthRequest, res: Response) => {
+        try {
+            const actorId = req.user?.userId || req.user?.id as string;
+            const { reason } = req.body;
+            const result = await this.service.cancel(req.params.id as string, actorId, req.user?.role as string, reason);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });

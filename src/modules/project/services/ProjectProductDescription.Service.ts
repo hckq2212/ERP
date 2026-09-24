@@ -99,17 +99,30 @@ export class ProjectProductDescriptionService {
         }
     }
 
+    // Account = "Lead dự án": team lead của dự án hoặc thành viên team mang role ACCOUNT
+    // (khớp với `isAccount` ở FE ProjectInfo.jsx).
+    private isProjectAccount(project: Projects, actorUserId: string) {
+        const isTeamLead = project.team?.teamLead?.id === actorUserId;
+        const isAccountMember = project.team?.members?.some((member) =>
+            memberHasRole(member, MemberRole.ACCOUNT) &&
+            member.user?.id === actorUserId
+        );
+        return Boolean(isTeamLead || isAccountMember);
+    }
+
+    // Quyền NHẬP (tạo/sửa/gửi duyệt/trích xuất/AI format) thông tin chuẩn sản phẩm:
+    // Account (Lead dự án) và PM phụ trách. BD không còn quyền này. Quyền DUYỆT/từ chối
+    // vẫn chỉ thuộc PM phụ trách (xem assertAssignedPm) — Account không được duyệt.
     private assertCanEditProductDescription(project: Projects, actor?: Actor) {
         const actorUserId = this.getActorUserId(actor);
-        const isBd = actor?.role === UserRole.BD;
-        const isProjectLead = project.team?.teamLead?.id === actorUserId;
+        const isAccount = this.isProjectAccount(project, actorUserId);
         const isAssignedPm = actor?.role === UserRole.PM && project.team?.members?.some((member) =>
             memberHasRole(member, MemberRole.PROJECT_MANAGER) &&
             member.user?.id === actorUserId
         );
 
-        if (!isBd && !isProjectLead && !isAssignedPm) {
-            throw this.httpError("Chỉ BD, PM phụ trách hoặc team lead của dự án được nhập thông tin chuẩn sản phẩm", 403);
+        if (!isAccount && !isAssignedPm) {
+            throw this.httpError("Chỉ Lead dự án (Account) hoặc PM phụ trách của dự án được nhập thông tin chuẩn sản phẩm", 403);
         }
     }
 
