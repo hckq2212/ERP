@@ -20,6 +20,7 @@ import { isProjectManagementRole, UserRole } from "../../account/entities/Accoun
 import { TaskResultCheckService } from "./TaskResultCheck.Service";
 import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
+import { assertSubtaskDeadlineNotExceedParent } from "../helpers/SubtaskDeadline.helper";
 import { TaskResultChecks } from "../entities/TaskResultCheck.entity";
 import { buildCheckSummary } from "../../../shared/helpers/CheckSummary.helper";
 import { MemberRole, memberHasRole } from "../../project/entities/TeamMember.entity";
@@ -267,6 +268,17 @@ export class TaskResultService extends TaskBaseService {
             // 2. Update Task
             task.status = TaskStatus.REWORKING;
             task.customerDecision = null;
+
+            if (data.deadlineAt && task.parentTaskId) {
+                const parent = await transactionalEntityManager.findOne(Tasks, {
+                    where: { id: task.parentTaskId },
+                    select: ["id", "name", "plannedEndDate"]
+                });
+                if (parent?.plannedEndDate) {
+                    assertSubtaskDeadlineNotExceedParent(new Date(data.deadlineAt), parent.plannedEndDate, task.name, parent.name);
+                }
+            }
+
             task.plannedEndDate = data.deadlineAt;
             task.result = null as any;
 
