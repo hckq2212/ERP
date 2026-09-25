@@ -140,20 +140,41 @@ export class PaymentRequestService {
             throw new Error("Loại thanh toán không hợp lệ");
         }
 
+        if (!dto.content || !dto.content.trim()) {
+            throw new Error("Vui lòng nhập nội dung yêu cầu thanh toán");
+        }
+
+        if (!dto.amount || Number(dto.amount) <= 0) {
+            throw new Error("Vui lòng nhập số tiền thanh toán hợp lệ lớn hơn 0");
+        }
+
+        if (!dto.dueDate) {
+            throw new Error("Vui lòng chọn thời hạn thanh toán");
+        }
+
+        const invoiceImages = dto.invoiceImages || [];
+        const invoicePdfs = dto.invoicePdfs || [];
+        if (invoiceImages.length === 0 && invoicePdfs.length === 0) {
+            throw new Error("Vui lòng đính kèm ít nhất một file hóa đơn hoặc chứng từ");
+        }
+
         const request = new PaymentRequests();
         request.type = dto.type;
-        request.content = dto.content;
+        request.content = dto.content.trim();
         request.amount = dto.amount;
         request.dueDate = dto.dueDate;
         request.projectId = dto.projectId || null;
         request.taskId = dto.taskId || null;
-        request.invoiceImages = dto.invoiceImages || [];
-        request.invoicePdfs = dto.invoicePdfs || [];
+        request.invoiceImages = invoiceImages;
+        request.invoicePdfs = invoicePdfs;
         request.requesterId = requesterId;
         request.approvalStatus = PaymentRequestApprovalStatus.PENDING_REVIEWER;
         request.paymentStatus = PaymentDueStatus.WAITING;
 
         if (dto.type === PaymentRequestType.PROJECT) {
+            if (!dto.projectId) {
+                throw new Error("Vui lòng chọn dự án");
+            }
             if (!dto.taskId) {
                 throw new Error("Vui lòng chọn công việc thuộc dự án");
             }
