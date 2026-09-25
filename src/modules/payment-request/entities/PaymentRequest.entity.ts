@@ -30,11 +30,6 @@ export enum PaymentDueStatus {
     NOT_APPLICABLE = "NOT_APPLICABLE"
 }
 
-export enum PaymentMethod {
-    BANK_TRANSFER = "BANK_TRANSFER",
-    CASH = "CASH"
-}
-
 export interface PaymentRequestFile {
     name: string;
     url: string;
@@ -184,19 +179,6 @@ export class PaymentRequests extends BaseEntity {
         default: PaymentDueStatus.WAITING
     })
     paymentStatus: PaymentDueStatus;
-
-    @Column({
-        type: "enum",
-        enum: PaymentMethod,
-        nullable: true
-    })
-    paymentMethod: PaymentMethod | null;
-
-    @Column({ type: "text", nullable: true })
-    bankPaymentOrderUrl: string | null;
-
-    @Column({ type: "text", nullable: true })
-    cashVoucherNumber: string | null;
 
     @Column({ type: "timestamptz", nullable: true })
     paidAt: Date | null;

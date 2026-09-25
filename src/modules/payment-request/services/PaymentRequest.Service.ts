@@ -5,7 +5,6 @@ import {
     PaymentRequestType,
     PaymentRequestApprovalStatus,
     PaymentDueStatus,
-    PaymentMethod,
     PaymentRequestFile,
     PaymentRequestHistoryEntry
 } from "../entities/PaymentRequest.entity";
@@ -498,6 +497,10 @@ export class PaymentRequestService {
             throw new Error("Bạn không có quyền duyệt yêu cầu thanh toán này");
         }
 
+        if ((action === "REJECT" || action === "REQUEST_MORE_DOCS") && (!note || !note.trim())) {
+            throw new Error("Vui lòng nhập lý do");
+        }
+
         request.reviewerId = reviewerId;
         request.reviewedAt = new Date();
         request.reviewNote = note || null;
@@ -618,20 +621,18 @@ export class PaymentRequestService {
         return saved;
     }
 
-    async pay(id: string, dto: { paymentMethod: PaymentMethod; bankPaymentOrderUrl?: string; cashVoucherNumber?: string }, payerId?: string) {
+    async pay(id: string, dto: { paymentProofs?: PaymentRequestFile[] }, payerId?: string) {
         const request = await this.getOne(id);
 
         if (request.approvalStatus !== PaymentRequestApprovalStatus.APPROVED) {
             throw new Error("Yêu cầu thanh toán chưa được BOD xác nhận");
         }
 
-        if (!Object.values(PaymentMethod).includes(dto.paymentMethod)) {
-            throw new Error("Phương thức thanh toán không hợp lệ");
+        if (!Array.isArray(dto.paymentProofs) || dto.paymentProofs.length === 0) {
+            throw new Error("Vui lòng tải lên ảnh/PDF minh chứng đã chi tiền");
         }
 
-        request.paymentMethod = dto.paymentMethod;
-        request.bankPaymentOrderUrl = dto.bankPaymentOrderUrl || null;
-        request.cashVoucherNumber = dto.cashVoucherNumber || null;
+        request.paymentProofs = dto.paymentProofs.map((file) => ({ ...file, uploadedAt: file.uploadedAt || new Date().toISOString() }));
         request.paidAt = new Date();
         request.paymentStatus = PaymentDueStatus.PAID;
 
