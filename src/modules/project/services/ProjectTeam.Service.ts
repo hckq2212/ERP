@@ -8,6 +8,7 @@ import { UserRole } from "../../account/entities/Account.entity";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { In } from "typeorm";
+import { NotificationService } from "../../notification/services/Notification.Service";
 
 type ActorInfo = { id: string; userId?: string; role: string };
 
@@ -17,6 +18,7 @@ export class ProjectTeamService {
     private memberRoleRepository = AppDataSource.getRepository(TeamMemberRoles);
     private userRepository = AppDataSource.getRepository(Users);
     private workloadService = new WorkloadService();
+    private notificationService = new NotificationService();
 
     private httpError(message: string, statusCode: number) {
         const error: any = new Error(message);
@@ -38,6 +40,34 @@ export class ProjectTeamService {
             }
             throw this.httpError(`Dự án "${project.name}" đã hoàn tất hoặc đã đóng. Không thể thay đổi nhân sự trong đội dự án.`, 400);
         }
+    }
+
+    private async getProjectByTeamId(teamId: string) {
+        return AppDataSource.getRepository(Projects).findOne({
+            where: SecurityService.withTenant({ team: { id: teamId } }),
+            select: { id: true, name: true }
+        });
+    }
+
+    private async notifyMemberAddedToProject(teamId: string, recipient: Users, actor?: ActorInfo) {
+        const project = await this.getProjectByTeamId(teamId);
+        if (!project) return;
+
+        const senderUserId = actor?.userId || actor?.id;
+        const sender = senderUserId
+            ? await this.userRepository.findOneBy({ id: senderUserId })
+            : undefined;
+
+        await this.notificationService.createNotification({
+            title: "Bạn đã được thêm vào dự án",
+            content: `Bạn đã được thêm vào dự án ${project.name}`,
+            type: "PROJECT_MEMBER_ADDED",
+            recipient,
+            sender: sender || undefined,
+            relatedEntityId: project.id,
+            relatedEntityType: "Project",
+            link: `/projects/${project.id}`
+        });
     }
 
     private async assertCanManageTeam(teamId: string, actor?: ActorInfo) {
@@ -241,6 +271,7 @@ export class ProjectTeamService {
             }),
             relations: ["team", "user"]
         });
+        const isNewMember = !member;
         const existingRoles = new Set((member?.roles || []).map(item => item.role));
         if (requestedRoles.some(memberRole => existingRoles.has(memberRole))) {
             throw this.httpError("Nhân sự đã có một hoặc nhiều vai trò được chọn trong đội dự án", 409);
@@ -257,6 +288,7 @@ export class ProjectTeamService {
         await this.memberRoleRepository.save(newRoles);
         member.roles = [...(member.roles || []), ...newRoles];
         if (requestedRoles.includes(MemberRole.ACCOUNT)) await this.syncAccountRoleAsLead(member);
+        if (isNewMember) await this.notifyMemberAddedToProject(teamId, user, actor);
         return member;
     }
 

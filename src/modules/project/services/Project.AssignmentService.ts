@@ -137,8 +137,8 @@ export class ProjectAssignmentService extends ProjectBaseService {
         }
 
         await this.notificationService.createNotification({
-            title: "Bạn đã được thêm vào dự án",
-            content: `Bạn đã được thêm vào dự án ${savedProject.name}`,
+            title: "Dự án mới được phân công",
+            content: `Bạn được phân công quản lý dự án "${savedProject.name}".`,
             type: "PROJECT_ASSIGNED",
             recipient: pm,
             relatedEntityId: savedProject.id,
