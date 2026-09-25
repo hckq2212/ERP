@@ -3,7 +3,7 @@ import { Customers } from "../entities/Customer.entity";
 import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
 import { Users } from "../../user/entities/User.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
-import { Not } from "typeorm";
+import { Not, ILike, In } from "typeorm";
 import { validateCustomerData } from "../validations/Customer.Validation";
 import { RedisService } from "../../../shared/services/Redis.Service";
 
@@ -36,7 +36,7 @@ export class CustomerService {
         }
     }
 
-    async getAll(userInfo?: { id: string, role: string, userId?: string, companyId?: string }) {
+    async getAll(userInfo?: { id: string, role: string, userId?: string, companyId?: string }, filters: any = {}) {
         let rbacWhere: any = {};
         if (userInfo) {
             try {
@@ -49,13 +49,66 @@ export class CustomerService {
             }
         }
 
+        const baseWhere: any = {};
+        if (filters.source && filters.source !== 'ALL') {
+            const sourceList = Array.isArray(filters.source)
+                ? filters.source
+                : (typeof filters.source === 'string' && filters.source.includes(',')
+                    ? filters.source.split(',').map((s: string) => s.trim()).filter(Boolean)
+                    : null);
+
+            if (sourceList && sourceList.length > 0) {
+                baseWhere.source = In(sourceList);
+            } else {
+                baseWhere.source = filters.source;
+            }
+        }
+
+        let where: any = [];
+        const combineWithSearch = (cond: any) => {
+            if (filters.search && String(filters.search).trim()) {
+                const searchTerm = `%${String(filters.search).trim()}%`;
+                return [
+                    { ...baseWhere, ...cond, name: ILike(searchTerm) },
+                    { ...baseWhere, ...cond, phone: ILike(searchTerm) },
+                    { ...baseWhere, ...cond, email: ILike(searchTerm) },
+                    { ...baseWhere, ...cond, taxId: ILike(searchTerm) },
+                    { ...baseWhere, ...cond, address: ILike(searchTerm) },
+                    { ...baseWhere, ...cond, referralPartner: { ...(cond?.referralPartner || {}), name: ILike(searchTerm) } }
+                ];
+            }
+            return { ...baseWhere, ...cond };
+        };
+
+        if (Array.isArray(rbacWhere)) {
+            rbacWhere.forEach(cond => {
+                const combined = combineWithSearch(cond);
+                if (Array.isArray(combined)) {
+                    where.push(...combined);
+                } else {
+                    where.push(combined);
+                }
+            });
+        } else {
+            const combined = combineWithSearch(rbacWhere);
+            if (Array.isArray(combined)) {
+                where.push(...combined);
+            } else {
+                where.push(combined);
+            }
+        }
+
+        const filtersKey = JSON.stringify(filters || {});
         // We prefix with user role and id to avoid RBAC leaking across different caches
-        const cacheKey = userInfo ? `customers:${SecurityService.getTenantCachePart(userInfo)}:all:role_${userInfo.role}:user_${userInfo.id}` : `customers:${SecurityService.getTenantCachePart()}:all`;
+        const cacheKey = userInfo
+            ? `customers:${SecurityService.getTenantCachePart(userInfo)}:all:role_${userInfo.role}:user_${userInfo.id}:${filtersKey}`
+            : `customers:${SecurityService.getTenantCachePart()}:all:${filtersKey}`;
 
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             return await this.customerRepository.find({
-                where: rbacWhere,
-                relations: ["referralPartner"]
+                where: where.length > 1 ? where : (where[0] || {}),
+                relations: ["referralPartner"],
+                order: { createdAt: "DESC" }
             });
         });
     }

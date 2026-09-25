@@ -45,7 +45,17 @@ export class ProjectQueryService extends ProjectBaseService {
 
         const baseWhere: any = {};
         if (filters.status && filters.status !== 'ALL') {
-            baseWhere.status = filters.status;
+            const statusList = Array.isArray(filters.status)
+                ? filters.status
+                : (typeof filters.status === 'string' && filters.status.includes(',')
+                    ? filters.status.split(',').map((s: string) => s.trim()).filter(Boolean)
+                    : null);
+
+            if (statusList && statusList.length > 0) {
+                baseWhere.status = In(statusList);
+            } else {
+                baseWhere.status = filters.status;
+            }
         }
 
         // Combine search and RBAC

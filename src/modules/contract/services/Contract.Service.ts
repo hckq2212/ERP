@@ -3,7 +3,7 @@ import { Contracts } from "../entities/Contract.entity";
 import { Customers, CustomerSource } from "../../customer/entities/Customer.entity";
 import { Opportunities, CustomerType, OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
 import { ReferralPartners } from "../../referral-partner/entities/ReferralPartner.entity";
-import { Like } from "typeorm";
+import { Like, ILike, In } from "typeorm";
 import { PaymentMilestones, MilestoneStatus } from "../../payment-milestone/entities/PaymentMilestone.entity";
 import { ContractStatus } from "../entities/Contract.entity";
 import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
@@ -130,7 +130,17 @@ export class ContractService {
 
         const baseWhere: any = {};
         if (filters.status && filters.status !== 'ALL') {
-            baseWhere.status = filters.status;
+            const statusList = Array.isArray(filters.status)
+                ? filters.status
+                : (typeof filters.status === 'string' && filters.status.includes(',')
+                    ? filters.status.split(',').map((s: string) => s.trim()).filter(Boolean)
+                    : null);
+
+            if (statusList && statusList.length > 0) {
+                baseWhere.status = In(statusList);
+            } else {
+                baseWhere.status = filters.status;
+            }
         }
 
         if (filters.customerId) {
@@ -140,16 +150,17 @@ export class ContractService {
         // Combine search and RBAC
         let where: any = [];
         const combineWithSearch = (rbacCond: any) => {
-            if (filters.search) {
-                const searchTerm = `%${filters.search}%`;
+            if (filters.search && String(filters.search).trim()) {
+                const searchTerm = `%${String(filters.search).trim()}%`;
                 return [
-                    { ...baseWhere, ...rbacCond, contractCode: Like(searchTerm) },
+                    { ...baseWhere, ...rbacCond, contractCode: ILike(searchTerm) },
+                    { ...baseWhere, ...rbacCond, name: ILike(searchTerm) },
                     {
                         ...baseWhere,
                         ...rbacCond,
                         customer: {
-                            ...rbacCond.customer,
-                            name: Like(searchTerm)
+                            ...(rbacCond.customer || {}),
+                            name: ILike(searchTerm)
                         }
                     }
                 ];

@@ -7,7 +7,8 @@ export class CustomerController {
     getAll = async (req: Request, res: Response) => {
         try {
             const userInfo = (req as any).user;
-            const customers = await this.customerService.getAll(userInfo);
+            const filters = req.query;
+            const customers = await this.customerService.getAll(userInfo, filters);
             res.status(200).json(customers);
         } catch (error: any) {
             if (error.message === "FORBIDDEN_ACCESS") {

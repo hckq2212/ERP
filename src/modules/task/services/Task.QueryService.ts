@@ -88,10 +88,20 @@ export class TaskQueryService extends TaskBaseService {
             : SecurityService.getTaskFilters(userInfo as any);
 
         if (filters.status && filters.status !== 'ALL') {
+            const statusList = Array.isArray(filters.status)
+                ? filters.status
+                : (typeof filters.status === 'string' && filters.status.includes(',')
+                    ? filters.status.split(',').map((s: string) => s.trim()).filter(Boolean)
+                    : null);
+
+            const statusCond = statusList && statusList.length > 0
+                ? In(statusList)
+                : filters.status;
+
             if (Array.isArray(baseWhere)) {
-                baseWhere.forEach((w: any) => w.status = filters.status);
+                baseWhere.forEach((w: any) => w.status = statusCond);
             } else {
-                baseWhere.status = filters.status;
+                baseWhere.status = statusCond;
             }
         }
 
