@@ -11,6 +11,7 @@ import {
     ProjectProductDescriptionSubmissions
 } from "../entities/ProjectProductDescriptionSubmission.entity";
 import { ProjectProductDescriptionItems } from "../entities/ProjectProductDescriptionItem.entity";
+import { NotificationService } from "../../notification/services/Notification.Service";
 import {
     assertAiServiceUrl,
     AI_SERVICE_MAX_FETCH_BYTES,
@@ -44,6 +45,7 @@ export class ProjectProductDescriptionService {
     private userRepository = AppDataSource.getRepository(Users);
     private submissionRepository = AppDataSource.getRepository(ProjectProductDescriptionSubmissions);
     private itemRepository = AppDataSource.getRepository(ProjectProductDescriptionItems);
+    private notificationService = new NotificationService();
 
     private httpError(message: string, statusCode: number) {
         const error = new Error(message) as Error & { statusCode?: number };
@@ -275,6 +277,51 @@ export class ProjectProductDescriptionService {
         }
     }
 
+    private getProjectManagers(project: Projects) {
+        const recipients = (project.team?.members || [])
+            .filter(member => memberHasRole(member, MemberRole.PROJECT_MANAGER) && member.user)
+            .map(member => member.user);
+        return Array.from(new Map(recipients.map(user => [user.id, user])).values());
+    }
+
+    private async notifyProjectManagers(project: Projects, data: {
+        title: string;
+        content: string;
+        type: string;
+        relatedEntityId?: string;
+    }, excludeUserId?: string) {
+        for (const recipient of this.getProjectManagers(project)) {
+            if (excludeUserId && recipient.id === excludeUserId) continue;
+            await this.notificationService.createNotification({
+                title: data.title,
+                content: data.content,
+                type: data.type,
+                recipient,
+                relatedEntityId: data.relatedEntityId,
+                relatedEntityType: "ProjectProductDescription",
+                link: `/projects/${project.id}`
+            });
+        }
+    }
+
+    private async notifyUser(user: Users | null | undefined, project: Projects, data: {
+        title: string;
+        content: string;
+        type: string;
+        relatedEntityId?: string;
+    }) {
+        if (!user) return;
+        await this.notificationService.createNotification({
+            title: data.title,
+            content: data.content,
+            type: data.type,
+            recipient: user,
+            relatedEntityId: data.relatedEntityId,
+            relatedEntityType: "ProjectProductDescription",
+            link: `/projects/${project.id}`
+        });
+    }
+
     private async syncItems(submissionId: string, items: Awaited<ReturnType<ProjectProductDescriptionService["validateItems"]>>) {
         const existingItems = await this.itemRepository.query(
             `SELECT "id" FROM "project_product_description_items" WHERE "submissionId" = $1`,
@@ -398,6 +445,13 @@ export class ProjectProductDescriptionService {
         submission.reviewNote = null as any;
         await this.submissionRepository.save(submission);
 
+        await this.notifyProjectManagers(project, {
+            title: "Thông tin chuẩn sản phẩm chờ duyệt",
+            content: `Dự án "${project.name}" có bản thông tin chuẩn sản phẩm mới cần PM duyệt.`,
+            type: "PRODUCT_DESCRIPTION_SUBMITTED",
+            relatedEntityId: submission.id
+        }, this.getActorUserId(actor));
+
         return this.findSubmissionForProject(projectId, submission.id);
     }
 
@@ -458,6 +512,13 @@ export class ProjectProductDescriptionService {
         submission.reviewNote = null as any;
         await this.submissionRepository.save(submission);
 
+        await this.notifyUser(submission.createdBy, project, {
+            title: "Thông tin chuẩn sản phẩm đã được duyệt",
+            content: `Bản thông tin chuẩn sản phẩm của dự án "${project.name}" đã được duyệt phiên bản ${submission.versionNumber}.`,
+            type: "PRODUCT_DESCRIPTION_APPROVED",
+            relatedEntityId: submission.id
+        });
+
         return this.findSubmissionForProject(projectId, submission.id);
     }
 
@@ -483,6 +544,13 @@ export class ProjectProductDescriptionService {
         submission.reviewedAt = new Date();
         submission.reviewNote = payload.reviewNote?.trim() || null as any;
         await this.submissionRepository.save(submission);
+
+        await this.notifyUser(submission.createdBy, project, {
+            title: "Thông tin chuẩn sản phẩm không được duyệt",
+            content: `Bản thông tin chuẩn sản phẩm của dự án "${project.name}" không được duyệt${submission.reviewNote ? `: ${submission.reviewNote}` : "."}`,
+            type: "PRODUCT_DESCRIPTION_REJECTED",
+            relatedEntityId: submission.id
+        });
 
         return this.findSubmissionForProject(projectId, submission.id);
     }

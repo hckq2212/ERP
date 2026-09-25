@@ -206,6 +206,13 @@ export class ProjectMonthlyWorkService extends ProjectBaseService {
         });
 
         const saved = await this.addendumRepository.save(addendum);
+        await this.notifyProjectStakeholders(project.id, {
+            title: "Có phụ lục công việc tháng mới",
+            content: `Dự án "${project.name}" vừa tạo phụ lục công việc tháng ${this.formatMonthName(monthKey)} và đang chờ Sale duyệt.`,
+            type: "MONTHLY_WORK_ADDENDUM_CREATED",
+            relatedEntityId: saved.id,
+            relatedEntityType: "ContractAddendum"
+        });
         projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
         return saved;
     }

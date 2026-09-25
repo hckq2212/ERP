@@ -38,7 +38,17 @@ export class TaskAssignmentService extends TaskBaseService {
     async start(id: string, currentUser?: { id: string; userId?: string; role?: string }) {
         const task = await this.taskRepository.findOne({
             where: { id },
-            relations: ["project", "assignee", "helper"]
+            relations: [
+                "project",
+                "project.team",
+                "project.team.teamLead",
+                "project.team.members",
+                "project.team.members.user",
+                "assignee",
+                "helper",
+                "assigner",
+                "supervisor"
+            ]
         });
 
         if (!task) throw this.httpError("Không tìm thấy công việc", 404);
@@ -57,6 +67,13 @@ export class TaskAssignmentService extends TaskBaseService {
         task.status = TaskStatus.DOING;
         task.actualStartDate = new Date();
         const saved = await this.taskRepository.save(task);
+        await this.notifyTaskRecipients(saved, {
+            title: "Công việc đã bắt đầu",
+            content: `${task.assignee?.fullName || "Người thực hiện"} đã bắt đầu công việc: ${this.taskDisplayName(task)}${task.project?.name ? ` của dự án ${task.project.name}` : ""}.`,
+            type: "TASK_STARTED"
+        }, {
+            excludeUserId: actorUserId
+        });
         taskEmitter.emit(TASK_EVENTS.UPDATED, saved);
         return saved;
     }
@@ -92,6 +109,14 @@ export class TaskAssignmentService extends TaskBaseService {
 
         task.nickname = normalizedNickname;
         const saved = await this.taskRepository.save(task);
+        await this.notifyTaskRecipients(saved, {
+            title: "Nickname công việc đã được cập nhật",
+            content: `Công việc ${task.code ? `${task.code} - ` : ""}${task.name} đã được cập nhật nickname thành "${normalizedNickname || task.name}".`,
+            type: "TASK_UPDATED"
+        }, {
+            includePerformers: true,
+            excludeUserId: currentUserId
+        });
         taskEmitter.emit(TASK_EVENTS.UPDATED, saved);
         return saved;
     }
@@ -174,6 +199,17 @@ export class TaskAssignmentService extends TaskBaseService {
         }
 
         const saved = await this.taskRepository.save(task);
+        if (!data.result) {
+            const actorUserId = await this.resolveActorUserId(currentUser);
+            await this.notifyTaskRecipients(saved, {
+                title: "Công việc đã được cập nhật",
+                content: `Công việc ${this.taskDisplayName(saved)}${saved.project?.name ? ` của dự án ${saved.project.name}` : ""} vừa được cập nhật.`,
+                type: "TASK_UPDATED"
+            }, {
+                includePerformers: true,
+                excludeUserId: actorUserId
+            });
+        }
         taskEmitter.emit(TASK_EVENTS.UPDATED, saved);
         return saved;
     }
@@ -515,6 +551,8 @@ export class TaskAssignmentService extends TaskBaseService {
                     continue;
                 }
 
+                const oldAssignee = task.assignee;
+
                 contractCostReduction += Number(task.cost || 0);
                 task.status = TaskStatus.PENDING;
                 task.spentAmount = 0;
@@ -547,6 +585,18 @@ export class TaskAssignmentService extends TaskBaseService {
                 task.supportReturnNote = null as any;
 
                 unassigned.push(await transactionalEntityManager.save(task));
+
+                if (oldAssignee) {
+                    await this.notificationService.createNotification({
+                        title: "Công việc đã được gỡ phân công",
+                        content: `Bạn đã được gỡ khỏi công việc: ${this.taskDisplayName(task)} của dự án ${project.name}${task.code ? ` (Mã: ${task.code})` : ""}.`,
+                        type: "TASK_UNASSIGNED",
+                        recipient: oldAssignee,
+                        relatedEntityId: task.id.toString(),
+                        relatedEntityType: "Task",
+                        link: `/tasks/${task.id}`
+                    }, transactionalEntityManager);
+                }
             }
 
             if (project.contract && contractCostReduction !== 0) {

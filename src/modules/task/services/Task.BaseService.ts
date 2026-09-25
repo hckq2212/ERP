@@ -42,6 +42,56 @@ export class TaskBaseService {
         return task.nickname?.trim() || task.name;
     }
 
+    protected collectTaskNotificationRecipients(
+        task: Pick<Tasks, "assignee" | "helper" | "assigner" | "supervisor" | "project">,
+        options: { includePerformers?: boolean; excludeUserId?: string } = {}
+    ) {
+        const recipients: Users[] = [];
+        const addRecipient = (user?: Users | null) => {
+            if (!user?.id) return;
+            if (options.excludeUserId && user.id === options.excludeUserId) return;
+            if (!recipients.some(item => item.id === user.id)) recipients.push(user);
+        };
+
+        addRecipient(task.project?.team?.teamLead);
+        addRecipient(task.assigner);
+        addRecipient(task.supervisor);
+
+        for (const member of task.project?.team?.members || []) {
+            if (
+                memberHasRole(member, MemberRole.ACCOUNT) ||
+                memberHasRole(member, MemberRole.PROJECT_MANAGER)
+            ) {
+                addRecipient(member.user);
+            }
+        }
+
+        if (options.includePerformers) {
+            addRecipient(task.assignee);
+            addRecipient(task.helper);
+        }
+
+        return recipients;
+    }
+
+    protected async notifyTaskRecipients(
+        task: Tasks,
+        data: { title: string; content: string; type: string },
+        options: { includePerformers?: boolean; excludeUserId?: string; manager?: any } = {}
+    ) {
+        for (const recipient of this.collectTaskNotificationRecipients(task, options)) {
+            await this.notificationService.createNotification({
+                title: data.title,
+                content: data.content,
+                type: data.type,
+                recipient,
+                relatedEntityId: task.id.toString(),
+                relatedEntityType: "Task",
+                link: `/tasks/${task.id}`
+            }, options.manager);
+        }
+    }
+
     protected httpError(message: string, statusCode: number) {
         const error: any = new Error(message);
         error.statusCode = statusCode;

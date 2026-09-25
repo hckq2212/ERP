@@ -66,6 +66,15 @@ export class TaskDeletionService extends TaskBaseService {
         }
 
         await AppDataSource.transaction(async manager => {
+            await this.notifyTaskRecipients(task, {
+                title: "Công việc đã bị xóa",
+                content: `Công việc ${this.taskDisplayName(task)}${task.project?.name ? ` của dự án ${task.project.name}` : ""} đã bị xóa.`,
+                type: "TASK_DELETED"
+            }, {
+                includePerformers: true,
+                manager
+            });
+
             await manager.getRepository(Tasks).remove(task);
 
             if (task.parentTaskId) {
