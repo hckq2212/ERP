@@ -636,7 +636,7 @@ export class ProjectBaseService {
         // Tải các task riêng biệt để tránh tình trạng Cartesian product làm chậm câu truy vấn
         project.tasks = await this.taskRepository.find({
             where: { project: { id: project.id } },
-            relations: ["assignee", "job", "quotation"]
+            relations: ["assignee", "job", "quotation", "parentTask"]
         });
 
         // Tải danh sách dịch vụ của hợp đồng riêng biệt

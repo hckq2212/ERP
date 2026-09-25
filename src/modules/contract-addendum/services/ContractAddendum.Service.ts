@@ -135,17 +135,27 @@ export class ContractAddendumService {
     }
 
     async create(data: { contractId: string, name: string, description?: string }) {
-        const contract = await this.contractRepository.findOneBy({ id: data.contractId });
+        const contract = await this.contractRepository.findOne({
+            where: { id: data.contractId },
+            relations: ["project"]
+        });
         if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
         const addendum = this.addendumRepository.create({
             contract,
+            project: contract.project,
             name: data.name,
             description: data.description,
             status: AddendumStatus.DRAFT
         });
 
-        return await this.addendumRepository.save(addendum);
+        const saved = await this.addendumRepository.save(addendum);
+        await this.notifyProjectStakeholders(saved, {
+            title: "Có phụ lục hợp đồng mới",
+            content: `Phụ lục "${saved.name}" vừa được tạo ở trạng thái nháp.`,
+            type: "CONTRACT_ADDENDUM_CREATED"
+        });
+        return saved;
     }
 
     async addItems(addendumId: string, data: { services: any[], milestones: any[] }) {
@@ -228,7 +238,7 @@ export class ContractAddendumService {
     async uploadSigned(id: string, fileData: any) {
         const addendum = await this.addendumRepository.findOne({
             where: { id },
-            relations: ["contract", "milestones", "services"]
+            relations: ["contract", "project", "milestones", "services"]
         });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
 
@@ -249,13 +259,19 @@ export class ContractAddendumService {
             await this.debtService.createFromMilestone(milestone.id);
         }
 
-        return await this.addendumRepository.save(addendum);
+        const saved = await this.addendumRepository.save(addendum);
+        await this.notifyProjectStakeholders(saved, {
+            title: "Phụ lục hợp đồng đã ký",
+            content: `Phụ lục "${saved.name}" đã được upload bản ký và kích hoạt các mốc thanh toán liên quan.`,
+            type: "CONTRACT_ADDENDUM_SIGNED"
+        });
+        return saved;
     }
 
     async scaleDown(addendumId: string, data: { cancelServiceIds: string[], refundAmount: number }) {
         const addendum = await this.addendumRepository.findOne({
             where: { id: addendumId },
-            relations: ["contract"]
+            relations: ["contract", "project"]
         });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
 
@@ -272,7 +288,13 @@ export class ContractAddendumService {
         Object.assign(addendum, calculatePricingTotals(-Math.abs(data.refundAmount)));
         addendum.name += " (Cắt giảm hạng mục)";
 
-        return await this.addendumRepository.save(addendum);
+        const saved = await this.addendumRepository.save(addendum);
+        await this.notifyProjectStakeholders(saved, {
+            title: "Phụ lục cắt giảm hạng mục",
+            content: `Phụ lục "${saved.name}" đã được cập nhật cắt giảm hạng mục với giá trị hoàn/giảm ${Math.abs(Number(data.refundAmount || 0)).toLocaleString("vi-VN")}đ.`,
+            type: "CONTRACT_ADDENDUM_SCALE_DOWN"
+        });
+        return saved;
     }
 
     private applySaleSelectedItems(addendum: ContractAddendums, selectedItems?: any[]) {
@@ -363,7 +385,13 @@ export class ContractAddendumService {
         addendum.bodReviewedAt = null as any;
         addendum.bodReviewNote = null as any;
 
-        return await this.addendumRepository.save(addendum);
+        const saved = await this.addendumRepository.save(addendum);
+        await this.notifyProjectStakeholders(saved, {
+            title: "Phụ lục đã được gửi lại",
+            content: `Phụ lục "${saved.name}" đã được gửi lại và đang chờ Sale duyệt.`,
+            type: "CONTRACT_ADDENDUM_RESUBMITTED"
+        });
+        return saved;
     }
 
     async saleReject(id: string, userInfo?: { id?: string, userId?: string }, note?: string) {

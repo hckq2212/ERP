@@ -42,9 +42,9 @@ type SubmitResultData = {
 
 function buildSubmissionDetails(sheetNames?: string[], scenarioLabels?: string[]): string {
     const parts: string[] = [];
-    if (sheetNames && sheetNames.length > 0) parts.push(`Sheet: ${sheetNames.join(", ")}`);
-    if (scenarioLabels && scenarioLabels.length > 0) parts.push(`Kịch bản: ${scenarioLabels.join(", ")}`);
-    return parts.length > 0 ? ` (${parts.join(". ")})` : "";
+    if (sheetNames && sheetNames.length > 0) parts.push(`${sheetNames.length} sheet`);
+    if (scenarioLabels && scenarioLabels.length > 0) parts.push(`${scenarioLabels.length} kịch bản`);
+    return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
 
 export class TaskResultService extends TaskBaseService {
@@ -82,7 +82,11 @@ export class TaskResultService extends TaskBaseService {
             throw this.httpError("Kết quả công việc không hợp lệ", 400);
         }
 
-        task.result = data.result;
+        task.result = {
+            ...data.result,
+            sheetNames: data.sheetNames && data.sheetNames.length > 0 ? data.sheetNames : undefined,
+            scenarioLabels: data.scenarioLabels && data.scenarioLabels.length > 0 ? data.scenarioLabels : undefined
+        };
         task.actualEndDate = new Date();
         task.lastSubmittedById = currentId;
 

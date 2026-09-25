@@ -34,16 +34,16 @@ export class QuotationService {
         });
     }
 
-    private async notifyManagement(data: { title: string, content: string, quotationId: string }) {
+    private async notifyManagement(data: { title: string, content: string, quotationId: string, link?: string, relatedEntityId?: string, relatedEntityType?: string }) {
         const managers = await this.getManagementUsers();
         for (const manager of managers) {
             await this.notificationService.createNotification({
                 ...data,
                 type: "QUOTATION_UPDATE",
                 recipient: manager,
-                link: `/quotations/${data.quotationId}`,
-                relatedEntityId: data.quotationId,
-                relatedEntityType: "Quotations"
+                link: data.link || `/quotations/${data.quotationId}`,
+                relatedEntityId: data.relatedEntityId || data.quotationId,
+                relatedEntityType: data.relatedEntityType || "Quotations"
             });
         }
     }
@@ -484,7 +484,10 @@ export class QuotationService {
         await this.notifyManagement({
             title: "Báo giá đã duyệt",
             content: `Báo giá lần ${quotation.version} cho cơ hội ${opportunity.opportunityCode}-${opportunity.name} đã được duyệt và tạo hợp đồng.`,
-            quotationId: quotation.id
+            quotationId: quotation.id,
+            link: `/opportunities/${opportunity.id}`,
+            relatedEntityId: opportunity.id,
+            relatedEntityType: "Opportunities"
         });
 
         quotationEmitter.emit(QUOTATION_EVENTS.APPROVED, quotation);
