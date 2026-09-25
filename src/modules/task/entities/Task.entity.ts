@@ -115,7 +115,9 @@ export class Tasks extends BaseEntity {
         size?: number,
         publicId?: string,
         note?: string,
-        checklist?: { criteriaId?: string, label: string, description?: string, checked: boolean }[]
+        checklist?: { criteriaId?: string, label: string, description?: string, checked: boolean }[],
+        sheetNames?: string[],
+        scenarioLabels?: string[]
     }; // Store JSON of result (file, link, checklist, or confirmation)
 
     @Column({ type: "timestamptz", nullable: true })

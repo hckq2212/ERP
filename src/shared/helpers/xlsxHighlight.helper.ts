@@ -59,8 +59,16 @@ export async function buildHighlightedWorkbook(
         if (!parsed) continue;
         const sheet = resolveSheet(workbook, sheetNames, parsed.sheet);
         if (!sheet) continue;
-        const cell = sheet.getRow(parsed.row).getCell(parsed.col);
+        const row = sheet.getRow(parsed.row);
+        const cell = row.getCell(parsed.col);
         fillCell(cell, SPELL_FILL);
+        cell.border = {
+            top: QC_BORDER,
+            bottom: QC_BORDER,
+            left: QC_BORDER,
+            right: QC_BORDER
+        };
+        row.commit();
     }
 
     const out = await workbook.xlsx.writeBuffer();

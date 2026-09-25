@@ -12,6 +12,7 @@ import { rawLocationToExcelRef } from "../../../shared/helpers/excelRef.helper";
 import { buildCheckSummary } from "../../../shared/helpers/CheckSummary.helper";
 import { buildHighlightedWorkbook } from "../../../shared/helpers/xlsxHighlight.helper";
 import { drawTable } from "../../../shared/helpers/pdfTable.helper";
+import { renderRichTextToPdf } from "../../../shared/helpers/richTextPdf.helper";
 import { uploadBufferToCloudinary } from "../../../shared/helpers/cloudinary.helper";
 import { isProjectManagementRole } from "../../account/entities/Account.entity";
 import { TaskBaseService } from "./Task.BaseService";
@@ -511,6 +512,15 @@ export class TaskResultCheckService extends TaskBaseService {
         const spellGroups = groupSpellErrors(spellItems);
         const qcGroups = groupQcMismatches(qcItems);
 
+        let productInfoItems: { productName: string; extractedText: string | null; note: string | null }[] = [];
+        if (task.project?.id) {
+            try {
+                productInfoItems = await this.qcService.getApprovedProductInfo(task.project.id, actor as any);
+            } catch {
+                productInfoItems = [];
+            }
+        }
+
         return await new Promise((resolve, reject) => {
             const doc = new PDFDocument({ margin: 40, bufferPages: true, size: "A4" });
             doc.registerFont("Base", FONT_REGULAR);
@@ -528,6 +538,26 @@ export class TaskResultCheckService extends TaskBaseService {
             doc.font("Base-Bold").fontSize(18).fillColor("#1e293b").text("Báo cáo kiểm tra kết quả công việc", { align: "center" });
             doc.font("Base").fontSize(9).fillColor("#94a3b8").text(`Xuất lúc ${new Date().toLocaleString("vi-VN")}`, { align: "center" });
             doc.moveDown(1.2);
+
+            doc.rect(x, doc.y, 6, 16).fill("#16a34a");
+            doc.font("Base-Bold").fontSize(13).fillColor("#1e293b").text(`  Thông tin chuẩn sản phẩm (${productInfoItems.length} sản phẩm)`, x + 10, doc.y - 14);
+            doc.moveDown(0.8);
+
+            if (productInfoItems.length === 0) {
+                doc.font("Base").fontSize(10).fillColor("#64748b").text("Không có thông tin chuẩn sản phẩm");
+                doc.moveDown();
+            } else {
+                for (const item of productInfoItems) {
+                    doc.font("Base-Bold").fontSize(10.5).fillColor("#1e293b").text(item.productName || "(Không có tên sản phẩm)", x, doc.y, { width: contentWidth });
+                    doc.moveDown(0.3);
+                    renderRichTextToPdf(doc, item.extractedText || "", x, contentWidth, 9.5);
+                    if (item.note) {
+                        doc.moveDown(0.2);
+                        doc.font("Base").fontSize(9).fillColor("#94a3b8").text(`Ghi chú: ${item.note}`, x, doc.y, { width: contentWidth });
+                    }
+                    doc.moveDown(0.8);
+                }
+            }
 
             doc.rect(x, doc.y, 6, 16).fill("#2563eb");
             doc.font("Base-Bold").fontSize(13).fillColor("#1e293b").text(`  Lỗi chính tả đã xác nhận (${spellItems.length} lỗi, ${spellGroups.length} loại)`, x + 10, doc.y - 14);
