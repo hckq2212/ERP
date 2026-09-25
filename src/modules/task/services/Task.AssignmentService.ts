@@ -22,6 +22,10 @@ import { PaymentRequestService } from "../../payment-request/services/PaymentReq
 import { TaskBaseService } from "./Task.BaseService";
 import { assertSubtasksCompleted } from "../helpers/SubtaskCompletion.helper";
 import { assertSubtaskPlanApproved } from "../helpers/SubtaskPlanApproval.helper";
+import {
+    assertSubtaskDeadlineNotExceedParent,
+    assertParentDeadlineNotBeforeSubtasks
+} from "../helpers/SubtaskDeadline.helper";
 
 const getVietnamCalendarDateKey = (date: Date) => {
     const parts = new Intl.DateTimeFormat("en-US", {
@@ -131,7 +135,25 @@ export class TaskAssignmentService extends TaskBaseService {
         if (data.status) task.status = data.status;
         if (data.description !== undefined) task.description = data.description;
         if (data.plannedStartDate) task.plannedStartDate = data.plannedStartDate;
-        if (data.plannedEndDate) task.plannedEndDate = data.plannedEndDate;
+        if (data.plannedEndDate) {
+            const newDeadline = new Date(data.plannedEndDate);
+            if (task.parentTaskId) {
+                const parent = await this.taskRepository.findOne({
+                    where: { id: task.parentTaskId },
+                    select: ["id", "name", "plannedEndDate"]
+                });
+                if (parent?.plannedEndDate) {
+                    assertSubtaskDeadlineNotExceedParent(newDeadline, parent.plannedEndDate, task.name, parent.name);
+                }
+            } else {
+                const subtasks = await this.taskRepository.find({
+                    where: { parentTaskId: task.id },
+                    select: ["id", "name", "plannedEndDate"]
+                });
+                assertParentDeadlineNotBeforeSubtasks(newDeadline, subtasks, task.name);
+            }
+            task.plannedEndDate = data.plannedEndDate;
+        }
         if (data.actualStartDate) task.actualStartDate = data.actualStartDate;
         if (data.actualEndDate) task.actualEndDate = data.actualEndDate;
         if (data.result) {
@@ -195,8 +217,8 @@ export class TaskAssignmentService extends TaskBaseService {
         if (!plannedEndDate || Number.isNaN(plannedEndDate.getTime())) {
             throw this.httpError("Vui lòng nhập deadline", 400);
         }
-        if (getVietnamCalendarDateKey(plannedEndDate) <= getVietnamCalendarDateKey(plannedStartDate)) {
-            throw this.httpError("Deadline phải sau ngày dự kiến bắt đầu ít nhất 1 ngày", 400);
+        if (plannedEndDate.getTime() < plannedStartDate.getTime()) {
+            throw this.httpError("Deadline không được trước ngày dự kiến bắt đầu", 400);
         }
         const uniqueTaskIds = [...new Set(taskIds)].sort();
 
@@ -338,6 +360,22 @@ export class TaskAssignmentService extends TaskBaseService {
                     if (!hadMainPerformer || !task.assignerId) {
                         task.assignerId = actorUserId;
                     }
+                }
+
+                if (task.parentTaskId) {
+                    const parent = await transactionalEntityManager.findOne(Tasks, {
+                        where: { id: task.parentTaskId },
+                        select: ["id", "name", "plannedEndDate"]
+                    });
+                    if (parent?.plannedEndDate) {
+                        assertSubtaskDeadlineNotExceedParent(plannedEndDate, parent.plannedEndDate, task.name, parent.name);
+                    }
+                } else {
+                    const subtasks = await transactionalEntityManager.find(Tasks, {
+                        where: { parentTaskId: task.id },
+                        select: ["id", "name", "plannedEndDate"]
+                    });
+                    assertParentDeadlineNotBeforeSubtasks(plannedEndDate, subtasks, task.name);
                 }
 
                 task.plannedEndDate = plannedEndDate;
