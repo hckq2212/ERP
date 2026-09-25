@@ -178,7 +178,13 @@ export class TaskDelegationService extends TaskBaseService {
             await this.lockTask(manager, taskId, "Không tìm thấy công việc");
             const task = await taskRepo.findOne({
                 where: { id: taskId },
-                relations: ["project", "project.team", "project.team.teamLead"]
+                relations: [
+                    "project",
+                    "project.team",
+                    "project.team.teamLead",
+                    "project.team.members",
+                    "project.team.members.user"
+                ]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
             this.assertTaskProjectNotOnHold(task);
@@ -187,36 +193,83 @@ export class TaskDelegationService extends TaskBaseService {
             }
 
             const actorUserId = await this.resolveActorUserId(actor, manager);
-            if (!this.isAdminOverride(actor) && task.supportLeadId !== actorUserId) {
-                throw this.httpError("Chỉ PM phụ trách dự án mới được xử lý yêu cầu", 403);
+            const isPM = task.supportLeadId === actorUserId;
+            const isAdmin = this.isAdminOverride(actor);
+            const isAccountOrLead = this.isAccountMember(task, actorUserId);
+
+            if (action === "RESOLVE") {
+                if (!isAdmin && !isPM) {
+                    throw this.httpError("Chỉ PM phụ trách dự án mới được xử lý yêu cầu", 403);
+                }
+            } else if (action === "REJECT") {
+                // PM từ chối HOẶC Team Lead / Account tự hủy yêu cầu của mình
+                if (!isAdmin && !isPM && !isAccountOrLead) {
+                    throw this.httpError("Chỉ PM phụ trách dự án hoặc người yêu cầu mới được từ chối/hủy yêu cầu", 403);
+                }
             }
 
             const resolver = await manager.getRepository(Users).findOneBy({ id: actorUserId });
             if (!resolver) throw this.httpError("Tài khoản chưa được liên kết nhân sự", 401);
 
             task.isSupportAccepted = action === "RESOLVE";
+            const oldSupportLeadId = task.supportLeadId;
             if (action === "REJECT") {
                 task.isSupportRequested = false;
                 task.supportLeadId = null as any;
                 task.supportRequestType = null;
+                task.supportRequestNote = null as any;
             }
             const saved = await taskRepo.save(task);
 
-            const requester = task.project?.team?.teamLead;
-            if (!requester) return saved;
-
-            await this.notificationService.createNotification({
-                title: action === "RESOLVE" ? "PM đã bổ sung nhân sự" : "PM từ chối yêu cầu nhân sự",
-                content: action === "RESOLVE"
-                    ? `PM đã xác nhận bổ sung nhân sự cho công việc ${this.taskDisplayName(task)}. Bạn có thể bắt đầu chia subtask.`
-                    : `PM đã từ chối yêu cầu bổ sung nhân sự cho công việc ${this.taskDisplayName(task)}.`,
-                type: action === "RESOLVE" ? "TASK_STAFFING_RESOLVED" : "TASK_STAFFING_REJECTED",
-                recipient: requester,
-                sender: resolver,
-                relatedEntityId: task.id,
-                relatedEntityType: "Task",
-                link: `/tasks/${task.id}`
-            }, manager);
+            if (action === "RESOLVE") {
+                const requester = task.project?.team?.teamLead;
+                if (requester) {
+                    await this.notificationService.createNotification({
+                        title: "PM đã bổ sung nhân sự",
+                        content: `PM đã xác nhận bổ sung nhân sự cho công việc ${this.taskDisplayName(task)}. Bạn có thể bắt đầu chia subtask.`,
+                        type: "TASK_STAFFING_RESOLVED",
+                        recipient: requester,
+                        sender: resolver,
+                        relatedEntityId: task.id,
+                        relatedEntityType: "Task",
+                        link: `/tasks/${task.id}`
+                    }, manager);
+                }
+            } else if (action === "REJECT") {
+                if (isAccountOrLead && !isPM) {
+                    // Lead / Account tự hủy yêu cầu -> thông báo cho PM
+                    const pmUser = oldSupportLeadId
+                        ? await manager.getRepository(Users).findOneBy({ id: oldSupportLeadId })
+                        : null;
+                    if (pmUser) {
+                        await this.notificationService.createNotification({
+                            title: "Team Lead đã hủy yêu cầu bổ sung nhân sự",
+                            content: `${resolver.fullName} đã hủy yêu cầu bổ sung nhân sự cho công việc ${this.taskDisplayName(task)}.`,
+                            type: "TASK_STAFFING_REJECTED",
+                            recipient: pmUser,
+                            sender: resolver,
+                            relatedEntityId: task.id,
+                            relatedEntityType: "Task",
+                            link: `/tasks/${task.id}`
+                        }, manager);
+                    }
+                } else {
+                    // PM từ chối yêu cầu -> thông báo cho Team Lead
+                    const requester = task.project?.team?.teamLead;
+                    if (requester) {
+                        await this.notificationService.createNotification({
+                            title: "PM từ chối yêu cầu nhân sự",
+                            content: `PM đã từ chối yêu cầu bổ sung nhân sự cho công việc ${this.taskDisplayName(task)}.`,
+                            type: "TASK_STAFFING_REJECTED",
+                            recipient: requester,
+                            sender: resolver,
+                            relatedEntityId: task.id,
+                            relatedEntityType: "Task",
+                            link: `/tasks/${task.id}`
+                        }, manager);
+                    }
+                }
+            }
 
             return saved;
         });
