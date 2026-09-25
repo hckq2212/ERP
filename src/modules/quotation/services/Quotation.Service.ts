@@ -126,7 +126,7 @@ export class QuotationService {
             version,
             note,
             status: QuotationStatus.DRAFT,
-            totalAmount: 0, // Will calculate
+            totalAmount: 0,
             createdBy: userInfo?.userId ? { id: userInfo.userId } as Users : undefined
         });
 
@@ -201,7 +201,7 @@ export class QuotationService {
             }
         }
 
-        Object.assign(savedQuotation, calculatePricingTotals(total));
+        Object.assign(savedQuotation, calculatePricingTotals(total), { totalAmount: total });
 
         // Update Opportunity Status to QUOTATION_DRAFTING if it's new
         if (opportunity.status === OpportunityStatus.PENDING_OPP_APPROVAL) {
@@ -209,7 +209,7 @@ export class QuotationService {
             await this.opportunityRepository.save(opportunity);
             opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, opportunity);
         }
-
+        
         const saved = await this.quotationRepository.save(savedQuotation);
 
         // Notify management
@@ -307,7 +307,7 @@ export class QuotationService {
             total += Number(detail.sellingPrice);
         }
 
-        Object.assign(savedQuotation, calculatePricingTotals(total));
+        Object.assign(savedQuotation, calculatePricingTotals(total), { totalAmount: total });
         savedQuotation.tasks = tasks; // Link tasks to quotation
         const saved = await this.quotationRepository.save(savedQuotation);
 
@@ -372,7 +372,7 @@ export class QuotationService {
                 // Keep in memory for the final return
                 quotation.details.push(detail);
             }
-            Object.assign(quotation, calculatePricingTotals(total));
+            Object.assign(quotation, calculatePricingTotals(total), { totalAmount: total });
         }
 
         const saved = await this.quotationRepository.save(quotation);
