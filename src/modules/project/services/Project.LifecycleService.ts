@@ -13,6 +13,7 @@ import { TaskStatus } from "../../../shared/entities/Enums";
 import { Jobs } from "../../job/entities/Job.entity";
 import { PerformerType } from "../../../shared/entities/Enums";
 import { NotificationService } from "../../notification/services/Notification.Service";
+import { MemberRole, memberHasRole } from "../entities/TeamMember.entity";
 
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { Accounts } from "../../account/entities/Account.entity";
@@ -127,6 +128,23 @@ export class ProjectLifecycleService extends ProjectBaseService {
                 content: `${userConfirming.fullName} đã nhận thông tin dự án ${savedProject.name}${savedProject.status === ProjectStatus.IN_PROGRESS ? " và đã bắt đầu thực hiện" : ""}`,
                 type: "PROJECT_CONFIRMED",
                 recipient: bod,
+                relatedEntityId: savedProject.id,
+                relatedEntityType: "Project",
+                link: `/projects/${savedProject.id}`
+            });
+        }
+
+        const projectManagers = (savedProject.team?.members || [])
+            .filter(member => memberHasRole(member, MemberRole.PROJECT_MANAGER) && member.user?.id)
+            .map(member => member.user);
+
+        for (const pm of projectManagers) {
+            await this.notificationService.createNotification({
+                title: "Dự án đã được chấp nhận",
+                content: `${userConfirming.fullName} đã chấp nhận dự án ${savedProject.name}.`,
+                type: "PROJECT_CONFIRMED",
+                recipient: pm,
+                sender: userConfirming,
                 relatedEntityId: savedProject.id,
                 relatedEntityType: "Project",
                 link: `/projects/${savedProject.id}`
