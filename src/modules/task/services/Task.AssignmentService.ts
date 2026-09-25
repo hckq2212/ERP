@@ -61,6 +61,91 @@ export class TaskAssignmentService extends TaskBaseService {
         return saved;
     }
 
+    async bulkStart(
+        projectId: string,
+        taskIds: string[],
+        currentUser?: { id: string; userId?: string; role?: string }
+    ) {
+        const actorUserId = await this.resolveActorUserId(currentUser);
+        if (!actorUserId) throw this.httpError("Bạn cần đăng nhập để bắt đầu công việc", 401);
+
+        const result = await AppDataSource.transaction(async (transactionalEntityManager) => {
+            const project = await transactionalEntityManager.findOne(Projects, {
+                where: { id: projectId }
+            });
+            if (!project) throw this.httpError("Không tìm thấy dự án", 404);
+            this.assertTaskProjectNotOnHold({ project });
+
+            if (![ProjectStatus.CONFIRMED, ProjectStatus.IN_PROGRESS].includes(project.status)) {
+                throw this.httpError("Dự án không ở trạng thái cho phép bắt đầu công việc", 400);
+            }
+
+            const uniqueTaskIds = [...new Set(taskIds)].sort();
+            for (const taskId of uniqueTaskIds) {
+                await transactionalEntityManager.findOne(Tasks, {
+                    where: { id: taskId },
+                    lock: { mode: "pessimistic_write" }
+                });
+            }
+
+            const tasks = await transactionalEntityManager.find(Tasks, {
+                where: { id: In(uniqueTaskIds) },
+                relations: ["project"]
+            });
+            const taskById = new Map(tasks.map(task => [task.id, task]));
+            const started: Tasks[] = [];
+            const skipped: { id: string; code?: string; reason: string }[] = [];
+            const startedAt = new Date();
+            const taskRepository = transactionalEntityManager.getRepository(Tasks);
+
+            for (const id of uniqueTaskIds) {
+                const task = taskById.get(id);
+                if (!task) {
+                    skipped.push({ id, reason: "Không tìm thấy công việc" });
+                    continue;
+                }
+
+                const skip = (reason: string) => skipped.push({
+                    id: task.id,
+                    code: task.code || undefined,
+                    reason
+                });
+
+                if (task.project?.id !== projectId) {
+                    skip("Công việc không thuộc dự án hiện tại");
+                    continue;
+                }
+                if (task.status !== TaskStatus.NOT_STARTED) {
+                    skip("Công việc không còn ở trạng thái Chưa thực hiện");
+                    continue;
+                }
+                if (task.assigneeId !== actorUserId) {
+                    skip("Bạn không phải người thực hiện chính của công việc");
+                    continue;
+                }
+
+                try {
+                    await assertSubtaskPlanApproved(taskRepository, task, "bắt đầu công việc");
+                } catch (error: any) {
+                    if (error.statusCode === 409) {
+                        skip(error.message);
+                        continue;
+                    }
+                    throw error;
+                }
+
+                task.status = TaskStatus.DOING;
+                task.actualStartDate = startedAt;
+                started.push(await transactionalEntityManager.save(task));
+            }
+
+            return { started, skipped };
+        });
+
+        result.started.forEach(task => taskEmitter.emit(TASK_EVENTS.UPDATED, task));
+        return result;
+    }
+
     private paymentRequestService = new PaymentRequestService();
     async updateNickname(
         id: string,

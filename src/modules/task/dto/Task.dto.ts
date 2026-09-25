@@ -85,6 +85,17 @@ export class BulkUnassignTasksDTO {
     taskIds: string[];
 }
 
+export class BulkStartTasksDTO {
+    @IsString()
+    @IsNotEmpty({ message: "ID dự án không được để trống" })
+    projectId: string;
+
+    @IsArray({ message: "Danh sách công việc không hợp lệ" })
+    @ArrayMinSize(1, { message: "Vui lòng chọn ít nhất một công việc" })
+    @IsString({ each: true, message: "ID công việc không hợp lệ" })
+    taskIds: string[];
+}
+
 export class TaskAssignmentDTO {
     @IsString()
     @IsNotEmpty({ message: "ID người thực hiện không được để trống" })
