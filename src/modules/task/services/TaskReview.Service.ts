@@ -20,6 +20,7 @@ import { RedisService } from "../../../shared/services/Redis.Service";
 import { calculateRecommendedSellingPrice } from "../../../shared/helpers/Pricing.helper";
 import { TaskResultChecks } from "../entities/TaskResultCheck.entity";
 import { buildCheckSummary } from "../../../shared/helpers/CheckSummary.helper";
+import { canDecideTaskOutcome } from "../helpers/TaskOutcomeAuthorization.helper";
 
 type ReviewActor = { id?: string; userId?: string; role?: string };
 
@@ -53,7 +54,12 @@ export class TaskReviewService {
 
     private assertCanReviewTask(task: Tasks, actor?: ReviewActor) {
         const actorUserId = this.getActorUserId(actor);
-        const canReview = this.isProjectOperator(task, actor) || task.assignerId === actorUserId;
+        const isOpportunityDemo = Boolean(
+            task.opportunityId && task.opportunityServiceJob?.isBriefVideo
+        );
+        const canReview = isOpportunityDemo
+            ? this.isProjectOperator(task, actor)
+            : canDecideTaskOutcome(task, actorUserId);
         if (!canReview) {
             throw this.httpError("Bạn không có quyền duyệt công việc trong dự án này", 403);
         }
@@ -114,15 +120,11 @@ export class TaskReviewService {
     async toggleCriteria(reviewId: string, isPassed: boolean, note?: string, currentUser?: ReviewActor) {
         const review = await this.reviewRepository.findOne({
             where: { id: reviewId },
-            relations: ["reviewer", "task", "task.project", "task.project.team", "task.project.team.teamLead", "task.project.team.members", "task.project.team.members.user"]
+            relations: ["reviewer", "task", "task.assignee", "task.helper", "task.assigner", "task.project", "task.project.team", "task.project.team.teamLead", "task.project.team.members", "task.project.team.members.user", "task.opportunityServiceJob"]
         });
 
         if (!review) throw new Error("Không tìm thấy mục đánh giá");
-        const actorUserId = this.getActorUserId(currentUser);
-        const isReviewer = review.reviewer?.id === actorUserId;
-        if (review.task && !isReviewer && !this.isProjectOperator(review.task, currentUser)) {
-            throw this.httpError("Bạn không có quyền cập nhật đánh giá công việc này", 403);
-        }
+        if (review.task) this.assertCanReviewTask(review.task, currentUser);
 
         // Status validation
         if (review.task) {
@@ -151,7 +153,7 @@ export class TaskReviewService {
 
             const task = await manager.getRepository(Tasks).findOne({
                 where: { id: taskId },
-                relations: ["assignee", "contractService", "job", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunityServiceJob", "opportunityServiceJob.opportunityService", "opportunityServiceJob.opportunityService.opportunity", "opportunityServiceJob.opportunityService.opportunity.createdBy"]
+                relations: ["assignee", "helper", "assigner", "contractService", "job", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunityServiceJob", "opportunityServiceJob.opportunityService", "opportunityServiceJob.opportunityService.opportunity", "opportunityServiceJob.opportunityService.opportunity.createdBy"]
             });
             if (!task) throw this.httpError("Không tìm thấy công việc", 404);
             this.assertCanReviewTask(task, currentUser);
@@ -378,7 +380,7 @@ export class TaskReviewService {
     async rejectTask(taskId: string, passedCriteriaIds: string[] = [], reviewNote: string, currentUser?: ReviewActor) {
         const task = await this.taskRepository.findOne({
             where: { id: taskId },
-            relations: ["assignee", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user"]
+            relations: ["assignee", "helper", "assigner", "project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunityServiceJob"]
         });
 
         if (!task) throw new Error("Không tìm thấy công việc");
