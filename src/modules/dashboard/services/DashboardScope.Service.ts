@@ -63,23 +63,27 @@ export class DashboardScopeService {
             throw new DashboardScopeError("Tài khoản chưa được liên kết với nhân sự", 403);
         }
 
+        const isSystemViewer = [UserRole.ADMIN, UserRole.BOD].includes(actor.role);
+
         const allActiveProjects = await this.projectRepo.find({
             where: { status: In(ACTIVE_PROJECT_STATUSES) },
-            relations: [
-                "contract",
-                "contract.customer",
-                "team",
-                "team.teamLead",
-                "team.members",
-                "team.members.user",
-                "team.members.user.accounts"
-            ],
+            relations: isSystemViewer
+                ? ["contract", "contract.customer"]
+                : [
+                    "contract",
+                    "contract.customer",
+                    "team",
+                    "team.teamLead",
+                    "team.members",
+                    "team.members.user",
+                    "team.members.user.accounts"
+                ],
             order: { createdAt: "DESC" }
         });
 
         const isExcludedSaleRole = [UserRole.BD, UserRole.ADMIN_SALE].includes(actor.role);
 
-        const isTeamLeadOrAccount = !isExcludedSaleRole && allActiveProjects.some(project =>
+        const isTeamLeadOrAccount = !isExcludedSaleRole && !isSystemViewer && allActiveProjects.some(project =>
             project.team?.members?.some(member =>
                 member.user?.id === viewerUserId && memberHasRole(member, MemberRole.ACCOUNT)
             ) ||
@@ -119,7 +123,6 @@ export class DashboardScopeService {
             ? personalProjects
             : await this.findPersonalProjects(targetUserId);
 
-        const isSystemViewer = [UserRole.ADMIN, UserRole.BOD].includes(actor.role);
         const systemUsers = isSystemViewer
             ? await this.userRepo.find({
                 where: { isLocked: false },

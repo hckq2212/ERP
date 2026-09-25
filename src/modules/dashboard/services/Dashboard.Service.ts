@@ -53,14 +53,28 @@ export class DashboardService {
             mode: scope.mode
         };
 
-        if (scope.canSelectMembers) {
-            data.staffWorkloads = await this.workloadService.getAllStaffWorkloads(month, year);
+        // getAllStaffWorkloads() chạy 1 aggregate query trên toàn bộ task của toàn bộ staff - khá nặng.
+        // Trước đây với Admin/BOD (canSelectMembers = true VÀ type = SYSTEM) hàm này bị gọi 2 LẦN
+        // trong cùng 1 request (1 lần ở đây, 1 lần trong khối admin bên dưới). Giờ chỉ gọi tối đa 1 lần,
+        // và chạy song song với getAdminMetrics (2 việc này độc lập, không cần chờ nhau).
+        const [staffWorkloads, adminMetrics] = await Promise.all([
+            scope.canSelectMembers
+                ? this.workloadService.getAllStaffWorkloads(month, year)
+                : Promise.resolve(undefined),
+            scope.type === DashboardScopeType.SYSTEM
+                ? this.getAdminMetrics(dateFilter, projectId, month, year)
+                : Promise.resolve(undefined)
+        ]);
+
+        if (staffWorkloads) {
+            data.staffWorkloads = staffWorkloads;
         }
 
         // 1. BOD/ADMIN Data
         if (scope.type === DashboardScopeType.SYSTEM) {
-            data.admin = await this.getAdminMetrics(dateFilter, projectId);
-            data.admin.staffWorkloads = await this.workloadService.getAllStaffWorkloads(month, year);
+            data.admin = adminMetrics;
+            data.admin.staffWorkloads = staffWorkloads
+                ?? await this.workloadService.getAllStaffWorkloads(month, year);
         }
 
         // 2. Team Lead Data
@@ -511,7 +525,7 @@ export class DashboardService {
         return data;
     }
 
-    private getDateFilter(month?: number, year?: number) {
+    private getDateRange(month?: number, year?: number): { start: Date; end: Date } | null {
         if (!year && !month) return null;
 
         let start: Date;
@@ -530,7 +544,12 @@ export class DashboardService {
             end = new Date(currentYear, month!, 0, 23, 59, 59, 999);
         }
 
-        return Between(start, end);
+        return { start, end };
+    }
+
+    private getDateFilter(month?: number, year?: number) {
+        const range = this.getDateRange(month, year);
+        return range ? Between(range.start, range.end) : null;
     }
 
     private withTaskPeriod(condition: any, dateFilter: any | null) {
@@ -541,11 +560,42 @@ export class DashboardService {
         ];
     }
 
-    private async getAdminMetrics(dateFilter: any | null, projectId?: string) {
+    private async getAdminMetrics(dateFilter: any | null, projectId?: string, month?: number, year?: number) {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const dateRange = this.getDateRange(month, year);
 
-        const [totalCustomers, newCustomers] = await Promise.all([
+        const revenueQb = this.contractRepo.createQueryBuilder("contract")
+            .select("COALESCE(SUM(contract.sellingPrice), 0)", "totalRevenue")
+            .where("contract.status IN (:...statuses)", {
+                statuses: [ContractStatus.SIGNED, ContractStatus.COMPLETED]
+            });
+        if (projectId) {
+            revenueQb.innerJoin("contract.project", "project")
+                .andWhere("project.id = :projectId", { projectId });
+        }
+        if (dateRange) revenueQb.andWhere("contract.createdAt BETWEEN :dStart AND :dEnd", {
+            dStart: dateRange.start,
+            dEnd: dateRange.end
+        });
+
+        const debtQb = this.debtRepo.createQueryBuilder("debt")
+            .leftJoin("debt.payments", "payment")
+            .select("debt.id", "debtId")
+            .addSelect("debt.amount", "amount")
+            .addSelect("COALESCE(SUM(payment.amount), 0)", "paidAmount")
+            .where("debt.status IN (:...statuses)", {
+                statuses: [DebtStatus.UNPAID, DebtStatus.PARTIAL]
+            })
+            .groupBy("debt.id")
+            .addGroupBy("debt.amount");
+        if (projectId) {
+            debtQb.innerJoin("debt.contract", "contract")
+                .innerJoin("contract.project", "project")
+                .andWhere("project.id = :projectId", { projectId });
+        }
+
+        const [totalCustomers, newCustomers, revenueResult, debtResult] = await Promise.all([
             this.customerRepo.count({
                 where: {
                     ...(projectId && { contracts: { project: { id: projectId } } }),
@@ -557,33 +607,15 @@ export class DashboardService {
                     ...(projectId && { contracts: { project: { id: projectId } } }),
                     createdAt: Between(thirtyDaysAgo, new Date())
                 } as any
-            })
+            }),
+            revenueQb.getRawOne<{ totalRevenue: string }>(),
+            debtQb.getRawMany<{ debtId: string; amount: string; paidAmount: string }>()
         ]);
 
-        const signedContracts = await this.contractRepo.find({
-            where: {
-                status: In([ContractStatus.SIGNED, ContractStatus.COMPLETED]),
-                ...(projectId && { project: { id: projectId } }),
-                ...(dateFilter && { createdAt: dateFilter })
-            }
-        });
-
-        const totalRevenue = signedContracts.reduce((sum, c) => sum + parseFloat(c.sellingPrice as any), 0);
-
-        const unpaidDebts = await this.debtRepo.find({
-            where: {
-                status: In([DebtStatus.UNPAID, DebtStatus.PARTIAL]),
-                ...(projectId && { contract: { project: { id: projectId } } })
-            },
-            relations: ["payments"]
-        });
-
-        const totalDebt = unpaidDebts.reduce((sum, debt) => {
-            const paidAmount = debt.payments?.reduce(
-                (paymentSum, payment) => paymentSum + parseFloat(payment.amount as any),
-                0
-            ) || 0;
-            return sum + Math.max(0, parseFloat(debt.amount as any) - paidAmount);
+        const totalRevenue = parseFloat(revenueResult?.totalRevenue || "0");
+        const totalDebt = debtResult.reduce((sum, row) => {
+            const remaining = parseFloat(row.amount) - parseFloat(row.paidAmount || "0");
+            return sum + Math.max(0, remaining);
         }, 0);
 
         const quotationWhere: any[] = [

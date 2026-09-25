@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToMany, Index } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
 import { QuotationDetails } from "./QuotationDetail.entity";
@@ -27,6 +27,7 @@ export class Quotations extends BaseEntity {
     @Column({ type: "int", default: 1 })
     version: number;
 
+    @Index()
     @Column({
         type: "enum",
         enum: QuotationStatus,

@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, OneToOne, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToOne, OneToMany, Index } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { Customers } from "../../customer/entities/Customer.entity";
 import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
@@ -31,6 +31,7 @@ export enum PartnerCommissionStatus {
 @Entity()
 export class Contracts extends BaseEntity {
 
+    @Index()
     @Column({
         type: "enum",
         enum: ContractStatus,

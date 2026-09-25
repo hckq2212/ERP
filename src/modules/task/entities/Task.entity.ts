@@ -26,6 +26,7 @@ export class Tasks extends BaseEntity {
     @Column({ type: "varchar", length: 120, nullable: true })
     nickname: string | null;
 
+    @Index()
     @ManyToOne(() => Projects, (project) => project.tasks, { nullable: true })
     project: Projects;
 
@@ -59,6 +60,7 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => ContractServices, (contractService) => contractService.tasks, { nullable: true })
     contractService: ContractServices;
 
+    @Index()
     @Column({ type: "varchar", length: 26, nullable: true })
     assigneeId: string;
 
@@ -90,6 +92,7 @@ export class Tasks extends BaseEntity {
     @ManyToOne(() => Vendors, { nullable: true })
     vendor: Vendors;
 
+    @Index()
     @Column({
         type: "enum",
         enum: TaskStatus,
@@ -97,13 +100,6 @@ export class Tasks extends BaseEntity {
     })
     status: TaskStatus;
 
-    /**
-     * Trạng thái TRƯỚC khi dự án tạm dừng — để `resume` khôi phục đúng.
-     *
-     * ⚠️ CHỈ set cho task DỞ DANG bị đưa về `ON_HOLD`.
-     * Task thuộc 3 trạng thái cuối (COMPLETED / INTERNAL_COMPLETED / ACCEPTED)
-     * được MIỄN TRỪ — không bị đổi status nên không cần field này.
-     */
     @Column({ type: "varchar", length: 30, nullable: true })
     statusBeforeHold: TaskStatus | null;
 
@@ -123,12 +119,14 @@ export class Tasks extends BaseEntity {
     @Column({ type: "timestamptz", nullable: true })
     plannedStartDate: Date;
 
+    @Index()
     @Column({ type: "timestamptz", nullable: true })
     plannedEndDate: Date;
 
     @Column({ type: "timestamptz", nullable: true })
     actualStartDate: Date;
 
+    @Index()
     @Column({ type: "timestamptz", nullable: true })
     actualEndDate: Date;
 
@@ -222,6 +220,7 @@ export class Tasks extends BaseEntity {
     @Column({ type: "varchar", length: 26, nullable: true })
     supportLeadId: string;
 
+    @Index()
     @Column({ type: "varchar", length: 26, nullable: true })
     helperId: string;
 

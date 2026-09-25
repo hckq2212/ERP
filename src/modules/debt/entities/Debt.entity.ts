@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, OneToOne, JoinColumn, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, OneToOne, JoinColumn, OneToMany, Index } from "typeorm";
 import { BaseEntity } from "../../../shared/entities/BaseEntity";
 import { Contracts } from "../../contract/entities/Contract.entity";
 import { PaymentMilestones } from "../../payment-milestone/entities/PaymentMilestone.entity";
@@ -10,12 +10,6 @@ export enum DebtStatus {
     PARTIAL = "PARTIAL",
     PAID = "PAID",
     OVERDUE = "OVERDUE",
-    /**
-     * Khóa do DỰ ÁN ĐÃ ĐÓNG — chốt sổ, không thu/không sửa được nữa.
-     *
-     * ⚠️ KHÔNG thêm giá trị này vào `activeDebtStatuses` của cron quá hạn
-     * (`Cron.Helper.ts`) — debt LOCKED không bao giờ được tự chuyển sang OVERDUE.
-     */
     LOCKED = "LOCKED"
 }
 
@@ -35,6 +29,7 @@ export class Debts extends BaseEntity {
     @Column({ type: "date" })
     dueDate: Date;
 
+    @Index()
     @Column({
         type: "enum",
         enum: DebtStatus,

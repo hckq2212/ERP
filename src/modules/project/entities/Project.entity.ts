@@ -35,6 +35,7 @@ export class Projects extends BaseEntity {
     @ManyToOne(() => ProjectTeams, (team) => team.projects)
     team: ProjectTeams;
 
+    @Index()
     @Column({
         type: "enum",
         enum: ProjectStatus,
