@@ -333,8 +333,10 @@ export class TaskAssignmentService extends TaskBaseService {
         if (!plannedEndDate || Number.isNaN(plannedEndDate.getTime())) {
             throw this.httpError("Vui lòng nhập deadline", 400);
         }
-        if (plannedEndDate.getTime() < plannedStartDate.getTime()) {
-            throw this.httpError("Deadline không được trước ngày dự kiến bắt đầu", 400);
+        const now = new Date();
+        now.setSeconds(0, 0);
+        if (plannedEndDate.getTime() < now.getTime() - 60 * 1000) {
+            throw this.httpError("Deadline không được ở trong quá khứ", 400);
         }
         const uniqueTaskIds = [...new Set(taskIds)].sort();
 
@@ -370,9 +372,6 @@ export class TaskAssignmentService extends TaskBaseService {
                 const plannedStartDate = task.plannedStartDate
                     ? new Date(task.plannedStartDate)
                     : assignedAt;
-                if (getVietnamCalendarDateKey(plannedEndDate) <= getVietnamCalendarDateKey(plannedStartDate)) {
-                    throw this.httpError("Deadline phải sau ngày dự kiến bắt đầu ít nhất 1 ngày", 400);
-                }
 
                 const oldCost = Number(task.cost || 0);
                 let newCost = 0;
