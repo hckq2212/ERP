@@ -55,6 +55,8 @@ export interface PaymentRequestFile {
     name: string;
     url: string;
     type?: string;
+    fileType?: string;
+    docType?: string;
     size?: number;
     round?: number;
     uploadedAt?: string;
@@ -147,6 +149,12 @@ export class PaymentRequests extends BaseEntity {
 
     @Column({ type: "jsonb", default: [] })
     invoicePdfs: PaymentRequestFile[];
+
+    @Column({ type: "boolean", default: false })
+    isUrgent: boolean;
+
+    @Column({ type: "varchar", length: 50, nullable: true })
+    expenseCategory: string | null;
 
     @Index()
     @Column({ type: "varchar", length: 26 })

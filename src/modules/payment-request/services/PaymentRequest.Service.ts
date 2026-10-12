@@ -161,9 +161,6 @@ export class PaymentRequestService {
 
         const invoiceImages = dto.invoiceImages || [];
         const invoicePdfs = dto.invoicePdfs || [];
-        if (invoiceImages.length === 0 && invoicePdfs.length === 0) {
-            throw new Error("Vui lòng đính kèm ít nhất một file hóa đơn hoặc chứng từ");
-        }
 
         const request = new PaymentRequests();
         request.type = dto.type;
@@ -172,6 +169,8 @@ export class PaymentRequestService {
         request.dueDate = dto.dueDate;
         request.projectId = dto.projectId || null;
         request.taskId = dto.taskId || null;
+        request.isUrgent = Boolean(dto.isUrgent);
+        request.expenseCategory = dto.expenseCategory || null;
         request.invoiceImages = invoiceImages;
         request.invoicePdfs = invoicePdfs;
         request.requesterId = requesterId;

@@ -16,13 +16,18 @@ export class PaymentRequestController {
             }
 
             const isImage = file.mimetype.startsWith("image/");
-            const isPdf = file.mimetype === "application/pdf";
-            if (!isImage && !isPdf) {
-                return res.status(400).json({ message: "Chỉ chấp nhận file ảnh (jpg, png...) hoặc PDF" });
+            const isPdf = file.mimetype === "application/pdf" || (file.originalname && file.originalname.toLowerCase().endsWith(".pdf"));
+            const isDoc = file.mimetype === "application/msword" ||
+                file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+                (file.originalname && (file.originalname.toLowerCase().endsWith(".doc") || file.originalname.toLowerCase().endsWith(".docx")));
+
+            if (!isImage && !isPdf && !isDoc) {
+                return res.status(400).json({ message: "Chỉ chấp nhận file ảnh (jpg, png...), PDF hoặc Word (doc, docx)" });
             }
 
             const uploaded = await uploadToCloudinary(file, "ERP/PAYMENT_REQUESTS/invoices");
-            res.status(201).json({ ...uploaded, fileType: isPdf ? "PDF" : "IMAGE" });
+            const fileType = isPdf ? "PDF" : (isDoc ? "DOC" : "IMAGE");
+            res.status(201).json({ ...uploaded, fileType });
         } catch (error: any) {
             res.status(400).json({ message: error.message });
         }

@@ -28,11 +28,19 @@ export class CloudinaryController {
                 });
             }
 
+            const useFilename = req.query.use_filename === 'true';
+
+            const paramsToSign: Record<string, any> = {
+                timestamp: timestamp,
+                folder: folder,
+            };
+
+            if (useFilename) {
+                paramsToSign.use_filename = true;
+            }
+
             const signature = cloudinary.utils.api_sign_request(
-                {
-                    timestamp: timestamp,
-                    folder: folder,
-                },
+                paramsToSign,
                 apiSecret
             );
 
@@ -41,7 +49,8 @@ export class CloudinaryController {
                 timestamp,
                 cloud_name: cloudName,
                 api_key: apiKey,
-                folder: folder
+                folder: folder,
+                use_filename: useFilename ? true : undefined
             });
         } catch (error: any) {
             console.error("[Cloudinary] Error generating signature:", error.message);
