@@ -1,3 +1,4 @@
+import { resolveServiceBudget } from "../../../shared/helpers/ServiceBudget.helper";
 import { AppDataSource } from "../../../data-source";
 import { Opportunities, CustomerType, OpportunityStatus } from "../entities/Opportunity.entity";
 import { Customers } from "../../customer/entities/Customer.entity";
@@ -358,6 +359,7 @@ export class OpportunityService {
         }
 
         await this.validateVideoBriefs(services, packages);
+        await this.validateServiceBudgets(services, packages);
 
         let savedOpportunity: Opportunities | null = null;
         for (let attempt = 0; attempt < 5; attempt++) {
@@ -486,6 +488,7 @@ export class OpportunityService {
 
         if ((services && Array.isArray(services)) || (packages && Array.isArray(packages))) {
             await this.validateVideoBriefs(services, packages);
+            await this.validateServiceBudgets(services, packages, id);
         }
 
         // 4. Save main entity using the update object
@@ -825,6 +828,36 @@ export class OpportunityService {
                     link: `/tasks/${task.id}`
                 });
             }
+        }
+    }
+
+    private async validateServiceBudgets(services: any[] = [], packages: any[] = [], opportunityId?: string) {
+        const existing = opportunityId ? await this.opportunityServiceRepository.find({
+            where: SecurityService.withTenant({ opportunity: { id: opportunityId } })
+        }) : [];
+        const consumed = new Set<string>();
+        if (Array.isArray(services)) {
+            services.forEach((item, index) => {
+                if (typeof item === "string") services[index] = { serviceId: item };
+            });
+        }
+        const selections = [
+            ...(Array.isArray(services) ? services.filter(item => typeof item === "object").map(item => ({ item, packageName: undefined })) : []),
+            ...(Array.isArray(packages) ? packages.flatMap(pkg => (pkg.services || []).map(item => ({ item, packageName: pkg.name }))) : [])
+        ];
+        for (const { item, packageName } of selections) {
+            const serviceId = item.serviceId || item.id;
+            const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId || "__missing__" }) });
+            if (!service) throw new Error(`Không tìm thấy dịch vụ với ID: ${serviceId}`);
+            const candidates = existing.filter(row => row.serviceId === serviceId &&
+                Boolean(row.isPackageService) === Boolean(packageName) &&
+                (!packageName || row.packageName === packageName) && !consumed.has(row.id));
+            const previous = item.opportunityServiceId
+                ? candidates.find(row => row.id === item.opportunityServiceId)
+                : candidates.length === 1 ? candidates[0] : undefined;
+            if (item.opportunityServiceId && !previous) throw new Error("Liên kết dịch vụ cơ hội cũ không hợp lệ");
+            if (previous) consumed.add(previous.id);
+            item.budget = resolveServiceBudget(service, item.budget, previous?.budget ?? 0);
         }
     }
 

@@ -6,6 +6,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { OpportunityServiceJobs } from "../entities/OpportunityServiceJob.entity";
 import { RedisService } from "../../../shared/services/Redis.Service";
 import { calculateRecommendedSellingPrice } from "../../../shared/helpers/Pricing.helper";
+import { resolveServiceBudget } from "../../../shared/helpers/ServiceBudget.helper";
 
 export class OpportunityServiceService {
     private oppServiceRepository = AppDataSource.getRepository(OpportunityServices);
@@ -42,7 +43,7 @@ export class OpportunityServiceService {
             quantity: data.quantity || 1,
             sellingPrice: calculateRecommendedSellingPrice(Number(data.costAtSale ?? service.costPrice ?? 0)),
             costAtSale: Number(data.costAtSale ?? service.costPrice ?? 0),
-            budget: Number(data.budget || 0),
+            budget: resolveServiceBudget(service, data.budget),
             ...SecurityService.getTenantWhere()
         } as any) as unknown as OpportunityServices;
 
@@ -58,6 +59,7 @@ export class OpportunityServiceService {
         jobs?: { id: string, costAtSale?: number, briefVideo?: string }[]
     }) {
         const item = await this.getOne(id);
+        const budget = resolveServiceBudget(item.service, data.budget, item.budget);
         const updatesCost = data.costAtSale !== undefined || data.jobs?.some(job => job.costAtSale !== undefined);
 
         if (updatesCost && !item.opportunity.customer && !item.opportunity.leadName?.trim()) {
@@ -73,7 +75,7 @@ export class OpportunityServiceService {
 
         if (data.quantity !== undefined) item.quantity = data.quantity;
         if (data.costAtSale !== undefined) item.costAtSale = data.costAtSale;
-        if (data.budget !== undefined) item.budget = data.budget;
+        item.budget = budget;
 
         if (Array.isArray(data.jobs)) {
             for (const input of data.jobs) {

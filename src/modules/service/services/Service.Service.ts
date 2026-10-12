@@ -5,11 +5,13 @@ import { ServiceJob } from "../entities/ServiceJob.entity";
 import { In, ILike, Raw } from "typeorm";
 import { RedisService } from "../../../shared/services/Redis.Service";
 import { SecurityService } from "../../../shared/services/Security.Service";
+import { validateIsBudget } from "../../../shared/helpers/ServiceBudget.helper";
 
 export class ServiceService {
     private serviceRepository = AppDataSource.getRepository(Services);
 
     private normalizeServicePayload(data: any = {}) {
+        validateIsBudget(data.isBudget);
         if (typeof data.code === "string") {
             data.code = data.code.trim();
         }
@@ -121,6 +123,8 @@ export class ServiceService {
     async create(data: any = {}) {
         const { jobIds, outputJobIds, ...serviceData } = data;
         this.normalizeServicePayload(serviceData);
+
+        serviceData.isBudget ??= false;
 
         if (!serviceData.name) {
             throw new Error("Tên dịch vụ là bắt buộc");

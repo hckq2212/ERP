@@ -13,7 +13,7 @@ import { quotationEmitter, QUOTATION_EVENTS } from "../events/QuotationEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 import { ContractService } from "../../contract/services/Contract.Service";
 import { calculatePricingTotals, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
-import { title } from "node:process";
+import { validateQuotationBudgets } from "../helpers/QuotationBudgetValidation.helper";
 import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
 
 type QuotationActor = { id: string, role: string, userId?: string, companyId?: string };
@@ -183,6 +183,8 @@ export class QuotationService {
         });
 
 
+        if (Array.isArray(details)) await validateQuotationBudgets(details, opportunityId);
+
         const savedQuotation = await this.quotationRepository.save(quotation);
 
         let total = 0;
@@ -213,7 +215,7 @@ export class QuotationService {
                     isPackageService: item.isPackageService || false
                 });
                 await this.quotationDetailRepository.save(detail);
-                if (opportunityService) {
+                if (opportunityService && service?.isBudget === true) {
                     opportunityService.budget = Number(detail.budget || 0);
                     await this.opportunityServiceRepository.save(opportunityService);
                 }
@@ -408,6 +410,8 @@ export class QuotationService {
         if (data.details && Array.isArray(data.details)) {
             let total = 0;
 
+            await validateQuotationBudgets(data.details, quotation.opportunity.id, quotation.details);
+
             // 1. Clear old details from database
             await this.quotationDetailRepository.delete({ quotation: { id: quotation.id } });
 
@@ -444,7 +448,7 @@ export class QuotationService {
                 });
 
                 await this.quotationDetailRepository.save(detail);
-                if (opportunityService) {
+                if (opportunityService && service?.isBudget === true) {
                     opportunityService.budget = Number(detail.budget || 0);
                     await this.opportunityServiceRepository.save(opportunityService);
                 }

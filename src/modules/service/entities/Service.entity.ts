@@ -28,6 +28,9 @@ export class Services extends BaseEntity {
     @Column({ default: false })
     isAI: boolean;
 
+    @Column({ type: "boolean", default: false })
+    isBudget: boolean;
+
     @OneToMany(() => ServiceJob, (serviceJob) => serviceJob.service, { cascade: true })
     serviceJobs: ServiceJob[];
 
