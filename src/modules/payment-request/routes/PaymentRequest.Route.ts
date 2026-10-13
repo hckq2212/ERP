@@ -15,6 +15,9 @@ router.get("/", controller.getAll);
 router.get("/total-debt", controller.getTotalDebt);
 router.get("/service-budget", controller.getServiceBudget);
 router.get("/task/:taskId/spent", controller.getTaskSpent);
+router.get("/next-stt", controller.getNextStt);
+router.get("/download-template-word", controller.downloadTemplateWord);
+router.post("/generate-word-and-upload", controller.generateWordAndUpload);
 router.get("/:id", controller.getOne);
 router.post("/upload-invoice", upload.single("file"), controller.uploadInvoice);
 router.post("/", controller.create);
@@ -69,5 +72,9 @@ router.post(
 router.post("/:id/payment-proofs", controller.uploadPaymentProof);
 
 router.post("/:id/cancel", controller.cancel);
+router.get("/:id/doc-preview", controller.getDocPreview);
+router.get("/:id/download-word", controller.downloadWord);
+router.post("/:id/sync-google-sheet", controller.syncGoogleSheet);
 
 export default router;
+

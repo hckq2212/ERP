@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { PaymentRequestService } from "../services/PaymentRequest.Service";
 import { AuthRequest } from "../../../shared/middlewares/Auth.Middleware";
 import { uploadToCloudinary } from "../../../shared/helpers/cloudinary.helper";
+import { PaymentRequestDocumentService } from "../services/PaymentRequestDocument.Service";
+import { getGoogleConfig, getGoogleSheetsClient } from "../../../shared/config/google";
 
 export class PaymentRequestController {
     private service = new PaymentRequestService();
@@ -250,4 +252,107 @@ export class PaymentRequestController {
             res.status(400).json({ message: error.message });
         }
     }
+
+    getDocPreview = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.service.getDocPreviewData(req.params.id as string);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    downloadWord = async (req: AuthRequest, res: Response) => {
+        try {
+            const { buffer, fileName } = await this.service.generateWordFile(req.params.id as string, req.query as any);
+            res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+            res.send(buffer);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    getNextStt = async (req: Request, res: Response) => {
+        try {
+            const config = getGoogleConfig();
+            let nextStt = "01";
+            if (config.paymentRequestSpreadsheetId) {
+                const sheets = getGoogleSheetsClient();
+                const tabName = config.paymentRequestSheetTab || "TH_GIẤY ĐỀ NGHỊ THANH TOÁN";
+                const response = await sheets.spreadsheets.values.get({
+                    spreadsheetId: config.paymentRequestSpreadsheetId,
+                    range: `'${tabName}'!A:B`
+                });
+                const values = response.data.values || [];
+                const filled = values.slice(1).filter(r => (r[1] && String(r[1]).trim()) || (r[0] && String(r[0]).trim()));
+                nextStt = String(filled.length + 1).padStart(2, "0");
+            }
+            res.status(200).json({ nextStt });
+        } catch (error: any) {
+            res.status(200).json({ nextStt: "01" });
+        }
+    }
+
+    downloadTemplateWord = async (req: Request, res: Response) => {
+        try {
+            const query = req.query as any;
+            const input: any = {
+                voucherNo: query.voucherNo || query.stt,
+                requesterName: query.requesterName,
+                requestDate: query.requestDate,
+                position: query.position,
+                department: query.department,
+                amount: query.amount,
+                amountInWords: query.amountInWords,
+                reason: query.reason,
+                dueDate: query.dueDate,
+                projectName: query.projectName,
+                customFileName: query.customFileName
+            };
+            const docService = new PaymentRequestDocumentService();
+            const buffer = await docService.generateWordDocument(input);
+            const baseName = docService.generateStandardFileName(input);
+            const fileName = `${baseName}.docx`;
+            res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+            res.send(buffer);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    generateWordAndUpload = async (req: Request, res: Response) => {
+        try {
+            const input = req.body;
+            const docService = new PaymentRequestDocumentService();
+            const docResult = await docService.generateAndUploadToDrive(input);
+            const fileNameWithExt = `${docResult.fileName}.docx`;
+            const displayFileName = input.displayFileName || fileNameWithExt;
+
+            res.status(200).json({
+                url: docResult?.webViewLink || "",
+                driveFileId: docResult?.driveFileId || null,
+                name: displayFileName,
+                standardName: displayFileName,
+                safeUploadName: fileNameWithExt,
+                originalName: fileNameWithExt,
+                fileType: "DOC",
+                docType: "PAYMENT_REQUEST_DOC",
+                size: docResult.buffer ? docResult.buffer.length : 0
+            });
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    syncGoogleSheet = async (req: AuthRequest, res: Response) => {
+        try {
+            const result = await this.service.syncToGoogleSheet(req.params.id as string, req.body);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
 }
+

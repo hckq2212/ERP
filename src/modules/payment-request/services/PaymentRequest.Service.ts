@@ -17,6 +17,11 @@ import { Users } from "../../user/entities/User.entity";
 import { Projects } from "../../project/entities/Project.entity";
 import { UserRole } from "../../account/entities/Account.entity";
 import { NotificationService } from "../../notification/services/Notification.Service";
+import { GoogleSheetService, PaymentRequestSheetRow } from "../../../shared/services/GoogleSheet.Service";
+import { PaymentRequestDocumentService, FillPaymentRequestDocInput } from "./PaymentRequestDocument.Service";
+import { readMoneyToWords } from "../../../shared/utils/numberToWordsVi";
+import { getGoogleConfig, getGoogleSheetsClient } from "../../../shared/config/google";
+import { uploadToCloudinary } from "../../../shared/helpers/cloudinary.helper";
 import crypto from "crypto";
 
 const DUE_SOON_DAYS = 3;
@@ -208,6 +213,92 @@ export class PaymentRequestService {
             relatedEntityType: "PaymentRequests",
             link: data.link
         }, manager);
+    }
+
+    private async processGeneratedDocs(invoicePdfs: any[], context?: { projectName?: string }): Promise<any[]> {
+        if (!Array.isArray(invoicePdfs) || invoicePdfs.length === 0) return invoicePdfs || [];
+        const result: any[] = [];
+        const docService = new PaymentRequestDocumentService();
+
+        for (const item of invoicePdfs) {
+            if (item?.isGeneratedDoc && item?.docData) {
+                try {
+                    const docInput: FillPaymentRequestDocInput = {
+                        voucherNo: item.docData.voucherNo,
+                        requestDate: item.docData.requestDate,
+                        requesterName: item.docData.requesterName,
+                        position: item.docData.position,
+                        department: item.docData.department,
+                        amount: item.docData.amount,
+                        amountInWords: item.docData.amountInWords,
+                        reason: item.docData.reason,
+                        dueDate: item.docData.dueDate,
+                        projectName: item.docData.projectName || context?.projectName || "",
+                        customFileName: item.docData.customFileName
+                    };
+                    const buffer = await docService.generateWordDocument(docInput);
+                    const baseName = docService.generateStandardFileName(docInput);
+                    const fileNameWithExt = `${baseName}.docx`;
+
+                    let fileUrl = "";
+                    let driveFileId: string | null = null;
+
+                    // 1. Thử tải lên Google Drive trước (nếu Shared Drive được cấp quyền)
+                    try {
+                        const driveResult = await docService.generateAndUploadToDrive(docInput);
+                        if (driveResult?.webViewLink) {
+                            fileUrl = driveResult.webViewLink;
+                            driveFileId = driveResult.driveFileId || null;
+                        }
+                    } catch (driveErr: any) {
+                        console.warn("[processGeneratedDocs] Google Drive upload không khả dụng:", driveErr?.message);
+                    }
+
+                    // 2. Nếu Google Drive không trả về link (do giới hạn quota 0MB của Service Account cá nhân),
+                    // tự động tải lên Cloudinary và cung cấp link xem trực tiếp qua Google Docs Viewer
+                    if (!fileUrl) {
+                        try {
+                            const dummyFile: any = {
+                                buffer,
+                                originalname: fileNameWithExt,
+                                mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                size: buffer.length
+                            };
+                            const uploaded = await uploadToCloudinary(dummyFile, "ERP/PAYMENT_REQUESTS/documents");
+                            if (uploaded?.url) {
+                                fileUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(uploaded.url)}`;
+                            }
+                        } catch (cloudErr: any) {
+                            console.error("[processGeneratedDocs] Lỗi upload Cloudinary fallback:", cloudErr?.message);
+                        }
+                    }
+
+                    result.push({
+                        name: item.name || fileNameWithExt,
+                        standardName: item.standardName || fileNameWithExt,
+                        safeUploadName: fileNameWithExt,
+                        originalName: fileNameWithExt,
+                        url: fileUrl,
+                        driveFileId: driveFileId,
+                        fileType: "DOC",
+                        docType: "PAYMENT_REQUEST_DOC",
+                        size: buffer.length,
+                        uploadedAt: new Date().toISOString()
+                    });
+                    continue;
+                } catch (err: any) {
+                    console.error("[processGeneratedDocs] Lỗi xử lý tài liệu mẫu:", err?.message);
+                }
+            }
+
+            if (item && typeof item === "object") {
+                const { isGeneratedDoc, docData, ...rest } = item;
+                result.push(rest);
+            } else {
+                result.push(item);
+            }
+        }
+        return result;
     }
 
     async getServiceBudgetInfo(projectId: string, taskId: string, excludeRequestId?: string) {
@@ -411,7 +502,19 @@ export class PaymentRequestService {
         }
 
         const invoiceImages = dto.invoiceImages || [];
-        const invoicePdfs = dto.invoicePdfs || [];
+        const rawInvoicePdfs = dto.invoicePdfs || [];
+
+        let projectName = "";
+        if (dto.projectId) {
+            try {
+                const proj = await AppDataSource.getRepository(Projects).findOne({ where: { id: dto.projectId } });
+                projectName = proj?.name || "";
+            } catch (pErr: any) {
+                console.warn("[create] Không tìm thấy tên dự án:", pErr?.message);
+            }
+        }
+
+        const invoicePdfs = await this.processGeneratedDocs(rawInvoicePdfs, { projectName });
 
         const request = new PaymentRequests();
         request.type = dto.type;
@@ -512,6 +615,13 @@ export class PaymentRequestService {
 
         const saved = await this.repo.save(request);
 
+        // Tự động đồng bộ lên Google Sheet tab TH_GIẤY ĐỀ NGHỊ THANH TOÁN
+        try {
+            await this.syncToGoogleSheet(saved.id);
+        } catch (sheetErr: any) {
+            console.error("[create] Lỗi tự động đồng bộ Google Sheet:", sheetErr?.message);
+        }
+
         // Thông báo cho các bên liên quan (Admin Sale/Admin) để duyệt vòng 1
         await this.notifyRoles(REVIEWER_NOTIFY_ROLES, {
             title: "Yêu cầu thanh toán mới",
@@ -601,7 +711,9 @@ export class PaymentRequestService {
         if (query.search) {
             qb.andWhere("pr.content ILIKE :search", { search: `%${query.search}%` });
         }
-        if (isValidRequestType(query.type)) {
+        if (query.type === ("DIRECT_PAYMENT" as any)) {
+            qb.andWhere("pr.type != :advanceType", { advanceType: PaymentRequestType.ADVANCE });
+        } else if (isValidRequestType(query.type)) {
             qb.andWhere("pr.type = :type", { type: query.type });
         }
         if (query.approvalStatus) {
@@ -701,12 +813,26 @@ export class PaymentRequestService {
         const isVendorLinked = Boolean(request.vendorId);
 
         const editableFields = isVendorLinked
-            ? ["content", "amount", "dueDate", "invoiceImages", "invoicePdfs"]
-            : ["content", "amount", "dueDate", "projectId", "taskId", "invoiceImages", "invoicePdfs", "settlementDueDate"];
+            ? ["content", "amount", "dueDate", "invoiceImages"]
+            : ["content", "amount", "dueDate", "projectId", "taskId", "invoiceImages", "settlementDueDate"];
         for (const field of editableFields) {
             if (dto[field] !== undefined) {
                 (request as any)[field] = dto[field];
             }
+        }
+
+        if (dto.invoicePdfs !== undefined) {
+            let projectName = "";
+            const pid = dto.projectId !== undefined ? dto.projectId : request.projectId;
+            if (pid) {
+                try {
+                    const proj = await AppDataSource.getRepository(Projects).findOne({ where: { id: pid } });
+                    projectName = proj?.name || "";
+                } catch (pErr: any) {
+                    console.warn("[update] Không tìm thấy tên dự án:", pErr?.message);
+                }
+            }
+            request.invoicePdfs = await this.processGeneratedDocs(dto.invoicePdfs, { projectName });
         }
 
         if (dto.settlementDueDate !== undefined) {
@@ -865,10 +991,21 @@ export class PaymentRequestService {
         } else if (dto.invoiceImages !== undefined) {
             request.invoiceImages = dto.invoiceImages;
         }
+        let supplementProjectName = request.project?.name || "";
+        if (!supplementProjectName && request.projectId) {
+            try {
+                const proj = await AppDataSource.getRepository(Projects).findOne({ where: { id: request.projectId } });
+                supplementProjectName = proj?.name || "";
+            } catch (pErr: any) {
+                console.warn("[supplement] Không tìm thấy tên dự án:", pErr?.message);
+            }
+        }
+
         if (Array.isArray(dto.addInvoicePdfs) && dto.addInvoicePdfs.length) {
-            request.invoicePdfs = [...(request.invoicePdfs || []), ...dto.addInvoicePdfs];
+            const processedAdd = await this.processGeneratedDocs(dto.addInvoicePdfs, { projectName: supplementProjectName });
+            request.invoicePdfs = [...(request.invoicePdfs || []), ...processedAdd];
         } else if (dto.invoicePdfs !== undefined) {
-            request.invoicePdfs = dto.invoicePdfs;
+            request.invoicePdfs = await this.processGeneratedDocs(dto.invoicePdfs, { projectName: supplementProjectName });
         }
 
         // Quay lại hàng chờ Admin Sale duyệt
@@ -1520,7 +1657,9 @@ export class PaymentRequestService {
         if (query.search) {
             qb.andWhere("pr.content ILIKE :search", { search: `%${query.search}%` });
         }
-        if (isValidRequestType(query.type)) {
+        if (query.type === ("DIRECT_PAYMENT" as any)) {
+            qb.andWhere("pr.type != :advanceType", { advanceType: PaymentRequestType.ADVANCE });
+        } else if (isValidRequestType(query.type)) {
             qb.andWhere("pr.type = :type", { type: query.type });
         }
         if (query.projectId) {
@@ -1550,14 +1689,236 @@ export class PaymentRequestService {
             "COALESCE(SUM(pr.amount - COALESCE(pr.paidAmount, 0)), 0) AS total",
             "COALESCE(SUM(CASE WHEN pr.type = 'PROJECT' THEN (pr.amount - COALESCE(pr.paidAmount, 0)) ELSE 0 END), 0) AS project_debt",
             "COALESCE(SUM(CASE WHEN pr.type = 'OTHER_WORK' THEN (pr.amount - COALESCE(pr.paidAmount, 0)) ELSE 0 END), 0) AS other_work_debt",
-            "COALESCE(SUM(CASE WHEN pr.type = 'ADVANCE' THEN (pr.amount - COALESCE(pr.paidAmount, 0)) ELSE 0 END), 0) AS advance_debt"
+            "COALESCE(SUM(CASE WHEN pr.type = 'ADVANCE' THEN (pr.amount - COALESCE(pr.paidAmount, 0)) ELSE 0 END), 0) AS advance_debt",
+            "COALESCE(SUM(CASE WHEN pr.type != 'ADVANCE' THEN (pr.amount - COALESCE(pr.paidAmount, 0)) ELSE 0 END), 0) AS direct_payment_debt"
         ]).getRawOne();
 
         return {
             totalDebt: Number(raw?.total || 0),
             projectDebt: Number(raw?.project_debt || 0),
             otherWorkDebt: Number(raw?.other_work_debt || 0),
-            advanceDebt: Number(raw?.advance_debt || 0)
+            advanceDebt: Number(raw?.advance_debt || 0),
+            directPaymentDebt: Number(raw?.direct_payment_debt || 0)
+        };
+    }
+
+    async getDocPreviewData(id: string): Promise<any> {
+        const repo = AppDataSource.getRepository(PaymentRequests);
+        const request = await repo.findOne({
+            where: { id },
+            relations: ["requester", "project", "task"]
+        });
+
+        if (!request) {
+            throw new Error("Không tìm thấy yêu cầu thanh toán");
+        }
+
+        const d = request.createdAt ? new Date(request.createdAt) : new Date();
+        const requestDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+        let dueDate = "";
+        const targetDate = request.confirmedDueDate || request.dueDate || request.settlementDueDate;
+        if (targetDate) {
+            const dd = new Date(targetDate);
+            dueDate = `${String(dd.getDate()).padStart(2, '0')}/${String(dd.getMonth() + 1).padStart(2, '0')}/${dd.getFullYear()}`;
+        } else {
+            dueDate = requestDate;
+        }
+
+        const requesterName = request.requester?.fullName || "Người đề nghị";
+        const position = (request.requester as any)?.position || "Nhân viên";
+        const department = (request.requester as any)?.department || "Dự án";
+        const reason = request.content || "";
+        const amount = Number(request.amount) || 0;
+        const amountInWords = readMoneyToWords(amount, "");
+
+        const proofBillUrl =
+            (request.invoiceImages && request.invoiceImages[0]?.url) ||
+            (request.invoicePdfs && request.invoicePdfs.find((p: any) => p.docType !== "PAYMENT_REQUEST_DOC")?.url) ||
+            "";
+
+        // Lấy STT tiếp theo từ sheet
+        let nextStt = "01";
+        try {
+            const config = getGoogleConfig();
+            if (config.paymentRequestSpreadsheetId) {
+                const sheets = getGoogleSheetsClient();
+                const tabName = config.paymentRequestSheetTab || "TH_GIẤY ĐỀ NGHỊ THANH TOÁN";
+                const res = await sheets.spreadsheets.values.get({
+                    spreadsheetId: config.paymentRequestSpreadsheetId,
+                    range: `'${tabName}'!A:A`
+                });
+                const values = res.data.values || [];
+                const filled = values.slice(1).filter(r => r[0] && String(r[0]).trim());
+                nextStt = String(filled.length + 1).padStart(2, "0");
+            }
+        } catch (e: any) {
+            console.warn("[getDocPreviewData] Lỗi lấy STT từ Google Sheet:", e?.message);
+        }
+
+        const docService = new PaymentRequestDocumentService();
+        const standardFileName = docService.generateStandardFileName({
+            voucherNo: nextStt,
+            requesterName,
+            requestDate,
+            amount,
+            reason
+        });
+
+        return {
+            id: request.id,
+            stt: nextStt,
+            requesterName,
+            requestDate,
+            position,
+            department,
+            amount,
+            amountFormatted: amount.toLocaleString("vi-VN"),
+            amountInWords,
+            reason,
+            dueDate,
+            proofBillUrl,
+            standardFileName,
+            projectName: request.project?.name || "",
+            invoicePdfs: request.invoicePdfs || [],
+            type: request.type
+        };
+    }
+
+    async generateWordFile(id: string, customData?: any): Promise<{ buffer: Buffer; fileName: string }> {
+        const preview = await this.getDocPreviewData(id);
+        const docInput: FillPaymentRequestDocInput = {
+            voucherNo: customData?.stt || preview.stt,
+            requestDate: customData?.requestDate || preview.requestDate,
+            requesterName: customData?.requesterName || preview.requesterName,
+            position: customData?.position || preview.position,
+            department: customData?.department || preview.department,
+            amount: customData?.amount !== undefined ? customData.amount : preview.amount,
+            amountInWords: customData?.amountInWords || preview.amountInWords,
+            reason: customData?.reason || preview.reason,
+            dueDate: customData?.dueDate || preview.dueDate,
+            projectName: preview.projectName,
+            customFileName: customData?.customFileName
+        };
+
+        const docService = new PaymentRequestDocumentService();
+        const buffer = await docService.generateWordDocument(docInput);
+        const baseName = docService.generateStandardFileName(docInput);
+        const fileName = `${baseName}.docx`;
+
+        return { buffer, fileName };
+    }
+
+    async syncToGoogleSheet(
+        id: string,
+        customData?: Partial<PaymentRequestSheetRow> & { customFileName?: string }
+    ): Promise<{
+        success: boolean;
+        updatedRange: string;
+        spreadsheetUrl: string;
+        rowIndex: number;
+        message: string;
+        wordFileUrl?: string;
+        wordFileName?: string;
+    }> {
+        const preview = await this.getDocPreviewData(id);
+
+        const stt = customData?.stt ? String(customData.stt).padStart(2, "0") : preview.stt;
+        const requesterName = customData?.requesterName || preview.requesterName;
+        const requestDate = customData?.requestDate || preview.requestDate;
+        const position = customData?.position || preview.position;
+        const department = customData?.department || preview.department;
+        const amount = customData?.amount !== undefined ? customData.amount : preview.amount;
+        const amountInWords = customData?.amountInWords || preview.amountInWords;
+        const reason = customData?.reason || preview.reason;
+        const dueDate = customData?.dueDate || preview.dueDate;
+        const proofBillUrl = customData?.proofBillUrl || preview.proofBillUrl;
+
+        const docInput: FillPaymentRequestDocInput = {
+            voucherNo: stt,
+            requestDate,
+            requesterName,
+            position,
+            department,
+            amount,
+            amountInWords,
+            reason,
+            dueDate,
+            projectName: preview.projectName,
+            customFileName: customData?.customFileName
+        };
+
+        // Tái sử dụng link Google Drive đã có trong invoicePdfs nếu tồn tại, tránh sinh & upload trùng
+        const existingDriveDoc = (preview as any)?.invoicePdfs?.find?.(
+            (p: any) => p.docType === "PAYMENT_REQUEST_DOC" && p.url && (p.url.includes("drive.google.com") || p.url.includes("docs.google.com"))
+        );
+
+        let docResult: any = null;
+        let linkWord01 = customData?.linkWord01 || existingDriveDoc?.url || "";
+
+        if (!linkWord01) {
+            const docService = new PaymentRequestDocumentService();
+            try {
+                docResult = await docService.generateAndUploadToDrive(docInput);
+                if (docResult?.webViewLink) {
+                    linkWord01 = docResult.webViewLink;
+                }
+            } catch (docErr: any) {
+                console.warn("[syncToGoogleSheet] Google Drive upload không khả dụng:", docErr?.message);
+            }
+
+            if (!linkWord01) {
+                try {
+                    const buffer = await docService.generateWordDocument(docInput);
+                    const baseName = docService.generateStandardFileName(docInput);
+                    const fileNameWithExt = `${baseName}.docx`;
+                    const dummyFile: any = {
+                        buffer,
+                        originalname: fileNameWithExt,
+                        mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        size: buffer.length
+                    };
+                    const uploaded = await uploadToCloudinary(dummyFile, "ERP/PAYMENT_REQUESTS/documents");
+                    if (uploaded?.url) {
+                        linkWord01 = `https://docs.google.com/viewer?url=${encodeURIComponent(uploaded.url)}`;
+                    }
+                } catch (cloudErr: any) {
+                    console.error("[syncToGoogleSheet] Lỗi upload Cloudinary fallback:", cloudErr?.message);
+                }
+            }
+        }
+
+        const generateWordStatus = linkWord01 ? "TRUE" : (customData?.generateWordStatus || "FALSE");
+
+        const rowData: PaymentRequestSheetRow = {
+            stt,
+            requesterName,
+            requestDate,
+            position,
+            department,
+            amount,
+            amountInWords,
+            reason,
+            dueDate,
+            linkWord01,
+            linkWord02: customData?.linkWord02 || "",
+            linkWord03: customData?.linkWord03 || "",
+            generateWordStatus,
+            proofBillUrl
+        };
+
+        const googleSheetService = new GoogleSheetService();
+        const result = await googleSheetService.appendPaymentRequestRow(rowData);
+
+        return {
+            success: true,
+            updatedRange: result.updatedRange,
+            spreadsheetUrl: result.spreadsheetUrl,
+            rowIndex: result.rowIndex,
+            wordFileUrl: linkWord01 || undefined,
+            wordFileName: docResult?.fileName ? `${docResult.fileName}.docx` : undefined,
+            message: `Đã đồng bộ thành công vào dòng ${result.rowIndex} của tab TH_GIẤY ĐỀ NGHỊ THANH TOÁN`
         };
     }
 }
+
