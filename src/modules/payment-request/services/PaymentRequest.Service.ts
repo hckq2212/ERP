@@ -8,12 +8,16 @@ import {
     PaymentMethod,
     CashVoucherInfo,
     PaymentRequestFile,
-    PaymentRequestHistoryEntry
+    PaymentRequestHistoryEntry,
+    PaymentSettlementStatus,
+    PaymentTransactionRecord
 } from "../entities/PaymentRequest.entity";
 import { Tasks } from "../../task/entities/Task.entity";
 import { Users } from "../../user/entities/User.entity";
+import { Projects } from "../../project/entities/Project.entity";
 import { UserRole } from "../../account/entities/Account.entity";
 import { NotificationService } from "../../notification/services/Notification.Service";
+import crypto from "crypto";
 
 const DUE_SOON_DAYS = 3;
 
@@ -21,11 +25,19 @@ const DUE_SOON_DAYS = 3;
 const REVIEWER_NOTIFY_ROLES: UserRole[] = [UserRole.ADMIN_SALE, UserRole.ADMIN];
 const BOD_NOTIFY_ROLES: UserRole[] = [UserRole.BOD, UserRole.ADMIN];
 
+/**
+ * Giả định vai trò Kế toán / Kiểm soát tài chính trong hệ thống Getvini ERP:
+ * Hiện tại hệ thống phân quyền phân công ADMIN_SALE làm bộ phận Kế toán / Kiểm soát thanh toán,
+ * cùng với BOD (Ban giám đốc) và ADMIN (Quản trị hệ thống) có toàn quyền tài chính.
+ */
+export const ACCOUNTANT_ROLES: UserRole[] = [UserRole.ADMIN_SALE, UserRole.ADMIN, UserRole.BOD];
+
 export interface PaymentRequestQuery {
     search?: string;
     type?: PaymentRequestType;
     approvalStatus?: PaymentRequestApprovalStatus;
     paymentStatus?: PaymentDueStatus;
+    settlementStatus?: PaymentSettlementStatus;
     projectId?: string;
     fromDate?: string;
     toDate?: string;
@@ -41,6 +53,27 @@ export interface PaymentRequestViewer {
     role: string;
 }
 
+export interface RecordPaymentDTO {
+    paidAmountThisTime?: number | string;
+    paymentMethod: PaymentMethod | string;
+    cashVoucherInfo?: CashVoucherInfo;
+    paymentProofs?: PaymentRequestFile[];
+    note?: string;
+}
+
+export interface SubmitSettlementDTO {
+    settledAmount: number | string;
+    settlementFiles?: PaymentRequestFile[];
+    settlementNote?: string;
+}
+
+export interface ApproveSettlementDTO {
+    note?: string;
+    refundConfirmed?: boolean;
+    refundPaymentMethod?: string;
+    refundProofFiles?: PaymentRequestFile[];
+}
+
 // Vai trò được xem toàn bộ yêu cầu thanh toán (không giới hạn theo người tạo)
 const FULL_VISIBILITY_ROLES: UserRole[] = [UserRole.ADMIN_SALE, UserRole.BOD, UserRole.ADMIN];
 
@@ -52,20 +85,35 @@ const canViewRequest = (request: PaymentRequests, viewer?: PaymentRequestViewer)
     return request.requesterId === viewer.userId;
 };
 
-const computePaymentStatus = (request: PaymentRequests): PaymentDueStatus => {
-    if (request.paidAt || request.paymentStatus === PaymentDueStatus.PAID) {
-        return PaymentDueStatus.PAID;
-    }
-
+export const computePaymentStatus = (request: PaymentRequests): PaymentDueStatus => {
+    // 1. Kiểm tra trạng thái từ chối hoặc hủy bỏ trước tiên
     if ([PaymentRequestApprovalStatus.REJECTED, PaymentRequestApprovalStatus.CANCELLED].includes(request.approvalStatus)) {
         return PaymentDueStatus.NOT_APPLICABLE;
     }
 
+    // 2. Đã chi đủ 100% (bao gồm cả trường hợp chi bù sau quyết toán: paidAmount >= amount)
+    const isFullyPaid = Math.round(Number(request.paidAmount || 0)) >= Math.round(Number(request.amount))
+        || Boolean(request.paidAt)
+        || request.paymentStatus === PaymentDueStatus.PAID;
+    if (isFullyPaid) {
+        return PaymentDueStatus.PAID;
+    }
+
+    // 3. Đã chi một phần (lũy kế > 0 nhưng chưa đạt 100%)
+    const isPartiallyPaid = Math.round(Number(request.paidAmount || 0)) > 0 && Math.round(Number(request.paidAmount || 0)) < Math.round(Number(request.amount));
+    if (isPartiallyPaid || request.paymentStatus === PaymentDueStatus.PARTIALLY_PAID) {
+        return PaymentDueStatus.PARTIALLY_PAID;
+    }
+
+    // 4. Chưa được BOD phê duyệt
     if (request.approvalStatus !== PaymentRequestApprovalStatus.APPROVED) {
         return PaymentDueStatus.WAITING;
     }
 
+    // 5. Đã duyệt, đang chờ chi tiền -> tính theo hạn thanh toán
     const effectiveDueDate = request.confirmedDueDate || request.dueDate;
+    if (!effectiveDueDate) return PaymentDueStatus.WAITING;
+
     const dueDate = new Date(effectiveDueDate);
     const now = new Date();
     const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -73,6 +121,26 @@ const computePaymentStatus = (request: PaymentRequests): PaymentDueStatus => {
     if (diffDays < 0) return PaymentDueStatus.OVERDUE;
     if (diffDays <= DUE_SOON_DAYS) return PaymentDueStatus.DUE_SOON;
     return PaymentDueStatus.WAITING;
+};
+
+export const computeIsOverdue = (request: PaymentRequests): boolean => {
+    // Không tính quá hạn nếu phiếu bị từ chối hoặc hủy bỏ
+    if ([PaymentRequestApprovalStatus.REJECTED, PaymentRequestApprovalStatus.CANCELLED].includes(request.approvalStatus)) {
+        return false;
+    }
+    // Không tính quá hạn nếu đã chi đủ
+    const isFullyPaid = Math.round(Number(request.paidAmount || 0)) >= Math.round(Number(request.amount))
+        || Boolean(request.paidAt)
+        || request.paymentStatus === PaymentDueStatus.PAID;
+    if (isFullyPaid) {
+        return false;
+    }
+    const effectiveDueDate = request.confirmedDueDate || request.dueDate;
+    if (!effectiveDueDate) return false;
+    const dueDate = new Date(effectiveDueDate);
+    const now = new Date();
+    const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays < 0;
 };
 
 const REVIEWER_ROLES: UserRole[] = [UserRole.ADMIN_SALE];
@@ -142,6 +210,189 @@ export class PaymentRequestService {
         }, manager);
     }
 
+    async getServiceBudgetInfo(projectId: string, taskId: string, excludeRequestId?: string) {
+        const task = await this.taskRepo.findOne({
+            where: { id: taskId },
+            relations: [
+                "contractService",
+                "contractService.service",
+                "opportunityServiceJob",
+                "opportunityServiceJob.opportunityService",
+                "opportunityServiceJob.opportunityService.service"
+            ]
+        });
+        if (!task) throw new Error("Không tìm thấy công việc");
+
+        const contractService = task.contractService;
+        const oppService = task.opportunityServiceJob?.opportunityService;
+        const service = contractService?.service || oppService?.service;
+        const serviceId = service?.id || contractService?.serviceId || oppService?.serviceId;
+        const serviceName = service?.name || contractService?.name || "Dịch vụ dự án";
+
+        if (!serviceId && !contractService?.name) {
+            return {
+                hasService: false,
+                serviceId: null,
+                serviceName: null,
+                itemContractServiceId: null,
+                itemServiceName: null,
+                hasItemBudget: false,
+                itemBudget: 0,
+                itemSpent: 0,
+                remainingItemBudget: 0,
+                hasTotalServiceBudget: false,
+                totalServiceBudget: 0,
+                totalServiceSpent: 0,
+                remainingTotalServiceBudget: 0
+            };
+        }
+
+        const projectRepo = AppDataSource.getRepository(Projects);
+        const project = await projectRepo.findOne({
+            where: { id: projectId },
+            relations: ["contract", "contract.services", "contract.services.service"]
+        });
+
+        const allProjectTasks = await this.taskRepo.find({
+            where: { project: { id: projectId } },
+            relations: [
+                "contractService",
+                "contractService.service",
+                "opportunityServiceJob",
+                "opportunityServiceJob.opportunityService",
+                "opportunityServiceJob.opportunityService.service"
+            ]
+        });
+
+        // --- TẦNG 1: Dòng hạng mục cụ thể mà task đang liên kết trực tiếp ---
+        const itemBudget = Math.round(Number(contractService?.budget || 0));
+        const hasItemBudget = itemBudget > 0;
+        let itemSpent = 0;
+
+        if (contractService?.id) {
+            const itemTaskIds = allProjectTasks
+                .filter((t) => t.contractService?.id === contractService.id)
+                .map((t) => t.id);
+
+            if (itemTaskIds.length > 0) {
+                const qbItem = this.repo.createQueryBuilder("pr")
+                    .where("pr.projectId = :projectId", { projectId })
+                    .andWhere("pr.taskId IN (:...taskIds)", { taskIds: itemTaskIds })
+                    .andWhere("pr.approvalStatus NOT IN (:...excluded)", {
+                        excluded: [PaymentRequestApprovalStatus.REJECTED, PaymentRequestApprovalStatus.CANCELLED]
+                    });
+                if (excludeRequestId) {
+                    qbItem.andWhere("pr.id != :excludeId", { excludeId: excludeRequestId });
+                }
+
+                const itemList = await qbItem.getMany();
+                itemSpent = itemList.reduce((sum, item) => {
+                    const effAmount = (item.type === PaymentRequestType.ADVANCE && item.settlementStatus === PaymentSettlementStatus.SETTLED && item.settledAmount != null)
+                        ? Math.round(Number(item.settledAmount))
+                        : Math.round(Number(item.amount || 0));
+                    return sum + effAmount;
+                }, 0);
+            }
+        }
+
+        // --- TẦNG 2: Tổng nhóm dịch vụ này trong toàn dự án (gom các dòng cùng loại) ---
+        let totalServiceBudget = 0;
+        let hasTotalServiceBudget = false;
+
+        if (project?.contract?.services) {
+            const matchingServices = project.contract.services.filter((cs) => {
+                const csServiceId = cs.serviceId || cs.service?.id;
+                if (serviceId && csServiceId && csServiceId === serviceId) return true;
+                if (!serviceId && contractService?.name && cs.name === contractService.name) return true;
+                return false;
+            });
+
+            matchingServices.forEach((cs) => {
+                const b = Math.round(Number(cs.budget || 0));
+                if (b > 0) {
+                    totalServiceBudget += b;
+                    hasTotalServiceBudget = true;
+                }
+            });
+        }
+
+        const matchingGroupTaskIds = allProjectTasks.filter((t) => {
+            const tServiceId = t.contractService?.serviceId ||
+                t.contractService?.service?.id ||
+                t.opportunityServiceJob?.opportunityService?.serviceId ||
+                t.opportunityServiceJob?.opportunityService?.service?.id;
+
+            if (serviceId && tServiceId === serviceId) return true;
+            if (!serviceId && contractService?.name && t.contractService?.name === contractService.name) return true;
+            return false;
+        }).map((t) => t.id);
+
+        let totalServiceSpent = 0;
+        if (matchingGroupTaskIds.length > 0) {
+            const qbGroup = this.repo.createQueryBuilder("pr")
+                .where("pr.projectId = :projectId", { projectId })
+                .andWhere("pr.taskId IN (:...taskIds)", { taskIds: matchingGroupTaskIds })
+                .andWhere("pr.approvalStatus NOT IN (:...excluded)", {
+                    excluded: [PaymentRequestApprovalStatus.REJECTED, PaymentRequestApprovalStatus.CANCELLED]
+                });
+            if (excludeRequestId) {
+                qbGroup.andWhere("pr.id != :excludeId", { excludeId: excludeRequestId });
+            }
+
+            const groupList = await qbGroup.getMany();
+            totalServiceSpent = groupList.reduce((sum, item) => {
+                const effAmount = (item.type === PaymentRequestType.ADVANCE && item.settlementStatus === PaymentSettlementStatus.SETTLED && item.settledAmount != null)
+                    ? Math.round(Number(item.settledAmount))
+                    : Math.round(Number(item.amount || 0));
+                return sum + effAmount;
+            }, 0);
+        }
+
+        return {
+            hasService: true,
+            serviceId: serviceId || null,
+            serviceName,
+            // Tầng 1
+            itemContractServiceId: contractService?.id || null,
+            itemServiceName: contractService?.name || serviceName,
+            hasItemBudget,
+            itemBudget,
+            itemSpent,
+            remainingItemBudget: hasItemBudget ? (itemBudget - itemSpent) : 0,
+            // Tầng 2
+            hasTotalServiceBudget,
+            totalServiceBudget,
+            totalServiceSpent,
+            remainingTotalServiceBudget: hasTotalServiceBudget ? (totalServiceBudget - totalServiceSpent) : 0
+        };
+    }
+
+    private async validateBudgetReason(
+        type: PaymentRequestType,
+        projectId: string | null | undefined,
+        taskId: string | null | undefined,
+        amount: number,
+        overBudgetReason: string | null | undefined,
+        excludeRequestId?: string
+    ): Promise<string | null> {
+        if ([PaymentRequestType.PROJECT, PaymentRequestType.ADVANCE].includes(type) && projectId && taskId) {
+            const budgetInfo = await this.getServiceBudgetInfo(projectId, taskId, excludeRequestId);
+            if (budgetInfo.hasTotalServiceBudget) {
+                const isOver = Math.round(Number(amount)) > Math.round(Number(budgetInfo.remainingTotalServiceBudget)) || budgetInfo.remainingTotalServiceBudget <= 0;
+                if (isOver) {
+                    if (!overBudgetReason || !overBudgetReason.trim()) {
+                        throw new Error("Yêu cầu thanh toán vượt ngân sách dịch vụ dự án. Vui lòng nhập lý do giải trình.");
+                    }
+                    return overBudgetReason.trim();
+                }
+            }
+            if (overBudgetReason && overBudgetReason.trim()) {
+                return overBudgetReason.trim();
+            }
+        }
+        return overBudgetReason?.trim() || null;
+    }
+
     async create(dto: any, requesterId: string) {
         if (!dto.type || !Object.values(PaymentRequestType).includes(dto.type)) {
             throw new Error("Loại thanh toán không hợp lệ");
@@ -177,14 +428,26 @@ export class PaymentRequestService {
         request.approvalStatus = PaymentRequestApprovalStatus.PENDING_REVIEWER;
         request.paymentStatus = PaymentDueStatus.WAITING;
 
-        if (dto.type === PaymentRequestType.PROJECT) {
+        if (dto.type === PaymentRequestType.PROJECT || (dto.type === PaymentRequestType.ADVANCE && dto.projectId)) {
             if (!dto.projectId) {
                 throw new Error("Vui lòng chọn dự án");
             }
             if (!dto.taskId) {
                 throw new Error("Vui lòng chọn công việc thuộc dự án");
             }
-            const task = await this.taskRepo.findOne({ where: { id: dto.taskId }, relations: ["project", "assignee"] });
+            const task = await this.taskRepo.findOne({
+                where: { id: dto.taskId },
+                relations: [
+                    "project",
+                    "assignee",
+                    "contractService",
+                    "contractService.service",
+                    "opportunityServiceJob",
+                    "opportunityServiceJob.opportunityService",
+                    "opportunityServiceJob.opportunityService.service",
+                    "mappedService"
+                ]
+            });
             if (!task) {
                 throw new Error("Không tìm thấy công việc");
             }
@@ -193,6 +456,17 @@ export class PaymentRequestService {
             }
             if (!task.assigneeId || task.assigneeId !== requesterId) {
                 throw new Error("Công việc này không được giao cho bạn");
+            }
+
+            const hasServiceRelation = Boolean(task.contractService || task.mappedService || task.opportunityServiceJob);
+            const isBudgetEnabled = (
+                task.contractService?.service?.isBudget === true ||
+                (task.contractService as any)?.isBudget === true ||
+                task.opportunityServiceJob?.opportunityService?.service?.isBudget === true ||
+                task.mappedService?.isBudget === true
+            );
+            if (hasServiceRelation && !isBudgetEnabled) {
+                throw new Error("Công việc đã chọn không thuộc dịch vụ có quản lý ngân sách (isBudget = true)");
             }
             request.costPrice = task.cost;
         } else if (dto.type === PaymentRequestType.OTHER_WORK && dto.taskId) {
@@ -209,6 +483,19 @@ export class PaymentRequestService {
             request.costPrice = task.cost;
         }
 
+        if (dto.type === PaymentRequestType.ADVANCE) {
+            request.settlementStatus = PaymentSettlementStatus.PENDING;
+            request.settlementDueDate = dto.settlementDueDate ? new Date(dto.settlementDueDate) : null;
+        }
+
+        request.overBudgetReason = await this.validateBudgetReason(
+            dto.type,
+            dto.projectId,
+            dto.taskId,
+            Number(dto.amount),
+            dto.overBudgetReason
+        );
+
         this.pushHistory(request, {
             action: "CREATED",
             byId: requesterId,
@@ -217,7 +504,9 @@ export class PaymentRequestService {
                 amount: request.amount,
                 dueDate: request.dueDate,
                 invoiceImages: request.invoiceImages,
-                invoicePdfs: request.invoicePdfs
+                invoicePdfs: request.invoicePdfs,
+                settlementDueDate: request.settlementDueDate,
+                overBudgetReason: request.overBudgetReason
             }
         });
 
@@ -318,6 +607,9 @@ export class PaymentRequestService {
         if (query.approvalStatus) {
             qb.andWhere("pr.approvalStatus = :approvalStatus", { approvalStatus: query.approvalStatus });
         }
+        if (query.settlementStatus) {
+            qb.andWhere("pr.settlementStatus = :settlementStatus", { settlementStatus: query.settlementStatus });
+        }
         if (query.projectId) {
             qb.andWhere("pr.projectId = :projectId", { projectId: query.projectId });
         }
@@ -351,6 +643,7 @@ export class PaymentRequestService {
 
         const withComputedStatus = results.map((request) => {
             request.paymentStatus = computePaymentStatus(request);
+            (request as any).isOverdue = computeIsOverdue(request);
             return request;
         });
 
@@ -368,6 +661,7 @@ export class PaymentRequestService {
             throw new Error("Bạn không có quyền xem yêu cầu thanh toán này");
         }
         request.paymentStatus = computePaymentStatus(request);
+        (request as any).isOverdue = computeIsOverdue(request);
         return request;
     }
 
@@ -390,17 +684,33 @@ export class PaymentRequestService {
             throw new Error("Yêu cầu thanh toán đã được xử lý, không thể sửa nội dung");
         }
 
+        // Chặn sửa amount thấp hơn paidAmount nếu phiếu đã có giải ngân
+        if (dto.amount !== undefined) {
+            const newAmount = Math.round(Number(dto.amount));
+            if (newAmount <= 0) {
+                throw new Error("Số tiền thanh toán phải lớn hơn 0");
+            }
+            const currentPaid = Math.round(Number(request.paidAmount || 0));
+            if (currentPaid > 0 && newAmount < currentPaid) {
+                throw new Error(`Không thể giảm số tiền yêu cầu thanh toán (${newAmount.toLocaleString("vi-VN")}đ) thấp hơn số tiền đã chi (${currentPaid.toLocaleString("vi-VN")}đ)`);
+            }
+        }
+
         // Yêu cầu thuê vendor (hệ thống tự tạo khi giao task cho vendor) gắn cố định với dự án/công việc/vendor:
         // chỉ cho sửa nội dung, số tiền, hạn, hoá đơn — không cho đổi loại, dự án hay công việc.
         const isVendorLinked = Boolean(request.vendorId);
 
         const editableFields = isVendorLinked
             ? ["content", "amount", "dueDate", "invoiceImages", "invoicePdfs"]
-            : ["content", "amount", "dueDate", "projectId", "taskId", "invoiceImages", "invoicePdfs"];
+            : ["content", "amount", "dueDate", "projectId", "taskId", "invoiceImages", "invoicePdfs", "settlementDueDate"];
         for (const field of editableFields) {
             if (dto[field] !== undefined) {
                 (request as any)[field] = dto[field];
             }
+        }
+
+        if (dto.settlementDueDate !== undefined) {
+            request.settlementDueDate = dto.settlementDueDate ? new Date(dto.settlementDueDate) : null;
         }
 
         if (dto.type !== undefined && !isVendorLinked) {
@@ -410,11 +720,23 @@ export class PaymentRequestService {
             request.type = dto.type;
         }
 
-        if (request.type === PaymentRequestType.PROJECT) {
+        if (request.type === PaymentRequestType.PROJECT || (request.type === PaymentRequestType.ADVANCE && request.projectId)) {
             if (!request.taskId) {
                 throw new Error("Vui lòng chọn công việc thuộc dự án");
             }
-            const task = await this.taskRepo.findOne({ where: { id: request.taskId }, relations: ["project", "vendor"] });
+            const task = await this.taskRepo.findOne({
+                where: { id: request.taskId },
+                relations: [
+                    "project",
+                    "vendor",
+                    "contractService",
+                    "contractService.service",
+                    "opportunityServiceJob",
+                    "opportunityServiceJob.opportunityService",
+                    "opportunityServiceJob.opportunityService.service",
+                    "mappedService"
+                ]
+            });
             if (!task) {
                 throw new Error("Không tìm thấy công việc");
             }
@@ -428,6 +750,17 @@ export class PaymentRequestService {
                 }
             } else if (!task.assigneeId || task.assigneeId !== request.requesterId) {
                 throw new Error("Công việc này không được giao cho bạn");
+            }
+
+            const hasServiceRelation = Boolean(task.contractService || task.mappedService || task.opportunityServiceJob);
+            const isBudgetEnabled = (
+                task.contractService?.service?.isBudget === true ||
+                (task.contractService as any)?.isBudget === true ||
+                task.opportunityServiceJob?.opportunityService?.service?.isBudget === true ||
+                task.mappedService?.isBudget === true
+            );
+            if (hasServiceRelation && !isBudgetEnabled) {
+                throw new Error("Chỉ được tạo yêu cầu thanh toán cho công việc thuộc dịch vụ có quản lý ngân sách (isBudget = true)");
             }
             request.costPrice = task.cost;
         } else if (request.type === PaymentRequestType.OTHER_WORK && request.taskId) {
@@ -443,6 +776,21 @@ export class PaymentRequestService {
             }
             request.costPrice = task.cost;
         }
+
+        const effectiveType = dto.type || request.type;
+        const effectiveProjectId = dto.projectId !== undefined ? dto.projectId : request.projectId;
+        const effectiveTaskId = dto.taskId !== undefined ? dto.taskId : request.taskId;
+        const effectiveAmount = dto.amount !== undefined ? Number(dto.amount) : Number(request.amount);
+        const effectiveReason = dto.overBudgetReason !== undefined ? dto.overBudgetReason : request.overBudgetReason;
+
+        request.overBudgetReason = await this.validateBudgetReason(
+            effectiveType,
+            effectiveProjectId,
+            effectiveTaskId,
+            effectiveAmount,
+            effectiveReason,
+            id
+        );
 
         return await this.repo.save(request);
     }
@@ -708,48 +1056,325 @@ export class PaymentRequestService {
         return saved;
     }
 
+    async recordPayment(
+        id: string,
+        dto: RecordPaymentDTO,
+        payerId: string,
+        payerRole: string,
+        payerName?: string
+    ) {
+        if (!ACCOUNTANT_ROLES.includes(payerRole as UserRole)) {
+            throw new Error("Bạn không có quyền thực hiện chi tiền thanh toán");
+        }
+
+        return await AppDataSource.transaction(async (manager) => {
+            const request = await manager.getRepository(PaymentRequests)
+                .createQueryBuilder("pr")
+                .setLock("pessimistic_write")
+                .where("pr.id = :id", { id })
+                .getOne();
+
+            if (!request) throw new Error("Không tìm thấy yêu cầu thanh toán");
+
+            if (request.approvalStatus !== PaymentRequestApprovalStatus.APPROVED) {
+                throw new Error("Yêu cầu thanh toán chưa được phê duyệt, không thể chi tiền");
+            }
+
+            const totalRequired = Math.round(Number(request.amount));
+            const currentPaid = Math.round(Number(request.paidAmount || 0));
+            const remainingToPay = totalRequired - currentPaid;
+
+            if (remainingToPay <= 0) {
+                throw new Error("Yêu cầu này đã được thanh toán đủ toàn bộ số tiền");
+            }
+
+            let payThisTime: number;
+            if (dto.paidAmountThisTime !== undefined) {
+                payThisTime = Math.round(Number(dto.paidAmountThisTime));
+                if (payThisTime <= 0) {
+                    throw new Error("Số tiền chi đợt này phải lớn hơn 0");
+                }
+                if (payThisTime > remainingToPay) {
+                    throw new Error(`Số tiền chi đợt này (${payThisTime.toLocaleString("vi-VN")}đ) không được vượt quá số tiền còn lại (${remainingToPay.toLocaleString("vi-VN")}đ)`);
+                }
+            } else {
+                payThisTime = remainingToPay;
+            }
+
+            const proofFiles = Array.isArray(dto.paymentProofs) && dto.paymentProofs.length > 0
+                ? dto.paymentProofs.map((f) => ({ ...f, uploadedAt: f.uploadedAt || new Date().toISOString() }))
+                : [];
+
+            if (proofFiles.length === 0) {
+                throw new Error("Vui lòng tải lên ảnh/PDF minh chứng đã chi tiền");
+            }
+
+            const newPaidAmount = currentPaid + payThisTime;
+            const txn: PaymentTransactionRecord = {
+                id: crypto.randomUUID(),
+                amount: payThisTime,
+                paidAt: new Date().toISOString(),
+                payerId,
+                payerName,
+                paymentMethod: (dto.paymentMethod as string) || "BANK_TRANSFER",
+                cashVoucherInfo: dto.cashVoucherInfo,
+                proofFiles,
+                note: dto.note
+            };
+
+            request.paidAmount = newPaidAmount;
+            request.paymentTransactions = [...(request.paymentTransactions || []), txn];
+            request.paymentProofs = [...(request.paymentProofs || []), ...proofFiles];
+            if (dto.paymentMethod) request.paymentMethod = dto.paymentMethod as PaymentMethod;
+            if (dto.cashVoucherInfo) request.cashVoucherInfo = dto.cashVoucherInfo;
+
+            if (newPaidAmount >= totalRequired) {
+                request.paymentStatus = PaymentDueStatus.PAID;
+                request.paidAt = new Date();
+                if (request.type === PaymentRequestType.ADVANCE) {
+                    request.settlementStatus = PaymentSettlementStatus.WAITING_SETTLEMENT;
+                }
+            } else {
+                request.paymentStatus = PaymentDueStatus.PARTIALLY_PAID;
+            }
+
+            this.pushHistory(request, {
+                action: "PAID_INSTALLMENT",
+                byId: payerId,
+                note: `Chi đợt: ${payThisTime.toLocaleString("vi-VN")}đ (Lũy kế: ${newPaidAmount.toLocaleString("vi-VN")}/${totalRequired.toLocaleString("vi-VN")}đ)`
+            });
+
+            const saved = await manager.getRepository(PaymentRequests).save(request);
+
+            if (newPaidAmount >= totalRequired) {
+                await this.notifyUser(saved.requesterId, {
+                    title: "Yêu cầu thanh toán đã được chi đủ",
+                    content: `Yêu cầu thanh toán "${saved.content}" đã được chi đủ toàn bộ số tiền (${newPaidAmount.toLocaleString("vi-VN")}đ).`,
+                    type: "PAYMENT_REQUEST_PAID",
+                    relatedEntityId: saved.id,
+                    link: `/payment-requests/${saved.id}`
+                }, manager);
+            } else {
+                await this.notifyUser(saved.requesterId, {
+                    title: "Yêu cầu thanh toán đã được chi một phần",
+                    content: `Yêu cầu thanh toán "${saved.content}" vừa được chi thêm ${payThisTime.toLocaleString("vi-VN")}đ (Đã nhận: ${newPaidAmount.toLocaleString("vi-VN")}/${totalRequired.toLocaleString("vi-VN")}đ).`,
+                    type: "PAYMENT_REQUEST_PAID_PARTIAL",
+                    relatedEntityId: saved.id,
+                    link: `/payment-requests/${saved.id}`
+                }, manager);
+            }
+
+            return saved;
+        });
+    }
+
+    async submitSettlement(id: string, dto: SubmitSettlementDTO, requesterId: string) {
+        return await AppDataSource.transaction(async (manager) => {
+            const request = await manager.getRepository(PaymentRequests)
+                .createQueryBuilder("pr")
+                .setLock("pessimistic_write")
+                .where("pr.id = :id", { id })
+                .getOne();
+
+            if (!request) throw new Error("Không tìm thấy yêu cầu thanh toán");
+            if (request.type !== PaymentRequestType.ADVANCE) {
+                throw new Error("Chỉ áp dụng quyết toán cho yêu cầu Tạm ứng");
+            }
+            if (request.requesterId !== requesterId) {
+                throw new Error("Chỉ người tạo phiếu tạm ứng mới có quyền nộp quyết toán");
+            }
+            if (Math.round(Number(request.paidAmount || 0)) < Math.round(Number(request.amount))) {
+                throw new Error("Phiếu tạm ứng chưa được chi đủ toàn bộ số tiền, không thể nộp quyết toán");
+            }
+            if (request.settlementStatus !== PaymentSettlementStatus.WAITING_SETTLEMENT) {
+                throw new Error("Phiếu không ở trạng thái chờ nộp quyết toán (WAITING_SETTLEMENT)");
+            }
+
+            const settledAmount = Math.round(Number(dto.settledAmount));
+            if (isNaN(settledAmount) || settledAmount < 0) {
+                throw new Error("Tổng tiền thực chi không hợp lệ và không được âm");
+            }
+
+            const paidAmount = Math.round(Number(request.paidAmount || 0));
+            request.settledAmount = settledAmount;
+            request.settlementDifference = settledAmount - paidAmount;
+            request.settlementFiles = (dto.settlementFiles || []).map((f) => ({ ...f, uploadedAt: f.uploadedAt || new Date().toISOString() }));
+            request.settlementNote = dto.settlementNote || null;
+            request.settlementStatus = PaymentSettlementStatus.SETTLEMENT_SUBMITTED;
+
+            this.pushHistory(request, {
+                action: "SUBMIT_SETTLEMENT",
+                byId: requesterId,
+                note: `Nộp hồ sơ quyết toán: Thực chi ${settledAmount.toLocaleString("vi-VN")}đ (Chênh lệch: ${request.settlementDifference.toLocaleString("vi-VN")}đ)`
+            });
+
+            const saved = await manager.getRepository(PaymentRequests).save(request);
+
+            await this.notifyRoles(ACCOUNTANT_ROLES, {
+                title: "Hồ sơ quyết toán tạm ứng mới",
+                content: `Nhân sự đã nộp quyết toán cho phiếu tạm ứng: ${saved.content} (Thực chi: ${settledAmount.toLocaleString("vi-VN")}đ, Chênh lệch: ${request.settlementDifference.toLocaleString("vi-VN")}đ)`,
+                type: "PAYMENT_REQUEST_SETTLEMENT_SUBMITTED",
+                relatedEntityId: saved.id,
+                link: `/payment-requests/${saved.id}`,
+                excludeUserId: requesterId
+            }, manager);
+
+            return saved;
+        });
+    }
+
+    async approveSettlement(
+        id: string,
+        reviewerId: string,
+        reviewerRole: string,
+        reviewerName: string | undefined,
+        dto: ApproveSettlementDTO
+    ) {
+        return await AppDataSource.transaction(async (manager) => {
+            const request = await manager.getRepository(PaymentRequests)
+                .createQueryBuilder("pr")
+                .setLock("pessimistic_write")
+                .where("pr.id = :id", { id })
+                .getOne();
+
+            if (!request) throw new Error("Không tìm thấy yêu cầu thanh toán");
+
+            if (!ACCOUNTANT_ROLES.includes(reviewerRole as UserRole)) {
+                throw new Error("Bạn không có quyền phê duyệt quyết toán hoàn ứng");
+            }
+
+            if (request.requesterId === reviewerId) {
+                throw new Error("Người tạo phiếu không được tự phê duyệt quyết toán của chính mình");
+            }
+
+            if (request.settlementStatus !== PaymentSettlementStatus.SETTLEMENT_SUBMITTED) {
+                throw new Error("Phiếu chưa ở trạng thái chờ duyệt quyết toán");
+            }
+
+            const diff = Math.round(Number(request.settlementDifference || 0));
+            if (diff !== 0 && !dto.refundConfirmed) {
+                const msg = diff < 0
+                    ? `Vui lòng xác nhận Kế toán đã thu đủ số tiền thừa (${Math.abs(diff).toLocaleString("vi-VN")}đ) trước khi duyệt`
+                    : `Vui lòng xác nhận Kế toán đã chi bù số tiền thiếu (${diff.toLocaleString("vi-VN")}đ) trước khi duyệt`;
+                throw new Error(msg);
+            }
+
+            // Ghi nhận nghiệp vụ: Khi diff < 0 (thu hồi tiền thừa về quỹ), Phase 1 kế toán xác nhận qua refundConfirmed và ghi history.
+            // Chức năng upload chứng từ hoàn tiền thừa (refundReceiptFiles) được quy hoạch ở Phase 2 mở rộng.
+
+            // Tự động khớp sổ quỹ khi chi bù:
+            if (diff > 0) {
+                if (!dto.refundProofFiles || dto.refundProofFiles.length === 0) {
+                    throw new Error("Bắt buộc tải lên chứng từ chi bù (phiếu chi/ủy nhiệm chi) khi chi bù hoàn ứng");
+                }
+                const reimbursementTxn: PaymentTransactionRecord = {
+                    id: crypto.randomUUID(),
+                    amount: diff,
+                    paidAt: new Date().toISOString(),
+                    payerId: reviewerId,
+                    payerName: reviewerName,
+                    paymentMethod: dto.refundPaymentMethod || "BANK_TRANSFER",
+                    proofFiles: dto.refundProofFiles.map((f) => ({ ...f, uploadedAt: f.uploadedAt || new Date().toISOString() })),
+                    note: `Chi bù quyết toán hoàn ứng: ${diff.toLocaleString("vi-VN")}đ`
+                };
+                request.paymentTransactions = [...(request.paymentTransactions || []), reimbursementTxn];
+                request.paymentProofs = [...(request.paymentProofs || []), ...reimbursementTxn.proofFiles];
+                request.paidAmount = Math.round(Number(request.paidAmount || 0)) + diff;
+            }
+
+            request.settlementRefundConfirmed = Boolean(dto.refundConfirmed);
+            request.settlementStatus = PaymentSettlementStatus.SETTLED;
+
+            const historyNote = diff < 0
+                ? `Duyệt quyết toán thành công. (Đã thu hồi tiền thừa: ${Math.abs(diff).toLocaleString("vi-VN")}đ)${dto.note ? ` - Ghi chú: ${dto.note}` : ""}`
+                : diff > 0
+                    ? `Duyệt quyết toán thành công. (Đã chi bù: ${diff.toLocaleString("vi-VN")}đ)${dto.note ? ` - Ghi chú: ${dto.note}` : ""}`
+                    : `Duyệt quyết toán thành công (Khớp 100% tạm ứng)${dto.note ? ` - Ghi chú: ${dto.note}` : ""}`;
+
+            this.pushHistory(request, {
+                action: "APPROVE_SETTLEMENT",
+                byId: reviewerId,
+                note: historyNote
+            });
+
+            const saved = await manager.getRepository(PaymentRequests).save(request);
+
+            await this.notifyUser(saved.requesterId, {
+                title: "Quyết toán hoàn ứng đã được duyệt",
+                content: `Hồ sơ quyết toán cho phiếu "${saved.content}" đã được duyệt thành công.`,
+                type: "PAYMENT_REQUEST_SETTLEMENT_APPROVED",
+                relatedEntityId: saved.id,
+                link: `/payment-requests/${saved.id}`
+            }, manager);
+
+            return saved;
+        });
+    }
+
+    async rejectSettlement(id: string, reviewerId: string, reviewerRole: string, reason: string) {
+        if (!reason || !reason.trim()) {
+            throw new Error("Vui lòng nhập lý do từ chối quyết toán");
+        }
+
+        return await AppDataSource.transaction(async (manager) => {
+            const request = await manager.getRepository(PaymentRequests)
+                .createQueryBuilder("pr")
+                .setLock("pessimistic_write")
+                .where("pr.id = :id", { id })
+                .getOne();
+
+            if (!request) throw new Error("Không tìm thấy yêu cầu thanh toán");
+
+            if (!ACCOUNTANT_ROLES.includes(reviewerRole as UserRole)) {
+                throw new Error("Bạn không có quyền từ chối quyết toán hoàn ứng");
+            }
+
+            if (request.requesterId === reviewerId) {
+                throw new Error("Người tạo phiếu không được tự thao tác trên quyết toán của chính mình");
+            }
+
+            if (request.settlementStatus !== PaymentSettlementStatus.SETTLEMENT_SUBMITTED) {
+                throw new Error("Phiếu chưa ở trạng thái chờ duyệt quyết toán");
+            }
+
+            request.settlementStatus = PaymentSettlementStatus.WAITING_SETTLEMENT;
+            this.pushHistory(request, {
+                action: "REJECT_SETTLEMENT",
+                byId: reviewerId,
+                note: `Yêu cầu làm lại quyết toán: ${reason.trim()}`
+            });
+
+            const saved = await manager.getRepository(PaymentRequests).save(request);
+
+            await this.notifyUser(saved.requesterId, {
+                title: "Quyết toán hoàn ứng bị từ chối",
+                content: `Hồ sơ quyết toán cho phiếu "${saved.content}" đã bị từ chối: ${reason.trim()}. Vui lòng chỉnh sửa và nộp lại.`,
+                type: "PAYMENT_REQUEST_SETTLEMENT_REJECTED",
+                relatedEntityId: saved.id,
+                link: `/payment-requests/${saved.id}`
+            }, manager);
+
+            return saved;
+        });
+    }
+
     async pay(id: string, dto: {
         paymentMethod?: PaymentMethod;
         paymentProofs?: PaymentRequestFile[];
         cashVoucherInfo?: CashVoucherInfo;
-    }, payerId?: string) {
-        const request = await this.getOne(id);
-
-        if (request.approvalStatus !== PaymentRequestApprovalStatus.APPROVED) {
-            throw new Error("Yêu cầu thanh toán chưa được BOD xác nhận");
-        }
-
-        if (!Array.isArray(dto.paymentProofs) || dto.paymentProofs.length === 0) {
-            throw new Error("Vui lòng tải lên ảnh/PDF minh chứng đã chi tiền");
-        }
-
-        if (dto.paymentMethod) {
-            request.paymentMethod = dto.paymentMethod;
-        }
-        if (dto.cashVoucherInfo) {
-            request.cashVoucherInfo = dto.cashVoucherInfo;
-        }
-
-        request.paymentProofs = dto.paymentProofs.map((file) => ({ ...file, uploadedAt: file.uploadedAt || new Date().toISOString() }));
-        request.paidAt = new Date();
-        request.paymentStatus = PaymentDueStatus.PAID;
-
-        const historyNote = dto.paymentMethod === PaymentMethod.CASH
-            ? `Chi tiền mặt (Phiếu chi: ${dto.cashVoucherInfo?.voucherNo || "N/A"})`
-            : "Chi bằng chuyển khoản";
-
-        this.pushHistory(request, { action: "PAID", byId: payerId || "system", note: historyNote });
-        const saved = await this.repo.save(request);
-
-        await this.notifyUser(saved.requesterId, {
-            title: "Yêu cầu thanh toán đã được chi tiền",
-            content: `Yêu cầu thanh toán "${saved.content}" đã được chi tiền thành công.`,
-            type: "PAYMENT_REQUEST_PAID",
-            relatedEntityId: saved.id,
-            link: `/payment-requests/${saved.id}`
-        });
-
-        return saved;
+    }, payerId?: string, payerRole?: string, payerName?: string) {
+        return await this.recordPayment(
+            id,
+            {
+                paymentMethod: dto.paymentMethod || PaymentMethod.BANK_TRANSFER,
+                paymentProofs: dto.paymentProofs,
+                cashVoucherInfo: dto.cashVoucherInfo,
+                paidAmountThisTime: undefined
+            },
+            payerId || "system",
+            payerRole || UserRole.ADMIN,
+            payerName
+        );
     }
 
     async uploadPaymentProof(id: string, file: PaymentRequestFile) {
@@ -922,15 +1547,17 @@ export class PaymentRequestService {
         }
 
         const raw = await qb.select([
-            "COALESCE(SUM(pr.amount), 0) AS total",
-            "COALESCE(SUM(CASE WHEN pr.type = 'PROJECT' THEN pr.amount ELSE 0 END), 0) AS project_debt",
-            "COALESCE(SUM(CASE WHEN pr.type = 'OTHER_WORK' THEN pr.amount ELSE 0 END), 0) AS other_work_debt"
+            "COALESCE(SUM(pr.amount - COALESCE(pr.paidAmount, 0)), 0) AS total",
+            "COALESCE(SUM(CASE WHEN pr.type = 'PROJECT' THEN (pr.amount - COALESCE(pr.paidAmount, 0)) ELSE 0 END), 0) AS project_debt",
+            "COALESCE(SUM(CASE WHEN pr.type = 'OTHER_WORK' THEN (pr.amount - COALESCE(pr.paidAmount, 0)) ELSE 0 END), 0) AS other_work_debt",
+            "COALESCE(SUM(CASE WHEN pr.type = 'ADVANCE' THEN (pr.amount - COALESCE(pr.paidAmount, 0)) ELSE 0 END), 0) AS advance_debt"
         ]).getRawOne();
 
         return {
             totalDebt: Number(raw?.total || 0),
             projectDebt: Number(raw?.project_debt || 0),
-            otherWorkDebt: Number(raw?.other_work_debt || 0)
+            otherWorkDebt: Number(raw?.other_work_debt || 0),
+            advanceDebt: Number(raw?.advance_debt || 0)
         };
     }
 }

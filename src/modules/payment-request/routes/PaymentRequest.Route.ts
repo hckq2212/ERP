@@ -13,6 +13,7 @@ const upload = multer({
 
 router.get("/", controller.getAll);
 router.get("/total-debt", controller.getTotalDebt);
+router.get("/service-budget", controller.getServiceBudget);
 router.get("/task/:taskId/spent", controller.getTaskSpent);
 router.get("/:id", controller.getOne);
 router.post("/upload-invoice", upload.single("file"), controller.uploadInvoice);
@@ -40,6 +41,29 @@ router.post(
     "/:id/pay",
     roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
     controller.pay
+);
+
+router.post(
+    "/:id/record-payment",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    controller.recordPayment
+);
+
+router.post(
+    "/:id/submit-settlement",
+    controller.submitSettlement
+);
+
+router.post(
+    "/:id/approve-settlement",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    controller.approveSettlement
+);
+
+router.post(
+    "/:id/reject-settlement",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    controller.rejectSettlement
 );
 
 router.post("/:id/payment-proofs", controller.uploadPaymentProof);

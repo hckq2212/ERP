@@ -222,7 +222,26 @@ export class TaskQueryService extends TaskBaseService {
 
         const [items, total] = await this.taskRepository.findAndCount({
             where: where.length > 1 ? where : where[0],
-            relations: ["project", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunity", "opportunityServiceJob", "opportunityServiceJob.opportunityService", "job", "assignee", "supervisor", "helper", "parentTask", "subtasks"],
+            relations: [
+                "project",
+                "project.team",
+                "project.team.teamLead",
+                "project.team.members",
+                "project.team.members.user",
+                "opportunity",
+                "opportunityServiceJob",
+                "opportunityServiceJob.opportunityService",
+                "opportunityServiceJob.opportunityService.service",
+                "contractService",
+                "contractService.service",
+                "mappedService",
+                "job",
+                "assignee",
+                "supervisor",
+                "helper",
+                "parentTask",
+                "subtasks"
+            ],
             order: { [sortBy]: sortDir },
             skip: (page - 1) * limit,
             take: limit

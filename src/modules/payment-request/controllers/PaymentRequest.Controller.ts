@@ -65,6 +65,23 @@ export class PaymentRequestController {
         }
     }
 
+    getServiceBudget = async (req: Request, res: Response) => {
+        try {
+            const { projectId, taskId, excludeRequestId } = req.query;
+            if (!projectId || !taskId) {
+                return res.status(400).json({ message: "Vui lòng truyền projectId và taskId" });
+            }
+            const result = await this.service.getServiceBudgetInfo(
+                projectId as string,
+                taskId as string,
+                excludeRequestId ? (excludeRequestId as string) : undefined
+            );
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
     getTaskSpent = async (req: Request, res: Response) => {
         try {
             const result = await this.service.getTaskSpent(req.params.taskId as string);
@@ -147,10 +164,58 @@ export class PaymentRequestController {
         }
     }
 
+    recordPayment = async (req: AuthRequest, res: Response) => {
+        try {
+            const payerId = req.user?.userId || req.user?.id as string;
+            const payerRole = req.user?.role as string;
+            const payerName = req.user?.username;
+            const result = await this.service.recordPayment(req.params.id as string, req.body, payerId, payerRole, payerName);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    submitSettlement = async (req: AuthRequest, res: Response) => {
+        try {
+            const requesterId = req.user?.userId || req.user?.id as string;
+            const result = await this.service.submitSettlement(req.params.id as string, req.body, requesterId);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    approveSettlement = async (req: AuthRequest, res: Response) => {
+        try {
+            const reviewerId = req.user?.userId || req.user?.id as string;
+            const reviewerRole = req.user?.role as string;
+            const reviewerName = req.user?.username;
+            const result = await this.service.approveSettlement(req.params.id as string, reviewerId, reviewerRole, reviewerName, req.body);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
+    rejectSettlement = async (req: AuthRequest, res: Response) => {
+        try {
+            const reviewerId = req.user?.userId || req.user?.id as string;
+            const reviewerRole = req.user?.role as string;
+            const { reason } = req.body;
+            const result = await this.service.rejectSettlement(req.params.id as string, reviewerId, reviewerRole, reason);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
     pay = async (req: AuthRequest, res: Response) => {
         try {
             const payerId = req.user?.userId || req.user?.id as string;
-            const result = await this.service.pay(req.params.id as string, req.body, payerId);
+            const payerRole = req.user?.role as string;
+            const payerName = req.user?.username;
+            const result = await this.service.pay(req.params.id as string, req.body, payerId, payerRole, payerName);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });
