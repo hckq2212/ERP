@@ -148,6 +148,16 @@ export const computeIsOverdue = (request: PaymentRequests): boolean => {
     return diffDays < 0;
 };
 
+export const computeSettlementStatus = (request: PaymentRequests): PaymentSettlementStatus => {
+    if (request.type !== PaymentRequestType.ADVANCE) {
+        return PaymentSettlementStatus.NOT_APPLICABLE;
+    }
+    if ([PaymentRequestApprovalStatus.REJECTED, PaymentRequestApprovalStatus.CANCELLED].includes(request.approvalStatus)) {
+        return PaymentSettlementStatus.NOT_APPLICABLE;
+    }
+    return request.settlementStatus || PaymentSettlementStatus.PENDING;
+};
+
 const REVIEWER_ROLES: UserRole[] = [UserRole.ADMIN_SALE];
 
 // Bỏ qua giá trị `type` không còn hợp lệ (vd client cũ còn gửi VENDOR_EXPENSE) để không văng lỗi enum của Postgres.
@@ -215,7 +225,110 @@ export class PaymentRequestService {
         }, manager);
     }
 
-    private async processGeneratedDocs(invoicePdfs: any[], context?: { projectName?: string }): Promise<any[]> {
+    /**
+     * Phương án B (Auto-increment chống trùng khi lưu):
+     * Khi phát hiện trong hệ thống cùng ngày (ddMMyy) và cùng dự án đã có số _14,
+     * backend sẽ tự động đẩy người tạo sau lên số _15.
+     */
+    async resolveUniqueVoucherNo(
+        docInput: FillPaymentRequestDocInput,
+        projectId?: string | null
+    ): Promise<FillPaymentRequestDocInput> {
+        if (!docInput) return docInput;
+        const docService = new PaymentRequestDocumentService();
+        const reqDate = docService.parseDateParts(docInput.requestDate);
+        const datePrefix = `${reqDate.dd}${reqDate.mm}${reqDate.yy}`; // Ví dụ: 131026
+
+        const requestedVoucherNoStr = docInput.voucherNo ? String(docInput.voucherNo).trim() : "01";
+        const requestedVoucherNum = parseInt(requestedVoucherNoStr.replace(/\D/g, ""), 10) || 1;
+
+        // Quét các PaymentRequests cùng projectId (hoặc ngoài dự án)
+        const qb = this.repo.createQueryBuilder("pr")
+            .select(["pr.id", "pr.invoicePdfs", "pr.type", "pr.projectId", "pr.createdAt"]);
+
+        if (projectId) {
+            qb.where("pr.projectId = :projectId", { projectId });
+        } else {
+            qb.where("pr.projectId IS NULL");
+        }
+
+        const existingRequests = await qb.getMany();
+        const existingNumbers = new Set<number>();
+
+        const regexDatePattern = new RegExp(`^${datePrefix}_.*_DNTT-GETVINI_(\\d+)`, "i");
+        const regexGeneralPattern = /_DNTT-GETVINI_(\d+)/i;
+
+        for (const pr of existingRequests) {
+            if (!Array.isArray(pr.invoicePdfs)) continue;
+            for (const file of pr.invoicePdfs) {
+                const namesToCheck = [
+                    file.name,
+                    (file as any).originalName,
+                    (file as any).safeUploadName,
+                    (file as any).standardName,
+                    file.url
+                ].filter(Boolean);
+
+                for (const name of namesToCheck) {
+                    const matchDate = name.match(regexDatePattern);
+                    if (matchDate && matchDate[1]) {
+                        existingNumbers.add(parseInt(matchDate[1], 10));
+                    } else {
+                        const matchGen = name.match(regexGeneralPattern);
+                        if (matchGen && matchGen[1]) {
+                            if (name.includes(datePrefix)) {
+                                existingNumbers.add(parseInt(matchGen[1], 10));
+                            }
+                        }
+                    }
+                }
+
+                if ((file as any).docData?.voucherNo) {
+                    const fReqDate = docService.parseDateParts((file as any).docData.requestDate);
+                    const fDatePrefix = `${fReqDate.dd}${fReqDate.mm}${fReqDate.yy}`;
+                    if (fDatePrefix === datePrefix) {
+                        const num = parseInt(String((file as any).docData.voucherNo).replace(/\D/g, ""), 10);
+                        if (!isNaN(num)) {
+                            existingNumbers.add(num);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Nếu STT hiện tại đã tồn tại trong Set số đã dùng
+        if (existingNumbers.has(requestedVoucherNum)) {
+            const maxExisting = Math.max(...Array.from(existingNumbers), requestedVoucherNum);
+            const nextNum = maxExisting + 1;
+            const nextVoucherNoStr = String(nextNum).padStart(2, "0");
+
+            console.log(`[resolveUniqueVoucherNo] Trùng STT ${requestedVoucherNoStr} cho ngày ${datePrefix} và dự án ${projectId || "NGOAI_DU_AN"}. Tự động đẩy lên STT ${nextVoucherNoStr}`);
+
+            docInput.voucherNo = nextVoucherNoStr;
+
+            // Cập nhật customFileName nếu có
+            if (docInput.customFileName) {
+                if (docInput.customFileName.includes(`_DNTT-GETVINI_${requestedVoucherNoStr}`)) {
+                    docInput.customFileName = docInput.customFileName.replace(
+                        `_DNTT-GETVINI_${requestedVoucherNoStr}`,
+                        `_DNTT-GETVINI_${nextVoucherNoStr}`
+                    );
+                } else if (new RegExp(`_${requestedVoucherNoStr}(\\.[^.]+)?$`).test(docInput.customFileName)) {
+                    docInput.customFileName = docInput.customFileName.replace(
+                        new RegExp(`_${requestedVoucherNoStr}(\\.[^.]*)?$`),
+                        `_${nextVoucherNoStr}$1`
+                    );
+                }
+            }
+        }
+
+        return docInput;
+    }
+
+    private async processGeneratedDocs(
+        invoicePdfs: any[],
+        context?: { projectId?: string | null; projectName?: string }
+    ): Promise<any[]> {
         if (!Array.isArray(invoicePdfs) || invoicePdfs.length === 0) return invoicePdfs || [];
         const result: any[] = [];
         const docService = new PaymentRequestDocumentService();
@@ -223,7 +336,7 @@ export class PaymentRequestService {
         for (const item of invoicePdfs) {
             if (item?.isGeneratedDoc && item?.docData) {
                 try {
-                    const docInput: FillPaymentRequestDocInput = {
+                    let docInput: FillPaymentRequestDocInput = {
                         voucherNo: item.docData.voucherNo,
                         requestDate: item.docData.requestDate,
                         requesterName: item.docData.requesterName,
@@ -236,6 +349,14 @@ export class PaymentRequestService {
                         projectName: item.docData.projectName || context?.projectName || "",
                         customFileName: item.docData.customFileName
                     };
+
+                    // Tự động kiểm tra trùng STT và tăng lên số tiếp theo nếu trùng
+                    docInput = await this.resolveUniqueVoucherNo(docInput, context?.projectId);
+                    item.docData.voucherNo = docInput.voucherNo;
+                    if (docInput.customFileName) {
+                        item.docData.customFileName = docInput.customFileName;
+                    }
+
                     const buffer = await docService.generateWordDocument(docInput);
                     const baseName = docService.generateStandardFileName(docInput);
                     const fileNameWithExt = `${baseName}.docx`;
@@ -283,7 +404,9 @@ export class PaymentRequestService {
                         fileType: "DOC",
                         docType: "PAYMENT_REQUEST_DOC",
                         size: buffer.length,
-                        uploadedAt: new Date().toISOString()
+                        uploadedAt: new Date().toISOString(),
+                        isGeneratedDoc: true,
+                        docData: docInput
                     });
                     continue;
                 } catch (err: any) {
@@ -458,6 +581,121 @@ export class PaymentRequestService {
         };
     }
 
+    /**
+     * Lấy tổng hợp ngân sách, chi phí và tỷ lệ giải ngân của một dự án
+     * Phục vụ Finance/Budget Widget và Bảng Thống kê dịch vụ trên trang Dự án
+     */
+    async getProjectBudgetSummary(projectId: string) {
+        if (!projectId) {
+            throw new Error("Vui lòng cung cấp mã dự án (projectId)");
+        }
+
+        const projectRepo = AppDataSource.getRepository(Projects);
+        const project = await projectRepo.findOne({
+            where: { id: projectId },
+            relations: ["contract", "contract.services", "contract.services.service"]
+        });
+
+        if (!project) {
+            throw new Error("Không tìm thấy dự án");
+        }
+
+        const allProjectTasks = await this.taskRepo.find({
+            where: { project: { id: projectId } },
+            relations: [
+                "contractService",
+                "contractService.service",
+                "opportunityServiceJob",
+                "opportunityServiceJob.opportunityService",
+                "opportunityServiceJob.opportunityService.service"
+            ]
+        });
+
+        const qb = this.repo.createQueryBuilder("pr")
+            .where("pr.projectId = :projectId", { projectId })
+            .andWhere("pr.approvalStatus NOT IN (:...excluded)", {
+                excluded: [PaymentRequestApprovalStatus.REJECTED, PaymentRequestApprovalStatus.CANCELLED]
+            });
+        const paymentRequests = await qb.getMany();
+
+        const getEffectiveAmount = (pr: PaymentRequests): number => {
+            if (
+                pr.type === PaymentRequestType.ADVANCE &&
+                pr.settlementStatus === PaymentSettlementStatus.SETTLED &&
+                pr.settledAmount != null
+            ) {
+                return Math.round(Number(pr.settledAmount));
+            }
+            return Math.round(Number(pr.amount || 0));
+        };
+
+        // 1. Tổng thực chi toàn dự án
+        const totalProjectSpent = paymentRequests.reduce((sum, pr) => sum + getEffectiveAmount(pr), 0);
+
+        // 2. Tổng ngân sách theo hợp đồng
+        let totalProjectBudget = 0;
+        if (project.contract?.services && Array.isArray(project.contract.services)) {
+            totalProjectBudget = project.contract.services.reduce(
+                (sum, cs) => sum + Math.round(Number(cs.budget || 0)),
+                0
+            );
+        }
+        if (totalProjectBudget === 0 && (project.contract as any)?.totalAmount) {
+            totalProjectBudget = Math.round(Number((project.contract as any).totalAmount || 0));
+        }
+
+        const remainingProjectBudget = totalProjectBudget - totalProjectSpent;
+        const disbursementPercentage = totalProjectBudget > 0
+            ? Math.round((totalProjectSpent / totalProjectBudget) * 1000) / 10
+            : 0;
+
+        // 3. Chi tiết cho từng dịch vụ hợp đồng
+        const serviceBudgets = (project.contract?.services || []).map((cs) => {
+            const budget = Math.round(Number(cs.budget || 0));
+            const csId = cs.id;
+            const csServiceId = cs.serviceId || cs.service?.id;
+
+            const relatedTaskIds = allProjectTasks
+                .filter((t) => {
+                    if (t.contractService?.id && csId && t.contractService.id === csId) return true;
+                    const tServiceId = t.contractService?.serviceId ||
+                        t.contractService?.service?.id ||
+                        t.opportunityServiceJob?.opportunityService?.serviceId ||
+                        t.opportunityServiceJob?.opportunityService?.service?.id;
+                    if (csServiceId && tServiceId && csServiceId === tServiceId) return true;
+                    if (!csServiceId && cs.name && t.contractService?.name === cs.name) return true;
+                    return false;
+                })
+                .map((t) => t.id);
+
+            const spent = paymentRequests
+                .filter((pr) => pr.taskId && relatedTaskIds.includes(pr.taskId))
+                .reduce((sum, pr) => sum + getEffectiveAmount(pr), 0);
+
+            const remaining = budget - spent;
+
+            return {
+                contractServiceId: cs.id,
+                serviceId: csServiceId || null,
+                serviceName: cs.name || cs.service?.name || `Dịch vụ #${cs.id}`,
+                budget,
+                spent,
+                remaining,
+                status: cs.status
+            };
+        });
+
+        return {
+            projectId: project.id,
+            projectName: project.name,
+            totalProjectBudget,
+            totalProjectSpent,
+            remainingProjectBudget,
+            disbursementPercentage,
+            serviceBudgets
+        };
+    }
+
     private async validateBudgetReason(
         type: PaymentRequestType,
         projectId: string | null | undefined,
@@ -514,7 +752,7 @@ export class PaymentRequestService {
             }
         }
 
-        const invoicePdfs = await this.processGeneratedDocs(rawInvoicePdfs, { projectName });
+        const invoicePdfs = await this.processGeneratedDocs(rawInvoicePdfs, { projectId: dto.projectId, projectName });
 
         const request = new PaymentRequests();
         request.type = dto.type;
@@ -615,11 +853,16 @@ export class PaymentRequestService {
 
         const saved = await this.repo.save(request);
 
-        // Tự động đồng bộ lên Google Sheet tab TH_GIẤY ĐỀ NGHỊ THANH TOÁN
-        try {
-            await this.syncToGoogleSheet(saved.id);
-        } catch (sheetErr: any) {
-            console.error("[create] Lỗi tự động đồng bộ Google Sheet:", sheetErr?.message);
+        // Chỉ tự động đồng bộ lên Google Sheet khi ĐÃ CÓ giấy đề nghị thanh toán (Word)
+        const hasPaymentDoc = (saved.invoicePdfs || []).some(
+            (p: any) => p.docType === "PAYMENT_REQUEST_DOC" && p.url
+        );
+        if (hasPaymentDoc) {
+            try {
+                await this.syncToGoogleSheet(saved.id);
+            } catch (sheetErr: any) {
+                console.error("[create] Lỗi tự động đồng bộ Google Sheet:", sheetErr?.message);
+            }
         }
 
         // Thông báo cho các bên liên quan (Admin Sale/Admin) để duyệt vòng 1
@@ -755,6 +998,7 @@ export class PaymentRequestService {
 
         const withComputedStatus = results.map((request) => {
             request.paymentStatus = computePaymentStatus(request);
+            request.settlementStatus = computeSettlementStatus(request);
             (request as any).isOverdue = computeIsOverdue(request);
             return request;
         });
@@ -773,6 +1017,7 @@ export class PaymentRequestService {
             throw new Error("Bạn không có quyền xem yêu cầu thanh toán này");
         }
         request.paymentStatus = computePaymentStatus(request);
+        request.settlementStatus = computeSettlementStatus(request);
         (request as any).isOverdue = computeIsOverdue(request);
         return request;
     }
@@ -832,7 +1077,7 @@ export class PaymentRequestService {
                     console.warn("[update] Không tìm thấy tên dự án:", pErr?.message);
                 }
             }
-            request.invoicePdfs = await this.processGeneratedDocs(dto.invoicePdfs, { projectName });
+            request.invoicePdfs = await this.processGeneratedDocs(dto.invoicePdfs, { projectId: pid, projectName });
         }
 
         if (dto.settlementDueDate !== undefined) {
@@ -1070,6 +1315,9 @@ export class PaymentRequestService {
             request.submittedToBodAt = new Date();
         } else if (action === "REJECT") {
             request.approvalStatus = PaymentRequestApprovalStatus.REJECTED;
+            if (request.type === PaymentRequestType.ADVANCE) {
+                request.settlementStatus = PaymentSettlementStatus.NOT_APPLICABLE;
+            }
         } else if (action === "REQUEST_MORE_DOCS") {
             request.approvalStatus = PaymentRequestApprovalStatus.NEED_MORE_DOCS;
         } else {
@@ -1144,6 +1392,9 @@ export class PaymentRequestService {
                 throw new Error("Vui lòng nhập lý do từ chối");
             }
             request.approvalStatus = PaymentRequestApprovalStatus.REJECTED;
+            if (request.type === PaymentRequestType.ADVANCE) {
+                request.settlementStatus = PaymentSettlementStatus.NOT_APPLICABLE;
+            }
         } else if (action === "REQUEST_MORE_DOCS") {
             if (!reason || !reason.trim()) {
                 throw new Error("Vui lòng nhập lý do yêu cầu bổ sung");
@@ -1333,9 +1584,31 @@ export class PaymentRequestService {
             }
 
             const paidAmount = Math.round(Number(request.paidAmount || 0));
+            const diff = settledAmount - paidAmount;
+
+            const files = Array.isArray(dto.settlementFiles) ? dto.settlementFiles : [];
+            if (files.length === 0) {
+                throw new Error("Bắt buộc phải tải lên chứng từ/minh chứng quyết toán hoàn ứng");
+            }
+
+            const expenseDocs = files.filter((f) => f.docType !== "REFUND_PROOF");
+            const refundProofs = files.filter((f) => f.docType === "REFUND_PROOF");
+
+            if (settledAmount > 0 && expenseDocs.length === 0) {
+                throw new Error("Khoản thực chi phát sinh cần ít nhất 1 chứng từ chi phí thực tế (Biên bản nghiệm thu, Hóa đơn hoặc Hợp đồng)");
+            }
+
+            if (diff < 0 && refundProofs.length === 0) {
+                throw new Error("Thừa tiền tạm ứng bắt buộc phải đính kèm minh chứng hoàn ứng (Bill nộp lại tiền thừa về quỹ)");
+            }
+
+            if (settledAmount === 0 && refundProofs.length === 0) {
+                throw new Error("Không phát sinh thực chi bắt buộc phải đính kèm minh chứng hoàn trả 100% tiền tạm ứng về quỹ");
+            }
+
             request.settledAmount = settledAmount;
-            request.settlementDifference = settledAmount - paidAmount;
-            request.settlementFiles = (dto.settlementFiles || []).map((f) => ({ ...f, uploadedAt: f.uploadedAt || new Date().toISOString() }));
+            request.settlementDifference = diff;
+            request.settlementFiles = files.map((f) => ({ ...f, uploadedAt: f.uploadedAt || new Date().toISOString() }));
             request.settlementNote = dto.settlementNote || null;
             request.settlementStatus = PaymentSettlementStatus.SETTLEMENT_SUBMITTED;
 
@@ -1396,14 +1669,22 @@ export class PaymentRequestService {
                 throw new Error(msg);
             }
 
-            // Ghi nhận nghiệp vụ: Khi diff < 0 (thu hồi tiền thừa về quỹ), Phase 1 kế toán xác nhận qua refundConfirmed và ghi history.
-            // Chức năng upload chứng từ hoàn tiền thừa (refundReceiptFiles) được quy hoạch ở Phase 2 mở rộng.
+            // Bắt buộc Kế toán phải tải lên minh chứng xét duyệt quyết toán hoàn ứng
+            const accountantProofs = Array.isArray(dto.refundProofFiles) ? dto.refundProofFiles : [];
+            if (accountantProofs.length === 0) {
+                throw new Error("Bắt buộc phải tải lên minh chứng khi xét duyệt quyết toán hoàn ứng (Phiếu thu / Phiếu chi / Biên bản đối soát)");
+            }
+
+            // Ghi nhận chứng từ Kế toán tải lên vào settlementFiles
+            const formattedAccountantProofs = accountantProofs.map((f) => ({
+                ...f,
+                docType: f.docType || (diff < 0 ? "REFUND_RECEIPT" : diff > 0 ? "REIMBURSEMENT_PROOF" : "SETTLEMENT_REVIEW_PROOF"),
+                uploadedAt: f.uploadedAt || new Date().toISOString()
+            }));
+            request.settlementFiles = [...(request.settlementFiles || []), ...formattedAccountantProofs];
 
             // Tự động khớp sổ quỹ khi chi bù:
             if (diff > 0) {
-                if (!dto.refundProofFiles || dto.refundProofFiles.length === 0) {
-                    throw new Error("Bắt buộc tải lên chứng từ chi bù (phiếu chi/ủy nhiệm chi) khi chi bù hoàn ứng");
-                }
                 const reimbursementTxn: PaymentTransactionRecord = {
                     id: crypto.randomUUID(),
                     amount: diff,
@@ -1411,7 +1692,7 @@ export class PaymentRequestService {
                     payerId: reviewerId,
                     payerName: reviewerName,
                     paymentMethod: dto.refundPaymentMethod || "BANK_TRANSFER",
-                    proofFiles: dto.refundProofFiles.map((f) => ({ ...f, uploadedAt: f.uploadedAt || new Date().toISOString() })),
+                    proofFiles: formattedAccountantProofs,
                     note: `Chi bù quyết toán hoàn ứng: ${diff.toLocaleString("vi-VN")}đ`
                 };
                 request.paymentTransactions = [...(request.paymentTransactions || []), reimbursementTxn];
@@ -1445,6 +1726,44 @@ export class PaymentRequestService {
             }, manager);
 
             return saved;
+        });
+    }
+
+    async addSettlementFiles(id: string, files: PaymentRequestFile | PaymentRequestFile[], actorId: string, actorRole?: string) {
+        return await AppDataSource.transaction(async (manager) => {
+            const request = await manager.getRepository(PaymentRequests)
+                .createQueryBuilder("pr")
+                .setLock("pessimistic_write")
+                .where("pr.id = :id", { id })
+                .getOne();
+
+            if (!request) throw new Error("Không tìm thấy yêu cầu thanh toán");
+            if (request.type !== PaymentRequestType.ADVANCE) {
+                throw new Error("Chỉ áp dụng bổ sung chứng từ quyết toán cho yêu cầu Tạm ứng");
+            }
+
+            const fileList = Array.isArray(files) ? files : [files];
+            if (!fileList.length) throw new Error("Danh sách file trống");
+
+            const formattedFiles = fileList.map((f) => ({
+                ...f,
+                uploadedAt: f.uploadedAt || new Date().toISOString()
+            }));
+
+            request.settlementFiles = [...(request.settlementFiles || []), ...formattedFiles];
+
+            const refundCount = formattedFiles.filter((f) => f.docType === "REFUND_PROOF").length;
+            const historyNote = refundCount > 0
+                ? `Bổ sung ${refundCount} minh chứng hoàn trả tiền thừa về quỹ`
+                : `Bổ sung ${formattedFiles.length} file chứng từ quyết toán`;
+
+            this.pushHistory(request, {
+                action: "SUPPLEMENTED",
+                byId: actorId,
+                note: historyNote
+            });
+
+            return await manager.getRepository(PaymentRequests).save(request);
         });
     }
 
@@ -1556,6 +1875,9 @@ export class PaymentRequestService {
         }
 
         request.approvalStatus = PaymentRequestApprovalStatus.CANCELLED;
+        if (request.type === PaymentRequestType.ADVANCE) {
+            request.settlementStatus = PaymentSettlementStatus.NOT_APPLICABLE;
+        }
         this.pushHistory(request, { action: "CANCELLED", byId: actorId, note: reason || null });
         const saved = await this.repo.save(request);
 
@@ -1599,6 +1921,9 @@ export class PaymentRequestService {
 
         for (const request of pending) {
             request.approvalStatus = PaymentRequestApprovalStatus.CANCELLED;
+            if (request.type === PaymentRequestType.ADVANCE) {
+                request.settlementStatus = PaymentSettlementStatus.NOT_APPLICABLE;
+            }
             this.pushHistory(request, {
                 action: "CANCELLED",
                 byId: actorId,
@@ -1779,6 +2104,7 @@ export class PaymentRequestService {
             dueDate,
             proofBillUrl,
             standardFileName,
+            projectId: request.projectId || null,
             projectName: request.project?.name || "",
             invoicePdfs: request.invoicePdfs || [],
             type: request.type
@@ -1787,7 +2113,7 @@ export class PaymentRequestService {
 
     async generateWordFile(id: string, customData?: any): Promise<{ buffer: Buffer; fileName: string }> {
         const preview = await this.getDocPreviewData(id);
-        const docInput: FillPaymentRequestDocInput = {
+        let docInput: FillPaymentRequestDocInput = {
             voucherNo: customData?.stt || preview.stt,
             requestDate: customData?.requestDate || preview.requestDate,
             requesterName: customData?.requesterName || preview.requesterName,
@@ -1801,6 +2127,9 @@ export class PaymentRequestService {
             customFileName: customData?.customFileName
         };
 
+        // Đảm bảo không trùng STT khi tải file
+        docInput = await this.resolveUniqueVoucherNo(docInput, (preview as any).projectId);
+
         const docService = new PaymentRequestDocumentService();
         const buffer = await docService.generateWordDocument(docInput);
         const baseName = docService.generateStandardFileName(docInput);
@@ -1811,7 +2140,7 @@ export class PaymentRequestService {
 
     async syncToGoogleSheet(
         id: string,
-        customData?: Partial<PaymentRequestSheetRow> & { customFileName?: string }
+        customData?: Partial<PaymentRequestSheetRow> & { customFileName?: string; force?: boolean }
     ): Promise<{
         success: boolean;
         updatedRange: string;
@@ -1848,44 +2177,23 @@ export class PaymentRequestService {
             customFileName: customData?.customFileName
         };
 
-        // Tái sử dụng link Google Drive đã có trong invoicePdfs nếu tồn tại, tránh sinh & upload trùng
-        const existingDriveDoc = (preview as any)?.invoicePdfs?.find?.(
-            (p: any) => p.docType === "PAYMENT_REQUEST_DOC" && p.url && (p.url.includes("drive.google.com") || p.url.includes("docs.google.com"))
+        // Tái sử dụng link tài liệu đề nghị thanh toán đã có trong invoicePdfs nếu tồn tại
+        const existingDoc = (preview as any)?.invoicePdfs?.find?.(
+            (p: any) => p.docType === "PAYMENT_REQUEST_DOC" && p.url
         );
 
-        let docResult: any = null;
-        let linkWord01 = customData?.linkWord01 || existingDriveDoc?.url || "";
-
-        if (!linkWord01) {
-            const docService = new PaymentRequestDocumentService();
-            try {
-                docResult = await docService.generateAndUploadToDrive(docInput);
-                if (docResult?.webViewLink) {
-                    linkWord01 = docResult.webViewLink;
-                }
-            } catch (docErr: any) {
-                console.warn("[syncToGoogleSheet] Google Drive upload không khả dụng:", docErr?.message);
-            }
-
-            if (!linkWord01) {
-                try {
-                    const buffer = await docService.generateWordDocument(docInput);
-                    const baseName = docService.generateStandardFileName(docInput);
-                    const fileNameWithExt = `${baseName}.docx`;
-                    const dummyFile: any = {
-                        buffer,
-                        originalname: fileNameWithExt,
-                        mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        size: buffer.length
-                    };
-                    const uploaded = await uploadToCloudinary(dummyFile, "ERP/PAYMENT_REQUESTS/documents");
-                    if (uploaded?.url) {
-                        linkWord01 = `https://docs.google.com/viewer?url=${encodeURIComponent(uploaded.url)}`;
-                    }
-                } catch (cloudErr: any) {
-                    console.error("[syncToGoogleSheet] Lỗi upload Cloudinary fallback:", cloudErr?.message);
-                }
-            }
+        // Nếu người dùng không tạo hoặc không đính kèm file Word, không đồng bộ sang Google Sheet
+        const linkWord01 = customData?.linkWord01 || existingDoc?.url || "";
+        if (!linkWord01 && !customData?.force) {
+            return {
+                success: false,
+                updatedRange: "",
+                spreadsheetUrl: "",
+                rowIndex: 0,
+                message: "Yêu cầu thanh toán chưa có Giấy đề nghị thanh toán (file Word) nên chưa đồng bộ sang Google Sheet",
+                wordFileUrl: "",
+                wordFileName: ""
+            };
         }
 
         const generateWordStatus = linkWord01 ? "TRUE" : (customData?.generateWordStatus || "FALSE");
@@ -1916,7 +2224,7 @@ export class PaymentRequestService {
             spreadsheetUrl: result.spreadsheetUrl,
             rowIndex: result.rowIndex,
             wordFileUrl: linkWord01 || undefined,
-            wordFileName: docResult?.fileName ? `${docResult.fileName}.docx` : undefined,
+            wordFileName: existingDoc?.name || (linkWord01 ? "GiayDeNghiThanhToan.docx" : undefined),
             message: `Đã đồng bộ thành công vào dòng ${result.rowIndex} của tab TH_GIẤY ĐỀ NGHỊ THANH TOÁN`
         };
     }
