@@ -84,6 +84,16 @@ export class PaymentRequestController {
         }
     }
 
+    getProjectBudgetSummary = async (req: Request, res: Response) => {
+        try {
+            const projectId = req.params.projectId as string;
+            const result = await this.service.getProjectBudgetSummary(projectId);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
     getTaskSpent = async (req: Request, res: Response) => {
         try {
             const result = await this.service.getTaskSpent(req.params.taskId as string);
@@ -212,6 +222,18 @@ export class PaymentRequestController {
         }
     }
 
+    addSettlementFiles = async (req: AuthRequest, res: Response) => {
+        try {
+            const actorId = req.user?.userId || req.user?.id as string;
+            const actorRole = req.user?.role as string;
+            const { files } = req.body;
+            const result = await this.service.addSettlementFiles(req.params.id as string, files, actorId, actorRole);
+            res.status(200).json(result);
+        } catch (error: any) {
+            res.status(400).json({ message: error.message });
+        }
+    }
+
     pay = async (req: AuthRequest, res: Response) => {
         try {
             const payerId = req.user?.userId || req.user?.id as string;
@@ -325,10 +347,14 @@ export class PaymentRequestController {
     generateWordAndUpload = async (req: Request, res: Response) => {
         try {
             const input = req.body;
+            let resolvedInput = input;
+            if (input && input.voucherNo) {
+                resolvedInput = await this.service.resolveUniqueVoucherNo(input, input.projectId);
+            }
             const docService = new PaymentRequestDocumentService();
-            const docResult = await docService.generateAndUploadToDrive(input);
+            const docResult = await docService.generateAndUploadToDrive(resolvedInput);
             const fileNameWithExt = `${docResult.fileName}.docx`;
-            const displayFileName = input.displayFileName || fileNameWithExt;
+            const displayFileName = resolvedInput.displayFileName || fileNameWithExt;
 
             res.status(200).json({
                 url: docResult?.webViewLink || "",
@@ -339,7 +365,8 @@ export class PaymentRequestController {
                 originalName: fileNameWithExt,
                 fileType: "DOC",
                 docType: "PAYMENT_REQUEST_DOC",
-                size: docResult.buffer ? docResult.buffer.length : 0
+                size: docResult.buffer ? docResult.buffer.length : 0,
+                voucherNo: resolvedInput.voucherNo
             });
         } catch (error: any) {
             res.status(400).json({ message: error.message });

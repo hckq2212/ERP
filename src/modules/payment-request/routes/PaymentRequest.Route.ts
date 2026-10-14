@@ -14,6 +14,7 @@ const upload = multer({
 router.get("/", controller.getAll);
 router.get("/total-debt", controller.getTotalDebt);
 router.get("/service-budget", controller.getServiceBudget);
+router.get("/project-budget-summary/:projectId", controller.getProjectBudgetSummary);
 router.get("/task/:taskId/spent", controller.getTaskSpent);
 router.get("/next-stt", controller.getNextStt);
 router.get("/download-template-word", controller.downloadTemplateWord);
@@ -68,6 +69,8 @@ router.post(
     roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
     controller.rejectSettlement
 );
+
+router.post("/:id/settlement-files", controller.addSettlementFiles);
 
 router.post("/:id/payment-proofs", controller.uploadPaymentProof);
 
