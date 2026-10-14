@@ -50,7 +50,7 @@ export class PaymentRequestDocumentService {
         }
     }
 
-    private parseDateParts(dateStr?: string | Date): { dd: string; mm: string; yyyy: string; yy: string } {
+    parseDateParts(dateStr?: string | Date): { dd: string; mm: string; yyyy: string; yy: string } {
         if (dateStr) {
             if (dateStr instanceof Date && !isNaN(dateStr.getTime())) {
                 const dd = String(dateStr.getDate()).padStart(2, "0");
