@@ -207,11 +207,13 @@ export class TaskQueryService extends TaskBaseService {
                     where.push({ ...w, name: ILike(searchTerm) });
                     where.push({ ...w, nickname: ILike(searchTerm) });
                     where.push({ ...w, code: ILike(searchTerm) });
+                    where.push({ ...w, project: { ...(w.project || {}), name: ILike(searchTerm) } });
                 });
             } else {
                 where.push({ ...baseWhere, name: ILike(searchTerm) });
                 where.push({ ...baseWhere, nickname: ILike(searchTerm) });
                 where.push({ ...baseWhere, code: ILike(searchTerm) });
+                where.push({ ...baseWhere, project: { ...(baseWhere.project || {}), name: ILike(searchTerm) } });
             }
         } else {
             if (Array.isArray(baseWhere)) {

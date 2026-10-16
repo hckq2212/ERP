@@ -24,4 +24,13 @@ export class ChatParticipants extends BaseEntity {
 
     @Column({ type: "timestamp", nullable: true })
     lastReadAt: Date | null;
+
+    @Column({ type: "varchar", length: 20, default: "MEMBER" })
+    role: "ADMIN" | "DEPUTY" | "MEMBER";
+
+    @Column({ type: "boolean", default: false })
+    isPinned: boolean;
+
+    @Column({ type: "boolean", default: false })
+    isMuted: boolean;
 }

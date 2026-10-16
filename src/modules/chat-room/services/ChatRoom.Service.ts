@@ -58,6 +58,8 @@ export class ChatRoomService {
 
             const myParticipant = participants.find((participant) => participant.userId === userId);
             const lastReadAt = myParticipant?.lastReadAt;
+            const isPinned = Boolean(myParticipant?.isPinned);
+            const isMuted = Boolean(myParticipant?.isMuted);
             const unreadCount = await messageRepo.count({
                 where: {
                     roomId: room.id,
@@ -66,16 +68,43 @@ export class ChatRoomService {
                 }
             });
 
+            if (room.isGroup) {
+                const hasAdmin = participants.some((p) => p.role === "ADMIN");
+                if (!hasAdmin && participants.length > 0) {
+                    let adminParticipant = room.creatorId
+                        ? participants.find((p) => p.userId === room.creatorId)
+                        : null;
+                    if (!adminParticipant) {
+                        adminParticipant = participants[0];
+                    }
+                    adminParticipant.role = "ADMIN";
+                    // Asynchronously persist to DB so legacy rooms become permanent
+                    participantRepo.update({ id: adminParticipant.id }, { role: "ADMIN" }).catch(() => {});
+                    if (!room.creatorId) {
+                        roomRepo.update({ id: room.id }, { creatorId: adminParticipant.userId }).catch(() => {});
+                    }
+                }
+            }
+
+            const enrichedParticipants = participants.map((p) => ({
+                ...p,
+                role: p.role || (room.creatorId && p.userId === room.creatorId ? "ADMIN" : "MEMBER")
+            }));
+
             return {
                 ...room,
-                participants,
+                participants: enrichedParticipants,
                 latestMessage,
                 unread: unreadCount > 0,
-                unreadCount
+                unreadCount,
+                isPinned,
+                isMuted
             };
         }));
 
         return enrichedRooms.sort((a, b) => {
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
             const timeA = a.latestMessage?.createdAt || a.updatedAt;
             const timeB = b.latestMessage?.createdAt || b.updatedAt;
             return new Date(timeB).getTime() - new Date(timeA).getTime();
@@ -116,7 +145,7 @@ export class ChatRoomService {
             }
         }
 
-        return AppDataSource.transaction(async (transactionalEntityManager) => {
+        const createdRoom = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const newRoom = new ChatRooms();
             newRoom.isGroup = false;
             newRoom.creatorId = userId1;
@@ -125,7 +154,7 @@ export class ChatRoomService {
             const participant1 = new ChatParticipants();
             participant1.roomId = newRoom.id;
             participant1.userId = userId1;
-            participant1.lastReadAt = new Date();
+            participant1.lastReadAt = null;
             await transactionalEntityManager.save(participant1);
 
             const participant2 = new ChatParticipants();
@@ -134,24 +163,29 @@ export class ChatRoomService {
             participant2.lastReadAt = null;
             await transactionalEntityManager.save(participant2);
 
-            const participants = await participantRepo.find({
-                where: { roomId: newRoom.id },
-                relations: ["user"]
-            });
-
-            return { ...newRoom, participants };
+            return newRoom;
         });
+
+        const participants = await participantRepo.find({
+            where: { roomId: createdRoom.id },
+            relations: ["user"]
+        });
+
+        return { ...createdRoom, participants };
     }
 
-    static async createGroup(creatorId: string, name: string, participantIds: string[]) {
+    static async createGroup(creatorId: string, name: string, participantIds: string[], avatarUrl?: string | null) {
         const participantRepo = AppDataSource.getRepository(ChatParticipants);
         const resolvedParticipantIds = await this.resolveUserIds(participantIds);
 
-        return AppDataSource.transaction(async (transactionalEntityManager) => {
+        const createdRoom = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const newRoom = new ChatRooms();
             newRoom.name = name;
             newRoom.isGroup = true;
             newRoom.creatorId = creatorId;
+            if (avatarUrl) {
+                newRoom.avatarUrl = avatarUrl;
+            }
             await transactionalEntityManager.save(newRoom);
 
             const uniqueParticipantIds = Array.from(new Set([creatorId, ...resolvedParticipantIds]));
@@ -159,17 +193,20 @@ export class ChatRoomService {
                 const participant = new ChatParticipants();
                 participant.roomId = newRoom.id;
                 participant.userId = userId;
-                participant.lastReadAt = userId === creatorId ? new Date() : null;
+                participant.role = userId === creatorId ? "ADMIN" : "MEMBER";
+                participant.lastReadAt = null;
                 await transactionalEntityManager.save(participant);
             }
 
-            const participants = await participantRepo.find({
-                where: { roomId: newRoom.id },
-                relations: ["user"]
-            });
-
-            return { ...newRoom, participants };
+            return newRoom;
         });
+
+        const participants = await participantRepo.find({
+            where: { roomId: createdRoom.id },
+            relations: ["user"]
+        });
+
+        return { ...createdRoom, participants };
     }
 
     static async addParticipants(roomId: string, userIds: string[]) {
@@ -186,6 +223,7 @@ export class ChatRoomService {
                     const participant = new ChatParticipants();
                     participant.roomId = roomId;
                     participant.userId = userId;
+                    participant.role = "MEMBER";
                     participant.lastReadAt = null;
                     await transactionalEntityManager.save(participant);
                 }
@@ -207,7 +245,7 @@ export class ChatRoomService {
 
         const messages = await messageRepo.find({
             where,
-            relations: ["sender"],
+            relations: ["sender", "replyTo", "replyTo.sender"],
             order: { id: "DESC" },
             take: limit
         });
@@ -215,7 +253,15 @@ export class ChatRoomService {
         return messages.reverse();
     }
 
-    static async createMessage(roomId: string, senderUserId: string, content: string, attachments: any[] = []) {
+    static async createMessage(
+        roomId: string,
+        senderUserId: string,
+        content: string,
+        attachments: any[] = [],
+        replyToId?: string | null,
+        isForwarded: boolean = false,
+        forwardedFromUserId?: string | null
+    ) {
         const isParticipant = await this.isParticipant(roomId, senderUserId);
         if (!isParticipant) {
             const error: any = new Error("Bạn không thuộc phòng chat này");
@@ -228,14 +274,17 @@ export class ChatRoomService {
             roomId,
             senderId: senderUserId,
             content: content.trim(),
-            attachments
+            attachments,
+            replyToId: replyToId || null,
+            isForwarded: Boolean(isForwarded),
+            forwardedFromUserId: forwardedFromUserId || null
         });
 
         await messageRepo.save(newMessage);
 
         return messageRepo.findOne({
             where: { id: newMessage.id },
-            relations: ["sender"]
+            relations: ["sender", "replyTo", "replyTo.sender"]
         });
     }
 
@@ -246,13 +295,506 @@ export class ChatRoomService {
 
     static async markRoomAsRead(roomId: string, userId: string) {
         const participantRepo = AppDataSource.getRepository(ChatParticipants);
-        const participant = await participantRepo.findOne({
-            where: { roomId, userId }
+        await participantRepo.createQueryBuilder()
+            .update(ChatParticipants)
+            .set({ lastReadAt: () => "CURRENT_TIMESTAMP(6)" })
+            .where('"roomId" = :roomId AND "userId" = :userId', { roomId, userId })
+            .execute();
+    }
+
+    static async updateParticipantRole(
+        roomId: string,
+        targetUserId: string,
+        newRole: "ADMIN" | "DEPUTY" | "MEMBER",
+        requesterId: string
+    ) {
+        const participantRepo = AppDataSource.getRepository(ChatParticipants);
+        const roomRepo = AppDataSource.getRepository(ChatRooms);
+
+        const room = await roomRepo.findOne({ where: { id: roomId } });
+        if (!room || !room.isGroup) {
+            const error: any = new Error("Phòng chat không hợp lệ hoặc không phải nhóm");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const requester = await participantRepo.findOne({ where: { roomId, userId: requesterId } });
+        const target = await participantRepo.findOne({ where: { roomId, userId: targetUserId } });
+
+        if (!requester || !target) {
+            const error: any = new Error("Thành viên không thuộc nhóm này");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const requesterRole = requester.role || (requester.userId === room.creatorId ? "ADMIN" : "MEMBER");
+        if (requesterRole !== "ADMIN") {
+            const error: any = new Error("Chỉ trưởng nhóm mới có quyền thay đổi vai trò thành viên");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        await AppDataSource.transaction(async (manager) => {
+            if (newRole === "ADMIN") {
+                // Chuyển quyền trưởng nhóm: requester trở thành DEPUTY, target trở thành ADMIN
+                requester.role = "DEPUTY";
+                await manager.save(requester);
+
+                target.role = "ADMIN";
+                await manager.save(target);
+
+                room.creatorId = targetUserId;
+                await manager.save(room);
+            } else {
+                target.role = newRole;
+                await manager.save(target);
+            }
         });
 
-        if (participant) {
-            participant.lastReadAt = new Date();
-            await participantRepo.save(participant);
+        const updatedParticipants = await participantRepo.find({
+            where: { roomId },
+            relations: ["user"]
+        });
+
+        return updatedParticipants.map(p => ({
+            ...p,
+            role: p.role || (p.userId === room.creatorId ? "ADMIN" : "MEMBER")
+        }));
+    }
+
+    static async removeParticipant(roomId: string, targetUserId: string, requesterId: string) {
+        const participantRepo = AppDataSource.getRepository(ChatParticipants);
+        const roomRepo = AppDataSource.getRepository(ChatRooms);
+
+        const room = await roomRepo.findOne({ where: { id: roomId } });
+        if (!room || !room.isGroup) {
+            const error: any = new Error("Phòng chat không hợp lệ hoặc không phải nhóm");
+            error.statusCode = 400;
+            throw error;
         }
+
+        const requester = await participantRepo.findOne({ where: { roomId, userId: requesterId } });
+        const target = await participantRepo.findOne({ where: { roomId, userId: targetUserId } });
+
+        if (!requester || !target) {
+            const error: any = new Error("Thành viên không tồn tại trong nhóm");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const requesterRole = requester.role || (requester.userId === room.creatorId ? "ADMIN" : "MEMBER");
+        const targetRole = target.role || (target.userId === room.creatorId ? "ADMIN" : "MEMBER");
+
+        const isSelfLeaving = requesterId === targetUserId;
+
+        if (!isSelfLeaving) {
+            if (requesterRole === "MEMBER") {
+                const error: any = new Error("Bạn không có quyền xóa thành viên");
+                error.statusCode = 403;
+                throw error;
+            }
+            if (requesterRole === "DEPUTY" && (targetRole === "ADMIN" || targetRole === "DEPUTY")) {
+                const error: any = new Error("Phó nhóm không thể xóa Trưởng nhóm hoặc Phó nhóm khác");
+                error.statusCode = 403;
+                throw error;
+            }
+        } else {
+            const totalMembers = await participantRepo.count({ where: { roomId } });
+            if (requesterRole === "ADMIN" && totalMembers > 1) {
+                const error: any = new Error("Trưởng nhóm vui lòng chuyển quyền trước khi rời nhóm");
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+
+        await participantRepo.remove(target);
+
+        const remainingParticipants = await participantRepo.find({
+            where: { roomId },
+            relations: ["user"]
+        });
+
+        return remainingParticipants.map(p => ({
+            ...p,
+            role: p.role || (p.userId === room.creatorId ? "ADMIN" : "MEMBER")
+        }));
+    }
+
+    static async updateRoom(roomId: string, userId: string, updateData: { name?: string; avatarUrl?: string | null }) {
+        const roomRepo = AppDataSource.getRepository(ChatRooms);
+        const participantRepo = AppDataSource.getRepository(ChatParticipants);
+
+        const room = await roomRepo.findOne({ where: { id: roomId } });
+        if (!room) {
+            const error: any = new Error("Phòng chat không tồn tại");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const resolvedUserId = await this.resolveUserId(userId).catch(() => userId);
+        const participant = await participantRepo.findOne({
+            where: [
+                { roomId, userId: resolvedUserId },
+                { roomId, userId }
+            ]
+        });
+        if (!participant) {
+            const error: any = new Error("Bạn không thuộc phòng chat này");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        if (updateData.name !== undefined) {
+            const trimmedName = updateData.name.trim();
+            if (!trimmedName) {
+                const error: any = new Error("Tên nhóm không được để trống");
+                error.statusCode = 400;
+                throw error;
+            }
+            room.name = trimmedName;
+        }
+
+        if (updateData.avatarUrl !== undefined) {
+            room.avatarUrl = updateData.avatarUrl;
+        }
+
+        await roomRepo.save(room);
+
+        const participants = await participantRepo.find({
+            where: { roomId },
+            relations: ["user"]
+        });
+
+        return { ...room, participants };
+    }
+
+    static async updateParticipantPreferences(
+        roomId: string,
+        userId: string,
+        preferences: { isPinned?: boolean; isMuted?: boolean }
+    ) {
+        const participantRepo = AppDataSource.getRepository(ChatParticipants);
+        const resolvedUserId = await this.resolveUserId(userId).catch(() => userId);
+        const participant = await participantRepo.findOne({
+            where: [
+                { roomId, userId: resolvedUserId },
+                { roomId, userId }
+            ]
+        });
+
+        if (!participant) {
+            const error: any = new Error("Bạn không thuộc phòng chat này");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        if (typeof preferences.isPinned === "boolean") {
+            participant.isPinned = preferences.isPinned;
+        }
+        if (typeof preferences.isMuted === "boolean") {
+            participant.isMuted = preferences.isMuted;
+        }
+
+        await participantRepo.save(participant);
+
+        return {
+            roomId,
+            userId,
+            isPinned: participant.isPinned,
+            isMuted: participant.isMuted
+        };
+    }
+
+    static async reactToMessage(
+        roomId: string,
+        messageId: string,
+        userId: string,
+        emoji: string
+    ) {
+        const isParticipant = await this.isParticipant(roomId, userId);
+        if (!isParticipant) {
+            const error: any = new Error("Bạn không thuộc phòng chat này");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const messageRepo = AppDataSource.getRepository(ChatMessages);
+        const userRepo = AppDataSource.getRepository(Users);
+
+        const message = await messageRepo.findOne({
+            where: { id: messageId, roomId }
+        });
+
+        if (!message) {
+            const error: any = new Error("Tin nhắn không tồn tại");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const user = await userRepo.findOne({
+            where: { id: userId },
+            select: ["id", "fullName", "avatarUrl"]
+        });
+
+        const currentReactions = Array.isArray(message.reactions) ? [...message.reactions] : [];
+        const existingIndex = currentReactions.findIndex((r) => String(r.userId) === String(userId));
+
+        if (existingIndex !== -1) {
+            const existingReaction = currentReactions[existingIndex];
+            if (existingReaction.emoji === emoji) {
+                // Same emoji -> Toggle off (remove reaction)
+                currentReactions.splice(existingIndex, 1);
+            } else {
+                // Different emoji -> Update reaction
+                currentReactions[existingIndex] = {
+                    ...existingReaction,
+                    emoji,
+                    createdAt: new Date().toISOString()
+                };
+            }
+        } else {
+            // New reaction
+            currentReactions.push({
+                userId,
+                emoji,
+                user: {
+                    id: user?.id || userId,
+                    fullName: user?.fullName || "Thành viên",
+                    avatarUrl: user?.avatarUrl || null
+                },
+                createdAt: new Date().toISOString()
+            });
+        }
+
+        message.reactions = currentReactions;
+        await messageRepo.save(message);
+
+        return {
+            messageId,
+            roomId,
+            reactions: message.reactions
+        };
+    }
+
+    static async pinMessage(roomId: string, messageId: string, userId: string, isPinned: boolean) {
+        const isParticipant = await this.isParticipant(roomId, userId);
+        if (!isParticipant) {
+            const error: any = new Error("Bạn không thuộc phòng chat này");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const messageRepo = AppDataSource.getRepository(ChatMessages);
+        const message = await messageRepo.findOne({
+            where: { id: messageId, roomId },
+            relations: ["sender"]
+        });
+
+        if (!message) {
+            const error: any = new Error("Tin nhắn không tồn tại");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (message.isRecalled) {
+            const error: any = new Error("Không thể ghim tin nhắn đã bị thu hồi");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        message.isPinned = Boolean(isPinned);
+        message.pinnedAt = isPinned ? new Date() : null;
+        message.pinnedById = isPinned ? userId : null;
+        await messageRepo.save(message);
+
+        return {
+            messageId,
+            roomId,
+            isPinned: message.isPinned,
+            pinnedAt: message.pinnedAt,
+            pinnedById: message.pinnedById,
+            message
+        };
+    }
+
+    static async getPinnedMessages(roomId: string, userId: string) {
+        const isParticipant = await this.isParticipant(roomId, userId);
+        if (!isParticipant) {
+            const error: any = new Error("Bạn không thuộc phòng chat này");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const messageRepo = AppDataSource.getRepository(ChatMessages);
+        return messageRepo.find({
+            where: { roomId, isPinned: true },
+            relations: ["sender"],
+            order: { pinnedAt: "DESC" }
+        });
+    }
+
+    static async recallMessage(roomId: string, messageId: string, userId: string) {
+        const isParticipant = await this.isParticipant(roomId, userId);
+        if (!isParticipant) {
+            const error: any = new Error("Bạn không thuộc phòng chat này");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const messageRepo = AppDataSource.getRepository(ChatMessages);
+        const participantRepo = AppDataSource.getRepository(ChatParticipants);
+        const roomRepo = AppDataSource.getRepository(ChatRooms);
+
+        const message = await messageRepo.findOne({
+            where: { id: messageId, roomId },
+            relations: ["sender"]
+        });
+
+        if (!message) {
+            const error: any = new Error("Tin nhắn không tồn tại");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (message.isRecalled) {
+            return { messageId, roomId, message };
+        }
+
+        // Quyền thu hồi: Chỉ chính người gửi mới có quyền thu hồi tin nhắn của mình
+        const isSender = String(message.senderId) === String(userId);
+        if (!isSender) {
+            const error: any = new Error("Bạn chỉ có thể thu hồi tin nhắn do chính mình gửi");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        message.isRecalled = true;
+        message.recalledAt = new Date();
+        message.content = "[Tin nhắn đã được thu hồi]";
+        message.attachments = null;
+        message.reactions = null;
+        message.isPinned = false;
+        message.pinnedAt = null;
+        message.pinnedById = null;
+        await messageRepo.save(message);
+
+        return {
+            messageId,
+            roomId,
+            message
+        };
+    }
+
+    static async editMessage(roomId: string, messageId: string, userId: string, newContent: string) {
+        const isParticipant = await this.isParticipant(roomId, userId);
+        if (!isParticipant) {
+            const error: any = new Error("Bạn không thuộc phòng chat này");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const messageRepo = AppDataSource.getRepository(ChatMessages);
+        const message = await messageRepo.findOne({
+            where: { id: messageId, roomId },
+            relations: ["sender"]
+        });
+
+        if (!message) {
+            const error: any = new Error("Tin nhắn không tồn tại");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (message.isRecalled) {
+            const error: any = new Error("Không thể chỉnh sửa tin nhắn đã bị thu hồi");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Chỉ người gửi mới được sửa tin nhắn
+        if (String(message.senderId) !== String(userId)) {
+            const error: any = new Error("Bạn chỉ có thể chỉnh sửa tin nhắn do chính mình gửi");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        // Kiểm tra thời hạn 15 phút
+        const messageCreatedAt = new Date(message.createdAt).getTime();
+        const diffMinutes = (Date.now() - messageCreatedAt) / (1000 * 60);
+        if (diffMinutes > 15) {
+            const error: any = new Error("Bạn chỉ có tối đa 15 phút kể từ khi gửi để chỉnh sửa tin nhắn");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!newContent || !newContent.trim()) {
+            const error: any = new Error("Nội dung tin nhắn không được để trống");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        message.content = newContent.trim();
+        message.isEdited = true;
+        message.editedAt = new Date();
+        await messageRepo.save(message);
+
+        return {
+            messageId,
+            roomId,
+            message
+        };
+    }
+
+    static async forwardMessage(sourceRoomId: string, messageId: string, targetRoomIds: string[], userId: string) {
+        const isParticipant = await this.isParticipant(sourceRoomId, userId);
+        if (!isParticipant) {
+            const error: any = new Error("Bạn không thuộc phòng chat nguồn");
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const messageRepo = AppDataSource.getRepository(ChatMessages);
+        const sourceMessage = await messageRepo.findOne({
+            where: { id: messageId, roomId: sourceRoomId }
+        });
+
+        if (!sourceMessage) {
+            const error: any = new Error("Tin nhắn nguồn không tồn tại");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (sourceMessage.isRecalled) {
+            const error: any = new Error("Không thể chuyển tiếp tin nhắn đã bị thu hồi");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Quy tắc: Nếu tin nhắn do người khác tạo -> Đánh dấu chuyển tiếp (isForwarded = true)
+        // Nếu tin nhắn do chính bản thân tạo -> KHÔNG cần đánh dấu chuyển tiếp (isForwarded = false)
+        const isSelfCreated = String(sourceMessage.senderId) === String(userId) && !sourceMessage.isForwarded;
+        const willMarkForwarded = !isSelfCreated;
+        const originalSenderId = willMarkForwarded
+            ? (sourceMessage.forwardedFromUserId || sourceMessage.senderId)
+            : null;
+
+        const createdMessages = [];
+        for (const targetRoomId of targetRoomIds) {
+            const canSend = await this.isParticipant(targetRoomId, userId);
+            if (!canSend) continue;
+
+            const newMsg = await this.createMessage(
+                targetRoomId,
+                userId,
+                sourceMessage.content,
+                sourceMessage.attachments || [],
+                null,
+                willMarkForwarded,
+                originalSenderId
+            );
+            if (newMsg) createdMessages.push(newMsg);
+        }
+
+        return createdMessages;
     }
 }

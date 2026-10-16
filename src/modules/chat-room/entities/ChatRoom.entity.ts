@@ -11,4 +11,7 @@ export class ChatRooms extends BaseEntity {
 
     @Column({ type: "varchar", length: 26, nullable: true })
     creatorId: string | null;
+
+    @Column({ nullable: true })
+    avatarUrl: string | null;
 }
