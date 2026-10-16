@@ -67,7 +67,15 @@ import { AcceptanceMinutes } from "./modules/finance-document/entities/Acceptanc
 import { VatInvoices } from "./modules/finance-document/entities/VatInvoice.entity"
 
 import * as dotenv from "dotenv"
+import { types } from "pg";
 dotenv.config()
+
+// Khắc phục lệch múi giờ: PostgreSQL (Neon DB UTC) lưu CURRENT_TIMESTAMP vào cột timestamp without time zone (OID 1114).
+// Node-postgres mặc định parse OID 1114 theo múi giờ local của máy chủ, khiến thời gian bị lệch 7 tiếng khi chuyển sang ISO string.
+// Nối 'Z' để Date hiểu đúng mốc thời gian UTC và hiển thị chuẩn xác giờ Việt Nam (UTC+7) trên client.
+types.setTypeParser(1114, (stringValue: string) => {
+    return new Date(stringValue.replace(" ", "T") + "Z");
+});
 
 const isProduction = process.env.NODE_ENV === "production";
 const useDatabaseUrl = Boolean(process.env.DATABASE_URL);
