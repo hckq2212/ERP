@@ -151,7 +151,7 @@ export class CustomerService {
         const savedCustomer = await this.customerRepository.save(customer);
 
         // Invalidate all customer list caches (all roles and users)
-        await RedisService.deleteCache('customers:all*');
+        await RedisService.deleteCache('customers:*all*');
 
         customerEmitter.emit(CUSTOMER_EVENTS.CREATED, savedCustomer);
 
@@ -182,8 +182,8 @@ export class CustomerService {
         const savedCustomer = await this.customerRepository.save(customer);
 
         // Invalidate all list caches and this specific customer's detail caches
-        await RedisService.deleteCache('customers:all*');
-        await RedisService.deleteCache(`customers:detail:${id}*`);
+        await RedisService.deleteCache('customers:*all*');
+        await RedisService.deleteCache(`customers:*:detail:${id}*`);
 
         customerEmitter.emit(CUSTOMER_EVENTS.UPDATED, savedCustomer);
 
@@ -195,8 +195,8 @@ export class CustomerService {
         await this.customerRepository.remove(customer);
 
         // Invalidate all list caches and this specific customer's detail caches
-        await RedisService.deleteCache('customers:all*');
-        await RedisService.deleteCache(`customers:detail:${id}*`);
+        await RedisService.deleteCache('customers:*all*');
+        await RedisService.deleteCache(`customers:*:detail:${id}*`);
 
         customerEmitter.emit(CUSTOMER_EVENTS.DELETED, { id });
 

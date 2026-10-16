@@ -16,6 +16,7 @@ import { DashboardScopeType, selectDashboardWorkItems } from "./Dashboard.Scope"
 import { DashboardActor, DashboardScopeService } from "./DashboardScope.Service";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
 import { getMemberRoles } from "../../project/entities/TeamMember.entity";
+import { RedisService } from "../../../shared/services/Redis.Service";
 
 export class DashboardService {
     private contractRepo = AppDataSource.getRepository(Contracts);
@@ -38,9 +39,12 @@ export class DashboardService {
         startMonth?: number,
         endMonth?: number
     ) {
-        const data: any = {};
-        const dateFilter = this.getDateFilter(month, year, startMonth, endMonth);
-        const scope = await this.scopeService.resolve(actor, requestedUserId, projectId, mode);
+        const cacheKey = `dashboard:${actor.role}:${actor.id}:${requestedUserId || 'self'}:${mode || 'default'}:${projectId || 'all'}:${year || 'curr'}:${month || 'all'}:${startMonth || 0}-${endMonth || 0}`;
+
+        return await RedisService.fetchWithCache(cacheKey, 120, async () => {
+            const data: any = {};
+            const dateFilter = this.getDateFilter(month, year, startMonth, endMonth);
+            const scope = await this.scopeService.resolve(actor, requestedUserId, projectId, mode);
 
         const userId = scope.targetUserId;
         const role = actor.role;
@@ -611,7 +615,8 @@ export class DashboardService {
             data.member.violationStats = {};
         }
 
-        return data;
+            return data;
+        });
     }
 
     private getDateRange(

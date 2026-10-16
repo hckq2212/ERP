@@ -3,6 +3,7 @@ import { AppDataSource } from "../../data-source";
 import { STAFF_ROLES, UserRole } from "../../modules/account/entities/Account.entity";
 import { StaffRoleWorkloadNorms } from "../../modules/setting/entities/StaffRoleWorkloadNorm.entity";
 import { TaskStatus } from "../entities/Enums";
+import { RedisService } from "./Redis.Service";
 
 export type WorkloadNormItem = {
     role: UserRole;
@@ -74,11 +75,13 @@ export class WorkloadNormService {
     }
 
     async getNorms(): Promise<WorkloadNormItem[]> {
-        const rows = await this.repository.find({
-            where: { role: In(STAFF_ROLES) }
+        return await RedisService.fetchWithCache('settings:workload_norms', 86400, async () => {
+            const rows = await this.repository.find({
+                where: { role: In(STAFF_ROLES) }
+            });
+            const byRole = new Map(rows.map(row => [row.role, row]));
+            return STAFF_ROLES.map(role => this.buildItem(role, byRole.get(role)));
         });
-        const byRole = new Map(rows.map(row => [row.role, row]));
-        return STAFF_ROLES.map(role => this.buildItem(role, byRole.get(role)));
     }
 
     async getNormMap(roles: UserRole[]) {
@@ -111,6 +114,8 @@ export class WorkloadNormService {
         });
 
         await this.repository.save(normalized);
+        await RedisService.deleteCache('settings:workload_norms*');
+        await RedisService.deleteCache('dashboard:*');
         return this.getNorms();
     }
 }

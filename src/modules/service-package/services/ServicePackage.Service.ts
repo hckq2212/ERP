@@ -50,7 +50,7 @@ export class ServicePackageService {
         await this.recalculatePackagePrice(savedPkg.id);
 
         // Invalidate list cache
-        await RedisService.deleteCache('service-packages:all*');
+        await RedisService.deleteCache('service-packages:*all*');
 
         return await this.getOne(savedPkg.id);
     }
@@ -82,8 +82,8 @@ export class ServicePackageService {
         await this.recalculatePackagePrice(id);
 
         // Invalidate caches
-        await RedisService.deleteCache('service-packages:all*');
-        await RedisService.deleteCache(`service-packages:detail:${id}*`);
+        await RedisService.deleteCache('service-packages:*all*');
+        await RedisService.deleteCache(`service-packages:*:detail:${id}*`);
 
         return await this.getOne(id);
     }
@@ -94,8 +94,8 @@ export class ServicePackageService {
         await this.packageRepository.save(pkg);
 
         // Invalidate caches
-        await RedisService.deleteCache('service-packages:all*');
-        await RedisService.deleteCache(`service-packages:detail:${id}*`);
+        await RedisService.deleteCache('service-packages:*all*');
+        await RedisService.deleteCache(`service-packages:*:detail:${id}*`);
 
         return { message: "Xóa gói dịch vụ thành công" };
     }
@@ -119,6 +119,6 @@ export class ServicePackageService {
         await this.packageRepository.update(SecurityService.withTenant({ id: packageId }), { price: totalPrice });
         
         // Invalidate detail cache after price update
-        await RedisService.deleteCache(`service-packages:detail:${packageId}*`);
+        await RedisService.deleteCache(`service-packages:*:detail:${packageId}*`);
     }
 }

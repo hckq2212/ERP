@@ -11,6 +11,7 @@ import { userEmitter, USER_EVENTS } from "../../modules/user/events/UserEmitter"
 import { acceptanceEmitter, ACCEPTANCE_EVENTS } from "../../modules/acceptance/events/AcceptanceEmitter";
 import { contractAddendumEmitter, CONTRACT_ADDENDUM_EVENTS } from "../../modules/contract-addendum/events/ContractAddendumEmitter";
 import { notificationEmitter, NOTIFICATION_EVENTS } from "../../modules/notification/events/NotificationEmitter";
+import { RedisService } from "../services/Redis.Service";
 
 const emitModuleEvent = (event: string, payload: any) => {
     notificationEmitter.emit(NOTIFICATION_EVENTS.MODULE_EVENT, { event, payload });
@@ -69,20 +70,32 @@ export const initModuleSubscribers = () => {
 
     // --- TASK EVENTS ---
     taskEmitter.on(TASK_EVENTS.CREATED, (data) => {
-        // console.log(`[EVENT] Task Created: ${data.code}`);
         emitModuleEvent(TASK_EVENTS.CREATED, data);
+        RedisService.deleteCache('dashboard:*').catch(() => {});
+        RedisService.deleteCache('tasks:workload:*').catch(() => {});
+        const pId = data?.projectId || data?.project?.id;
+        if (pId) RedisService.deleteCache(`projects:*:detail:${pId}*`).catch(() => {});
     });
     taskEmitter.on(TASK_EVENTS.UPDATED, (data) => {
-        // console.log(`[EVENT] Task Updated: ${data.code}`);
         emitModuleEvent(TASK_EVENTS.UPDATED, data);
+        RedisService.deleteCache('dashboard:*').catch(() => {});
+        RedisService.deleteCache('tasks:workload:*').catch(() => {});
+        const pId = data?.projectId || data?.project?.id;
+        if (pId) RedisService.deleteCache(`projects:*:detail:${pId}*`).catch(() => {});
     });
     taskEmitter.on(TASK_EVENTS.STATUS_CHANGED, (data) => {
-        // console.log(`[EVENT] Task Status Changed: ${data.code} -> ${data.status}`);
         emitModuleEvent(TASK_EVENTS.STATUS_CHANGED, data);
+        RedisService.deleteCache('dashboard:*').catch(() => {});
+        RedisService.deleteCache('tasks:workload:*').catch(() => {});
+        const pId = data?.projectId || data?.project?.id;
+        if (pId) RedisService.deleteCache(`projects:*:detail:${pId}*`).catch(() => {});
     });
     taskEmitter.on(TASK_EVENTS.DELETED, (data) => {
-        // console.log(`[EVENT] Task Deleted: ${data.id}`);
         emitModuleEvent(TASK_EVENTS.DELETED, data);
+        RedisService.deleteCache('dashboard:*').catch(() => {});
+        RedisService.deleteCache('tasks:workload:*').catch(() => {});
+        const pId = data?.projectId || data?.project?.id;
+        if (pId) RedisService.deleteCache(`projects:*:detail:${pId}*`).catch(() => {});
     });
 
     // --- CONTRACT EVENTS ---
@@ -109,16 +122,21 @@ export const initModuleSubscribers = () => {
 
     // --- PROJECT EVENTS ---
     projectEmitter.on(PROJECT_EVENTS.CREATED, (data) => {
-        // console.log(`[EVENT] Project Created: ${data.name}`);
         emitModuleEvent(PROJECT_EVENTS.CREATED, data);
+        RedisService.deleteCache('projects:*all*').catch(() => {});
+        RedisService.deleteCache('dashboard:*').catch(() => {});
     });
     projectEmitter.on(PROJECT_EVENTS.UPDATED, (data) => {
-        // console.log(`[EVENT] Project Updated: ${data.name}`);
         emitModuleEvent(PROJECT_EVENTS.UPDATED, data);
+        RedisService.deleteCache('projects:*all*').catch(() => {});
+        if (data?.id) RedisService.deleteCache(`projects:*:detail:${data.id}*`).catch(() => {});
+        RedisService.deleteCache('dashboard:*').catch(() => {});
     });
     projectEmitter.on(PROJECT_EVENTS.DELETED, (data) => {
-        // console.log(`[EVENT] Project Deleted: ${data.id}`);
         emitModuleEvent(PROJECT_EVENTS.DELETED, data);
+        RedisService.deleteCache('projects:*all*').catch(() => {});
+        if (data?.id) RedisService.deleteCache(`projects:*:detail:${data.id}*`).catch(() => {});
+        RedisService.deleteCache('dashboard:*').catch(() => {});
     });
 
     // --- CUSTOMER EVENTS ---

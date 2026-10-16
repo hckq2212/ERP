@@ -135,7 +135,7 @@ export class ServiceService {
         const savedService = (await this.serviceRepository.save(service)) as unknown as Services;
 
         // Invalidate list cache
-        await RedisService.deleteCache('services:all*');
+        await RedisService.deleteCache('services:*all*');
 
         if (jobIds && Array.isArray(jobIds)) {
             const sjRepo = AppDataSource.getRepository(ServiceJob);
@@ -167,8 +167,8 @@ export class ServiceService {
         await this.serviceRepository.save(service);
 
         // Invalidate caches
-        await RedisService.deleteCache('services:all*');
-        await RedisService.deleteCache(`services:detail:${id}*`);
+        await RedisService.deleteCache('services:*all*');
+        await RedisService.deleteCache(`services:*:detail:${id}*`);
 
         if (jobConfigs && Array.isArray(jobConfigs)) {
             const sjRepo = AppDataSource.getRepository(ServiceJob);
@@ -194,8 +194,8 @@ export class ServiceService {
         await this.serviceRepository.remove(service);
 
         // Invalidate caches
-        await RedisService.deleteCache('services:all*');
-        await RedisService.deleteCache(`services:detail:${id}*`);
+        await RedisService.deleteCache('services:*all*');
+        await RedisService.deleteCache(`services:*:detail:${id}*`);
 
         return { message: "Xóa dịch vụ thành công" };
     }
@@ -206,9 +206,9 @@ export class ServiceService {
         await this.serviceRepository.delete(SecurityService.withTenant({ id: In(ids) }));
 
         // Invalidate caches
-        await RedisService.deleteCache('services:all*');
+        await RedisService.deleteCache('services:*all*');
         for (const id of ids) {
-            await RedisService.deleteCache(`services:detail:${id}*`);
+            await RedisService.deleteCache(`services:*:detail:${id}*`);
         }
 
         return { message: `Xóa thành công ${ids.length} dịch vụ` };
@@ -224,8 +224,8 @@ export class ServiceService {
             await this.recalculateCost(serviceId);
 
             // Invalidate caches
-            await RedisService.deleteCache('services:all*');
-            await RedisService.deleteCache(`services:detail:${serviceId}*`);
+            await RedisService.deleteCache('services:*all*');
+            await RedisService.deleteCache(`services:*:detail:${serviceId}*`);
         }
 
         return await this.getOne(serviceId);
@@ -237,8 +237,8 @@ export class ServiceService {
         await this.recalculateCost(serviceId);
 
         // Invalidate caches
-        await RedisService.deleteCache('services:all*');
-        await RedisService.deleteCache(`services:detail:${serviceId}*`);
+        await RedisService.deleteCache('services:*all*');
+        await RedisService.deleteCache(`services:*:detail:${serviceId}*`);
 
         return await this.getOne(serviceId);
     }

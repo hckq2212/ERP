@@ -24,6 +24,7 @@ import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 import { assertTaskProjectNotOnHold, assertProjectNotOnHold } from "../helpers/ProjectHold.helper";
 import { assertBdOwnsProjectContract } from "../helpers/ProjectOwnership.helper";
+import { RedisService } from "../../../shared/services/Redis.Service";
 // Google Sheet integration is temporarily disabled.
 // import { GoogleSheetService } from "../../../shared/services/GoogleSheet.Service";
 
@@ -518,7 +519,11 @@ export class ProjectBaseService {
 
 
     async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
-        let rbacWhere: any = {};
+        const userInfoKey = userInfo ? `:role_${userInfo.role}:user_${userInfo.userId || userInfo.id}` : '';
+        const cacheKey = `projects:${SecurityService.getTenantCachePart(userInfo)}:detail:${id}${userInfoKey}`;
+
+        return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            let rbacWhere: any = {};
         if (userInfo) {
             rbacWhere = SecurityService.getProjectFilters(userInfo);
             // If rbacWhere is an array (OR conditions), we need to wrap the find with those conditions
@@ -746,6 +751,7 @@ export class ProjectBaseService {
             }
         }
 
-        return project;
+            return project;
+        });
     }
 }

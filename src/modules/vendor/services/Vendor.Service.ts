@@ -36,7 +36,7 @@ export class VendorService {
         const saved = await this.vendorRepository.save(vendor);
 
         // Invalidate list cache
-        await RedisService.deleteCache('vendors:all*');
+        await RedisService.deleteCache('vendors:*all*');
 
         return saved;
     }
@@ -48,8 +48,8 @@ export class VendorService {
         const saved = await this.vendorRepository.save(vendor);
 
         // Invalidate caches
-        await RedisService.deleteCache('vendors:all*');
-        await RedisService.deleteCache(`vendors:detail:${id}*`);
+        await RedisService.deleteCache('vendors:*all*');
+        await RedisService.deleteCache(`vendors:*:detail:${id}*`);
 
         return saved;
     }
@@ -59,8 +59,8 @@ export class VendorService {
         await this.vendorRepository.remove(vendor);
 
         // Invalidate caches
-        await RedisService.deleteCache('vendors:all*');
-        await RedisService.deleteCache(`vendors:detail:${id}*`);
+        await RedisService.deleteCache('vendors:*all*');
+        await RedisService.deleteCache(`vendors:*:detail:${id}*`);
 
         return { message: "Xóa nhà cung cấp thành công" };
     }
@@ -91,8 +91,8 @@ export class VendorService {
         const saved = await this.vendorJobRepository.save(vendorJob);
 
         // Invalidate and detail
-        await RedisService.deleteCache('vendors:all*');
-        await RedisService.deleteCache(`vendors:detail:${vendorId}*`);
+        await RedisService.deleteCache('vendors:*all*');
+        await RedisService.deleteCache(`vendors:*:detail:${vendorId}*`);
 
         return saved;
     }
@@ -106,8 +106,8 @@ export class VendorService {
         await this.vendorJobRepository.remove(vendorJob);
 
         // Invalidate
-        await RedisService.deleteCache('vendors:all*');
-        await RedisService.deleteCache(`vendors:detail:${vendorId}*`);
+        await RedisService.deleteCache('vendors:*all*');
+        await RedisService.deleteCache(`vendors:*:detail:${vendorId}*`);
 
         return { message: "Đã xóa công việc khỏi nhà cung cấp" };
     }

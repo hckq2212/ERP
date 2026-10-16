@@ -188,7 +188,7 @@ export class ContractService {
 
         const filtersKey = JSON.stringify(filters);
         const userInfoKey = userInfo ? `role_${userInfo.role}:user_${userInfo.id}` : 'no_user';
-        const cacheKey = `contracts:all:${userInfoKey}:${filtersKey}`;
+        const cacheKey = `contracts:${SecurityService.getTenantCachePart()}:all:${userInfoKey}:${filtersKey}`;
 
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             const [items, total] = await this.contractRepository.findAndCount({
@@ -226,7 +226,7 @@ export class ContractService {
         }
 
         const userInfoKey = userInfo ? `:role_${userInfo.role}:user_${userInfo.id}` : '';
-        const cacheKey = `contracts:detail:${id}${userInfoKey}`;
+        const cacheKey = `contracts:${SecurityService.getTenantCachePart()}:detail:${id}${userInfoKey}`;
 
         const contract = await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             return await this.contractRepository.findOne({
@@ -278,10 +278,10 @@ export class ContractService {
         contractService.nickname = normalizedNickname;
         const saved = await this.contractServiceRepository.save(contractService);
 
-        await RedisService.deleteCache(`contracts:detail:${contractService.contract?.id}*`);
-        await RedisService.deleteCache("contracts:all*");
-        if (project?.id) await RedisService.deleteCache(`projects:detail:${project.id}*`);
-        await RedisService.deleteCache("projects:all*");
+        await RedisService.deleteCache(`contracts:*:detail:${contractService.contract?.id}*`);
+        await RedisService.deleteCache("contracts:*all*");
+        if (project?.id) await RedisService.deleteCache(`projects:*:detail:${project.id}*`);
+        await RedisService.deleteCache("projects:*all*");
 
         return saved;
     }
@@ -700,8 +700,9 @@ export class ContractService {
         await this.milestoneRepository.save(defaultMilestone);
 
         // Invalidate contract caches before returning the freshly loaded detail
-        await RedisService.deleteCache('contracts:all*');
-        await RedisService.deleteCache(`contracts:detail:${savedContract.id}*`);
+        await RedisService.deleteCache('contracts:*all*');
+        await RedisService.deleteCache(`contracts:*:detail:${savedContract.id}*`);
+        await RedisService.deleteCache('dashboard:*');
 
         const creatorName = await this.getUserFullName(userInfo?.userId);
 
@@ -741,7 +742,8 @@ export class ContractService {
         });
 
         // Invalidate caches
-        await RedisService.deleteCache(`contracts:detail:${id}*`);
+        await RedisService.deleteCache('contracts:*all*');
+        await RedisService.deleteCache(`contracts:*:detail:${id}*`);
 
         contractEmitter.emit(CONTRACT_EVENTS.UPDATED, savedResult);
 
@@ -781,7 +783,10 @@ export class ContractService {
         }, userInfo?.userId);
 
         // Invalidate caches
-        await RedisService.deleteCache(`contracts:detail:${id}*`);
+        await RedisService.deleteCache('contracts:*all*');
+        await RedisService.deleteCache(`contracts:*:detail:${id}*`);
+        await RedisService.deleteCache('dashboard:*');
+        await RedisService.deleteCache('projects:*all*');
 
         contractEmitter.emit(CONTRACT_EVENTS.UPDATED, savedContract);
 
@@ -819,7 +824,9 @@ export class ContractService {
         });
 
         // Invalidate caches
-        await RedisService.deleteCache(`contracts:detail:${id}*`);
+        await RedisService.deleteCache('contracts:*all*');
+        await RedisService.deleteCache(`contracts:*:detail:${id}*`);
+        await RedisService.deleteCache('dashboard:*');
 
         contractEmitter.emit(CONTRACT_EVENTS.SIGNED, savedContract);
 
@@ -850,7 +857,7 @@ export class ContractService {
         const savedMilestone = await this.milestoneRepository.save(milestone);
 
         // Invalidate detail cache (milestones are often included in detail)
-        await RedisService.deleteCache(`contracts:detail:${contractId}*`);
+        await RedisService.deleteCache(`contracts:*:detail:${contractId}*`);
 
         return savedMilestone;
     }
@@ -876,7 +883,7 @@ export class ContractService {
         const savedMilestone = await this.milestoneRepository.save(milestone);
 
         // Invalidate detail cache
-        await RedisService.deleteCache(`contracts:detail:${milestone.contract.id}*`);
+        await RedisService.deleteCache(`contracts:*:detail:${milestone.contract.id}*`);
 
         return savedMilestone;
     }
@@ -888,10 +895,10 @@ export class ContractService {
 
         // Invalidate detail cache
         if (milestone.contract?.id) {
-            await RedisService.deleteCache(`contracts:detail:${milestone.contract.id}*`);
+            await RedisService.deleteCache(`contracts:*:detail:${milestone.contract.id}*`);
         } else {
             // Fallback if relation not loaded
-            await RedisService.deleteCache('contracts:detail*');
+            await RedisService.deleteCache('contracts:*:detail*');
         }
 
         return result;
@@ -902,7 +909,9 @@ export class ContractService {
         await this.contractRepository.remove(contract);
 
         // Invalidate caches
-        await RedisService.deleteCache(`contracts:detail:${id}*`);
+        await RedisService.deleteCache('contracts:*all*');
+        await RedisService.deleteCache(`contracts:*:detail:${id}*`);
+        await RedisService.deleteCache('dashboard:*');
 
         contractEmitter.emit(CONTRACT_EVENTS.DELETED, { id });
 
@@ -926,8 +935,9 @@ export class ContractService {
         const savedContract = await this.contractRepository.save(contract);
 
         // Invalidate caches
-        await RedisService.deleteCache('contracts:all*');
-        await RedisService.deleteCache(`contracts:detail:${id}*`);
+        await RedisService.deleteCache('contracts:*all*');
+        await RedisService.deleteCache(`contracts:*:detail:${id}*`);
+        await RedisService.deleteCache('dashboard:*');
 
         // Notify management
         await this.notifyManagement({

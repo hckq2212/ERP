@@ -406,7 +406,7 @@ export class OpportunityService {
         }
 
         // Invalidate list caches
-        await RedisService.deleteCache('opportunities:all*');
+        await RedisService.deleteCache('opportunities:*all*');
 
         const freshData = await this.getOne(savedOpportunity.id);
         opportunityEmitter.emit(OPPORTUNITY_EVENTS.CREATED, freshData);
@@ -503,8 +503,8 @@ export class OpportunityService {
         }
 
         // 6. Invalidate caches
-        await RedisService.deleteCache('opportunities:all*');
-        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+        await RedisService.deleteCache('opportunities:*all*');
+        await RedisService.deleteCache(`opportunities:*:detail:${id}*`);
 
         // 7. Return FRESH data from DB (bypassing the getOne cache)
         const freshData = await this.opportunityRepository.findOne({
@@ -580,8 +580,8 @@ export class OpportunityService {
 
         await this.opportunityRepository.save(opportunity);
 
-        await RedisService.deleteCache('opportunities:all*');
-        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+        await RedisService.deleteCache('opportunities:*all*');
+        await RedisService.deleteCache(`opportunities:*:detail:${id}*`);
 
         const freshData = await this.opportunityRepository.findOne({
             where: SecurityService.withTenant({ id }, userInfo),
@@ -622,8 +622,8 @@ export class OpportunityService {
         await this.opportunityRepository.remove(opportunity);
 
         // Invalidate list and detail caches
-        await RedisService.deleteCache('opportunities:all*');
-        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+        await RedisService.deleteCache('opportunities:*all*');
+        await RedisService.deleteCache(`opportunities:*:detail:${id}*`);
 
         opportunityEmitter.emit(OPPORTUNITY_EVENTS.DELETED, { id });
 
@@ -666,8 +666,8 @@ export class OpportunityService {
         await this.notifyProjectManagersAboutVideoDemoTasks(doc, pendingVideoDemoTasks);
 
         // Invalidate list and detail caches
-        await RedisService.deleteCache('opportunities:all*');
-        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+        await RedisService.deleteCache('opportunities:*all*');
+        await RedisService.deleteCache(`opportunities:*:detail:${id}*`);
 
         opportunityEmitter.emit(OPPORTUNITY_EVENTS.APPROVED, doc);
 
@@ -724,8 +724,8 @@ export class OpportunityService {
             console.warn(`[OpportunityService] Opportunity ${opportunity.opportunityCode} has no creator, rejection notification skipped`);
         }
 
-        await RedisService.deleteCache('opportunities:all*');
-        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+        await RedisService.deleteCache('opportunities:*all*');
+        await RedisService.deleteCache(`opportunities:*:detail:${id}*`);
 
         opportunityEmitter.emit(OPPORTUNITY_EVENTS.REJECTED, result);
 
@@ -799,8 +799,8 @@ export class OpportunityService {
             });
         }
 
-        await RedisService.deleteCache('opportunities:all*');
-        await RedisService.deleteCache(`opportunities:detail:${id}*`);
+        await RedisService.deleteCache('opportunities:*all*');
+        await RedisService.deleteCache(`opportunities:*:detail:${id}*`);
 
         const freshData = await this.getOne(id);
         opportunityEmitter.emit(OPPORTUNITY_EVENTS.RESUBMITTED, freshData);

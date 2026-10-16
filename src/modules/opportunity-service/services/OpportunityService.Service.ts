@@ -49,6 +49,8 @@ export class OpportunityServiceService {
 
         const saved = await this.oppServiceRepository.save(oppService);
         await this.recalculateRevenue(data.opportunityId);
+        await RedisService.deleteCache(`opportunities:*:detail:${data.opportunityId}*`);
+        await RedisService.deleteCache('opportunities:*all*');
         return await this.getOne(saved.id);
     }
 
@@ -111,7 +113,7 @@ export class OpportunityServiceService {
         await this.oppServiceRepository.save(item);
         await this.recalculateRevenue(item.opportunity.id);
         await RedisService.deleteCache(`opportunities:*:detail:${item.opportunity.id}*`);
-        await RedisService.deleteCache("opportunities:all*");
+        await RedisService.deleteCache("opportunities:*all*");
         return await this.getOne(id);
     }
 
@@ -120,6 +122,8 @@ export class OpportunityServiceService {
         const opportunityId = item.opportunity.id;
         await this.oppServiceRepository.remove(item);
         await this.recalculateRevenue(opportunityId);
+        await RedisService.deleteCache(`opportunities:*:detail:${opportunityId}*`);
+        await RedisService.deleteCache('opportunities:*all*');
         return { message: "Xóa hạng mục dịch vụ thành công" };
     }
 

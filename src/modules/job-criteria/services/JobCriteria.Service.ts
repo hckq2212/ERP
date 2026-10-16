@@ -2,14 +2,18 @@ import { AppDataSource } from "../../../data-source";
 import { JobCriterias } from "../entities/JobCriteria.entity";
 import { Jobs } from "../../job/entities/Job.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
+import { RedisService } from "../../../shared/services/Redis.Service";
 
 export class JobCriteriaService {
     private criteriaRepository = AppDataSource.getRepository(JobCriterias);
     private jobRepository = AppDataSource.getRepository(Jobs);
 
     async getByJob(jobId: string) {
-        return await this.criteriaRepository.find({
-            where: SecurityService.withTenant({ job: { id: jobId } })
+        const cacheKey = `job-criterias:${SecurityService.getTenantCachePart()}:job:${jobId}`;
+        return await RedisService.fetchWithCache(cacheKey, 86400, async () => {
+            return await this.criteriaRepository.find({
+                where: SecurityService.withTenant({ job: { id: jobId } })
+            });
         });
     }
 
@@ -24,13 +28,24 @@ export class JobCriteriaService {
             ...SecurityService.getTenantWhere()
         } as any) as unknown as JobCriterias;
 
-        return await this.criteriaRepository.save(criteria);
+        const saved = await this.criteriaRepository.save(criteria);
+        await RedisService.deleteCache(`job-criterias:*:job:${data.jobId}*`);
+        await RedisService.deleteCache(`jobs:*:detail:${data.jobId}*`);
+        await RedisService.deleteCache('jobs:*all*');
+        return saved;
     }
 
     async delete(id: string) {
-        const criteria = await this.criteriaRepository.findOne({ where: SecurityService.withTenant({ id }) });
+        const criteria = await this.criteriaRepository.findOne({ where: SecurityService.withTenant({ id }), relations: ["job"] });
         if (!criteria) throw new Error("Không tìm thấy tiêu chí");
-        return await this.criteriaRepository.softRemove(criteria);
+        const jobId = criteria.job?.id;
+        const result = await this.criteriaRepository.softRemove(criteria);
+        if (jobId) {
+            await RedisService.deleteCache(`job-criterias:*:job:${jobId}*`);
+            await RedisService.deleteCache(`jobs:*:detail:${jobId}*`);
+            await RedisService.deleteCache('jobs:*all*');
+        }
+        return result;
     }
 
     async syncCriteria(jobId: string, criteriaData: any[]) {
@@ -71,6 +86,10 @@ export class JobCriteriaService {
             }
         }
 
-        return await this.criteriaRepository.save(finalCriteria);
+        const saved = await this.criteriaRepository.save(finalCriteria);
+        await RedisService.deleteCache(`job-criterias:*:job:${jobId}*`);
+        await RedisService.deleteCache(`jobs:*:detail:${jobId}*`);
+        await RedisService.deleteCache('jobs:*all*');
+        return saved;
     }
 }
