@@ -45,6 +45,28 @@ function extractToken(socket: Socket) {
         || cookies.accessToken;
 }
 
+let ioInstance: Server | null = null;
+
+export function getSocketIO() {
+    return ioInstance;
+}
+
+export async function broadcastToRoom(roomId: string, event: string, payload: any) {
+    if (!ioInstance) return;
+    try {
+        const participantRepo = AppDataSource.getRepository(ChatParticipants);
+        const allParticipants = await participantRepo.find({ where: { roomId } });
+        allParticipants.forEach((participant) => {
+            const socketIds = onlineUsers.get(participant.userId);
+            socketIds?.forEach((socketId) => {
+                ioInstance?.to(socketId).emit(event, payload);
+            });
+        });
+    } catch (err) {
+        console.error("Error broadcasting to room:", err);
+    }
+}
+
 export function initSocket(httpServer: HttpServer) {
     const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : [];
 
@@ -66,6 +88,8 @@ export function initSocket(httpServer: HttpServer) {
             credentials: true
         }
     });
+
+    ioInstance = io;
 
     io.use(async (socket: AuthenticatedSocket, next) => {
         try {
@@ -136,20 +160,27 @@ export function initSocket(httpServer: HttpServer) {
         });
 
         socket.on("send_message", async (
-            data: { roomId: string; content: string; attachments?: any[] },
+            data: { roomId: string; content: string; attachments?: any[]; replyToId?: string },
             ack?: (response: { ok: boolean; message?: any; error?: string }) => void
         ) => {
             try {
-                const { roomId, content, attachments } = data;
+                const { roomId, content, attachments, replyToId } = data;
                 const senderUserId = socket.user?.userId;
-                if (!roomId || !content?.trim() || !senderUserId) {
+                const hasAttachments = attachments && Array.isArray(attachments) && attachments.length > 0;
+                if (!roomId || (!content?.trim() && !hasAttachments) || !senderUserId) {
                     ack?.({ ok: false, error: "Tin nhắn không hợp lệ" });
                     return;
                 }
 
                 const participantRepo = AppDataSource.getRepository(ChatParticipants);
                 const allParticipants = await participantRepo.find({ where: { roomId } });
-                const populatedMessage = await ChatRoomService.createMessage(roomId, senderUserId, content, attachments || []);
+                const populatedMessage = await ChatRoomService.createMessage(
+                    roomId,
+                    senderUserId,
+                    content || "",
+                    attachments || [],
+                    replyToId
+                );
 
                 if (populatedMessage) {
                     allParticipants.forEach((participant) => {
@@ -164,6 +195,90 @@ export function initSocket(httpServer: HttpServer) {
                 console.error("Error in send_message socket event:", error);
                 socket.emit("error", { message: "Không thể gửi tin nhắn" });
                 ack?.({ ok: false, error: error.message || "Không thể gửi tin nhắn" });
+            }
+        });
+
+        socket.on("message_reaction", async (
+            data: { roomId: string; messageId: string; emoji: string },
+            ack?: (response: { ok: boolean; data?: any; error?: string }) => void
+        ) => {
+            try {
+                const { roomId, messageId, emoji } = data;
+                const userId = socket.user?.userId;
+                if (!roomId || !messageId || !emoji || !userId) {
+                    ack?.({ ok: false, error: "Thông tin không hợp lệ" });
+                    return;
+                }
+
+                const result = await ChatRoomService.reactToMessage(roomId, messageId, userId, emoji);
+                await broadcastToRoom(roomId, "message_reaction", result);
+                ack?.({ ok: true, data: result });
+            } catch (error: any) {
+                console.error("Error in message_reaction socket event:", error);
+                ack?.({ ok: false, error: error.message || "Lỗi khi thả cảm xúc" });
+            }
+        });
+
+        socket.on("message_pin", async (
+            data: { roomId: string; messageId: string; isPinned?: boolean },
+            ack?: (response: { ok: boolean; data?: any; error?: string }) => void
+        ) => {
+            try {
+                const { roomId, messageId, isPinned } = data;
+                const userId = socket.user?.userId;
+                if (!roomId || !messageId || !userId) {
+                    ack?.({ ok: false, error: "Thông tin không hợp lệ" });
+                    return;
+                }
+
+                const result = await ChatRoomService.pinMessage(roomId, messageId, userId, isPinned !== false);
+                await broadcastToRoom(roomId, "message_pinned", result);
+                ack?.({ ok: true, data: result });
+            } catch (error: any) {
+                console.error("Error in message_pin socket event:", error);
+                ack?.({ ok: false, error: error.message || "Lỗi khi ghim tin nhắn" });
+            }
+        });
+
+        socket.on("message_recall", async (
+            data: { roomId: string; messageId: string },
+            ack?: (response: { ok: boolean; data?: any; error?: string }) => void
+        ) => {
+            try {
+                const { roomId, messageId } = data;
+                const userId = socket.user?.userId;
+                if (!roomId || !messageId || !userId) {
+                    ack?.({ ok: false, error: "Thông tin không hợp lệ" });
+                    return;
+                }
+
+                const result = await ChatRoomService.recallMessage(roomId, messageId, userId);
+                await broadcastToRoom(roomId, "message_recalled", result);
+                ack?.({ ok: true, data: result });
+            } catch (error: any) {
+                console.error("Error in message_recall socket event:", error);
+                ack?.({ ok: false, error: error.message || "Lỗi khi thu hồi tin nhắn" });
+            }
+        });
+
+        socket.on("message_edit", async (
+            data: { roomId: string; messageId: string; content: string },
+            ack?: (response: { ok: boolean; data?: any; error?: string }) => void
+        ) => {
+            try {
+                const { roomId, messageId, content } = data;
+                const userId = socket.user?.userId;
+                if (!roomId || !messageId || !userId) {
+                    ack?.({ ok: false, error: "Thông tin không hợp lệ" });
+                    return;
+                }
+
+                const result = await ChatRoomService.editMessage(roomId, messageId, userId, content);
+                await broadcastToRoom(roomId, "message_edited", result);
+                ack?.({ ok: true, data: result });
+            } catch (error: any) {
+                console.error("Error in message_edit socket event:", error);
+                ack?.({ ok: false, error: error.message || "Lỗi khi sửa tin nhắn" });
             }
         });
 

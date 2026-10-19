@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { google } from "googleapis";
 
 const GOOGLE_SCOPES = [
@@ -12,68 +14,112 @@ export interface GoogleConfig {
     oauthRefreshToken?: string;
     serviceAccountEmail?: string;
     privateKey?: string;
-    sheetTemplateId: string;
+    keyFilePath?: string;
+    sheetTemplateId?: string;
     driveFolderId: string;
+    paymentRequestSpreadsheetId: string;
+    paymentRequestSheetTab: string;
 }
 
 const getEnv = (name: string): string | undefined => process.env[name]?.trim();
 
-const requireEnv = (name: string): string => {
-    const value = getEnv(name);
-    if (!value) {
-        throw new Error(`Missing required Google configuration: ${name}`);
+const findServiceAccountKeyFile = (): { filePath: string; clientEmail: string; privateKey: string } | null => {
+    const candidates = [
+        getEnv("GOOGLE_KEY_FILE"),
+        "service-account.json"
+    ].filter(Boolean) as string[];
+
+    const searchDirs = [
+        process.cwd(),
+        path.resolve(__dirname, "../../.."),
+        path.resolve(__dirname, "../../../..")
+    ];
+
+    for (const filename of candidates) {
+        for (const dir of searchDirs) {
+            const fullPath = path.isAbsolute(filename) ? filename : path.resolve(dir, filename);
+            if (fs.existsSync(fullPath)) {
+                try {
+                    const raw = fs.readFileSync(fullPath, "utf8");
+                    const parsed = JSON.parse(raw);
+                    if (parsed.client_email && parsed.private_key) {
+                        return {
+                            filePath: fullPath,
+                            clientEmail: parsed.client_email,
+                            privateKey: parsed.private_key
+                        };
+                    }
+                } catch {
+                    // Tiếp tục tìm file khác nếu file json lỗi
+                }
+            }
+        }
     }
-    return value;
+    return null;
 };
 
-const getMissingEnv = (names: string[]) => names.filter((name) => !getEnv(name));
-
 export const getGoogleConfig = (): GoogleConfig => {
-    const sheetTemplateId = requireEnv("GOOGLE_SHEET_TEMPLATE_ID");
-    const driveFolderId = requireEnv("GOOGLE_DRIVE_FOLDER_ID");
+    const paymentRequestSpreadsheetId =
+        getEnv("GOOGLE_PAYMENT_REQUEST_SPREADSHEET_ID") ||
+        "1pmBp_yV1FJTKQpAM4WYMovrBCUugRN7kReJsJfjKHjY";
+    const paymentRequestSheetTab =
+        getEnv("GOOGLE_PAYMENT_REQUEST_SHEET_TAB") ||
+        "TH_GIẤY ĐỀ NGHỊ THANH TOÁN";
+
+    const sheetTemplateId = getEnv("GOOGLE_SHEET_TEMPLATE_ID") || paymentRequestSpreadsheetId;
+    const driveFolderId = getEnv("GOOGLE_DRIVE_FOLDER_ID") || "";
+
+    const keyFileResult = findServiceAccountKeyFile();
+
+    if (keyFileResult) {
+        return {
+            authType: "serviceAccount",
+            serviceAccountEmail: keyFileResult.clientEmail,
+            privateKey: keyFileResult.privateKey.replace(/\\n/g, "\n"),
+            keyFilePath: keyFileResult.filePath,
+            sheetTemplateId,
+            driveFolderId,
+            paymentRequestSpreadsheetId,
+            paymentRequestSheetTab
+        };
+    }
+
     const oauthFields = [
         "GOOGLE_OAUTH_CLIENT_ID",
         "GOOGLE_OAUTH_CLIENT_SECRET",
         "GOOGLE_OAUTH_REFRESH_TOKEN"
     ];
-    const serviceAccountFields = [
-        "GOOGLE_SERVICE_ACCOUNT_EMAIL",
-        "GOOGLE_PRIVATE_KEY"
-    ];
-    const missingOAuthFields = getMissingEnv(oauthFields);
-    const hasOAuthConfig = missingOAuthFields.length < oauthFields.length;
-
-    if (hasOAuthConfig) {
-        if (missingOAuthFields.length) {
-            throw new Error(`Missing required Google OAuth configuration: ${missingOAuthFields.join(", ")}`);
-        }
-
+    const missingOAuth = oauthFields.filter((f) => !getEnv(f));
+    if (missingOAuth.length === 0) {
         return {
             authType: "oauth",
-            oauthClientId: requireEnv("GOOGLE_OAUTH_CLIENT_ID"),
-            oauthClientSecret: requireEnv("GOOGLE_OAUTH_CLIENT_SECRET"),
-            oauthRefreshToken: requireEnv("GOOGLE_OAUTH_REFRESH_TOKEN"),
+            oauthClientId: getEnv("GOOGLE_OAUTH_CLIENT_ID")!,
+            oauthClientSecret: getEnv("GOOGLE_OAUTH_CLIENT_SECRET")!,
+            oauthRefreshToken: getEnv("GOOGLE_OAUTH_REFRESH_TOKEN")!,
             sheetTemplateId,
-            driveFolderId
+            driveFolderId,
+            paymentRequestSpreadsheetId,
+            paymentRequestSheetTab
         };
     }
 
-    const missingServiceAccountFields = getMissingEnv(serviceAccountFields);
-    if (missingServiceAccountFields.length) {
-        throw new Error(
-            "Missing required Google configuration: provide GOOGLE_OAUTH_CLIENT_ID, " +
-            "GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN or " +
-            missingServiceAccountFields.join(", ")
-        );
+    const email = getEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL");
+    const pkey = getEnv("GOOGLE_PRIVATE_KEY");
+    if (email && pkey) {
+        return {
+            authType: "serviceAccount",
+            serviceAccountEmail: email,
+            privateKey: pkey.replace(/\\n/g, "\n"),
+            sheetTemplateId,
+            driveFolderId,
+            paymentRequestSpreadsheetId,
+            paymentRequestSheetTab
+        };
     }
 
-    return {
-        authType: "serviceAccount",
-        serviceAccountEmail: requireEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL"),
-        privateKey: requireEnv("GOOGLE_PRIVATE_KEY").replace(/\\n/g, "\n"),
-        sheetTemplateId,
-        driveFolderId
-    };
+    throw new Error(
+        "Missing required Google configuration: Không tìm thấy file service account json hoặc biến GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY"
+    );
 };
 
 const createGoogleAuth = () => {
@@ -92,6 +138,13 @@ const createGoogleAuth = () => {
         return oauth2Client;
     }
 
+    if (config.keyFilePath && fs.existsSync(config.keyFilePath)) {
+        return new google.auth.GoogleAuth({
+            keyFile: config.keyFilePath,
+            scopes: GOOGLE_SCOPES
+        });
+    }
+
     return new google.auth.GoogleAuth({
         credentials: {
             client_email: config.serviceAccountEmail,
@@ -100,6 +153,7 @@ const createGoogleAuth = () => {
         scopes: GOOGLE_SCOPES
     });
 };
+
 
 let googleAuth: ReturnType<typeof createGoogleAuth> | null = null;
 

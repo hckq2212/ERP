@@ -13,7 +13,12 @@ const upload = multer({
 
 router.get("/", controller.getAll);
 router.get("/total-debt", controller.getTotalDebt);
+router.get("/service-budget", controller.getServiceBudget);
+router.get("/project-budget-summary/:projectId", controller.getProjectBudgetSummary);
 router.get("/task/:taskId/spent", controller.getTaskSpent);
+router.get("/next-stt", controller.getNextStt);
+router.get("/download-template-word", controller.downloadTemplateWord);
+router.post("/generate-word-and-upload", controller.generateWordAndUpload);
 router.get("/:id", controller.getOne);
 router.post("/upload-invoice", upload.single("file"), controller.uploadInvoice);
 router.post("/", controller.create);
@@ -42,8 +47,37 @@ router.post(
     controller.pay
 );
 
+router.post(
+    "/:id/record-payment",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    controller.recordPayment
+);
+
+router.post(
+    "/:id/submit-settlement",
+    controller.submitSettlement
+);
+
+router.post(
+    "/:id/approve-settlement",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    controller.approveSettlement
+);
+
+router.post(
+    "/:id/reject-settlement",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    controller.rejectSettlement
+);
+
+router.post("/:id/settlement-files", controller.addSettlementFiles);
+
 router.post("/:id/payment-proofs", controller.uploadPaymentProof);
 
 router.post("/:id/cancel", controller.cancel);
+router.get("/:id/doc-preview", controller.getDocPreview);
+router.get("/:id/download-word", controller.downloadWord);
+router.post("/:id/sync-google-sheet", controller.syncGoogleSheet);
 
 export default router;
+

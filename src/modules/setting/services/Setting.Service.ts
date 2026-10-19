@@ -11,6 +11,7 @@ import {
 } from "../constants/qc";
 import { WorkloadNormService } from "../../../shared/services/WorkloadNorm.Service";
 import { UserRole } from "../../account/entities/Account.entity";
+import { RedisService } from "../../../shared/services/Redis.Service";
 
 type Actor = { id?: string; userId?: string; role?: string };
 
@@ -34,22 +35,24 @@ export class SettingService {
     }
 
     async getQcConfig(): Promise<QcConfig & { isCustomized: boolean; updatedAt: Date | null }> {
-        const row = await this.repository.findOne({ where: { key: QC_SETTING_KEY } });
-        const stored = row?.value as Partial<QcConfig> | undefined;
+        return await RedisService.fetchWithCache('settings:qc_config', 86400, async () => {
+            const row = await this.repository.findOne({ where: { key: QC_SETTING_KEY } });
+            const stored = row?.value as Partial<QcConfig> | undefined;
 
-        if (row && isValidQcConfig(stored)) {
-            return {
-                provider: stored.provider,
-                verifyModel: stored.verifyModel,
-                reasoningEffort: stored.reasoningEffort || QC_DEFAULT_CONFIG.reasoningEffort,
-                maxBatch: stored.maxBatch,
-                maxContext: stored.maxContext,
-                isCustomized: true,
-                updatedAt: row.updatedAt,
-            };
-        }
+            if (row && isValidQcConfig(stored)) {
+                return {
+                    provider: stored.provider,
+                    verifyModel: stored.verifyModel,
+                    reasoningEffort: stored.reasoningEffort || QC_DEFAULT_CONFIG.reasoningEffort,
+                    maxBatch: stored.maxBatch,
+                    maxContext: stored.maxContext,
+                    isCustomized: true,
+                    updatedAt: row.updatedAt,
+                };
+            }
 
-        return { ...QC_DEFAULT_CONFIG, isCustomized: false, updatedAt: null };
+            return { ...QC_DEFAULT_CONFIG, isCustomized: false, updatedAt: null };
+        });
     }
 
     async updateQcConfig(input: Partial<QcConfig>, actor?: Actor) {
@@ -74,6 +77,8 @@ export class SettingService {
             value: normalized,
             updatedById: actor?.userId || null,
         });
+
+        await RedisService.deleteCache('settings:qc_config*');
 
         return this.getQcConfig();
     }

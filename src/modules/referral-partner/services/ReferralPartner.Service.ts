@@ -36,7 +36,7 @@ export class ReferralPartnerService {
         const saved = await this.referralPartnerRepository.save(partner);
 
         // Invalidate list cache
-        await RedisService.deleteCache('referral-partners:all*');
+        await RedisService.deleteCache('referral-partners:*all*');
 
         return saved;
     }
@@ -48,8 +48,8 @@ export class ReferralPartnerService {
         const saved = await this.referralPartnerRepository.save(partner);
 
         // Invalidate caches
-        await RedisService.deleteCache('referral-partners:all*');
-        await RedisService.deleteCache(`referral-partners:detail:${id}*`);
+        await RedisService.deleteCache('referral-partners:*all*');
+        await RedisService.deleteCache(`referral-partners:*:detail:${id}*`);
 
         return saved;
     }
@@ -65,8 +65,8 @@ export class ReferralPartnerService {
         await this.referralPartnerRepository.remove(partner);
 
         // Invalidate caches
-        await RedisService.deleteCache('referral-partners:all*');
-        await RedisService.deleteCache(`referral-partners:detail:${id}*`);
+        await RedisService.deleteCache('referral-partners:*all*');
+        await RedisService.deleteCache(`referral-partners:*:detail:${id}*`);
 
         return { message: "Xóa đối tác thành công" };
     }

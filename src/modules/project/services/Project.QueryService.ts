@@ -23,6 +23,7 @@ import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events
 // import { GoogleSheetService } from "../../../shared/services/GoogleSheet.Service";
 
 import { ProjectBaseService } from "./Project.BaseService";
+import { RedisService } from "../../../shared/services/Redis.Service";
 
 export class ProjectQueryService extends ProjectBaseService {
     async getAll(filters: any = {}, userInfo?: { id: string, role: string, userId?: string }) {
@@ -104,23 +105,29 @@ export class ProjectQueryService extends ProjectBaseService {
             }
         }
 
-        const [items, total] = await this.projectRepository.findAndCount({
-            where: where.length > 1 ? where : where[0],
-            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user", "team.members.user.accounts"],
-            order: { [sortBy]: sortDir },
-            skip: (page - 1) * limit,
-            take: limit
-        });
+        const filtersKey = JSON.stringify(filters);
+        const userInfoKey = userInfo ? `role_${userInfo.role}:user_${userInfo.id}` : 'no_user';
+        const cacheKey = `projects:${SecurityService.getTenantCachePart(userInfo)}:all:${userInfoKey}:${filtersKey}`;
 
-        return {
-            data: items,
-            meta: {
-                total,
-                page,
-                limit,
-                totalPages: Math.ceil(total / limit)
-            }
-        };
+        return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
+            const [items, total] = await this.projectRepository.findAndCount({
+                where: where.length > 1 ? where : where[0],
+                relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user", "team.members.user.accounts"],
+                order: { [sortBy]: sortDir },
+                skip: (page - 1) * limit,
+                take: limit
+            });
+
+            return {
+                data: items,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit)
+                }
+            };
+        });
     }
 
     async getByContractId(contractId: string, userInfo?: { id: string, role: string, userId?: string }) {

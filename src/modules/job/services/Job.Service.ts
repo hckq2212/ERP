@@ -7,6 +7,7 @@ import { In, ILike, Raw } from "typeorm";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { normalizeNickname } from "../../../shared/helpers/TaskNickname.helper";
 import { JobLevel, JobResponsibleRole } from "../../../shared/entities/Enums";
+import { RedisService } from "../../../shared/services/Redis.Service";
 
 export class JobService {
     private jobRepository = AppDataSource.getRepository(Jobs);
@@ -45,16 +46,22 @@ export class JobService {
         }
         query.where = SecurityService.withTenant(query.where || {});
 
-        return await this.jobRepository.find(query);
+        const cacheKey = `jobs:${SecurityService.getTenantCachePart()}:all:${JSON.stringify(filters)}`;
+        return await RedisService.fetchWithCache(cacheKey, 86400, async () => {
+            return await this.jobRepository.find(query);
+        });
     }
 
     async getOne(id: string) {
-        const job = await this.jobRepository.findOne({
-            where: SecurityService.withTenant({ id }),
-            relations: ["vendorJobs", "vendorJobs.vendor", "serviceJobs", "serviceJobs.service", "criteria"]
+        const cacheKey = `jobs:${SecurityService.getTenantCachePart()}:detail:${id}`;
+        return await RedisService.fetchWithCache(cacheKey, 86400, async () => {
+            const job = await this.jobRepository.findOne({
+                where: SecurityService.withTenant({ id }),
+                relations: ["vendorJobs", "vendorJobs.vendor", "serviceJobs", "serviceJobs.service", "criteria"]
+            });
+            if (!job) throw new Error("Không tìm thấy công việc");
+            return job;
         });
-        if (!job) throw new Error("Không tìm thấy công việc");
-        return job;
     }
 
     async create(data: any = {}) {
@@ -92,6 +99,8 @@ export class JobService {
             await sjRepo.save(sjs);
         }
 
+        await RedisService.deleteCache('jobs:*all*');
+        await RedisService.deleteCache('services:*all*');
         return savedJob;
     }
 
@@ -135,12 +144,18 @@ export class JobService {
             }
         }
 
+        await RedisService.deleteCache('jobs:*all*');
+        await RedisService.deleteCache(`jobs:*:detail:${id}*`);
+        await RedisService.deleteCache('services:*all*');
         return savedJob;
     }
 
     async delete(id: string) {
         const job = await this.getOne(id);
         await this.jobRepository.remove(job);
+        await RedisService.deleteCache('jobs:*all*');
+        await RedisService.deleteCache(`jobs:*:detail:${id}*`);
+        await RedisService.deleteCache('services:*all*');
         return { message: "Xóa công việc thành công" };
     }
 }
