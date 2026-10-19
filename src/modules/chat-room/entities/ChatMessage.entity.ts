@@ -75,4 +75,33 @@ export class ChatMessages extends BaseEntity {
 
     @Column({ type: "varchar", length: 26, nullable: true })
     forwardedFromUserId: string | null;
+
+    @Column({ type: "boolean", default: false })
+    isSystem: boolean;
+
+    @Column({ type: "json", nullable: true })
+    systemMetadata: {
+        action:
+            | "CREATE_GROUP"
+            | "ADD_MEMBER"
+            | "REMOVE_MEMBER"
+            | "LEAVE_GROUP"
+            | "SET_ADMIN"
+            | "REMOVE_ADMIN"
+            | "RENAME_GROUP"
+            | "PIN_MESSAGE"
+            | "UNPIN_MESSAGE"
+            | "CHANGE_AVATAR";
+        actorId?: string;
+        actorName?: string;
+        targetIds?: string[];
+        targetNames?: string[];
+        targetId?: string;
+        targetName?: string;
+        oldName?: string;
+        newName?: string;
+        pinnedMessageId?: string;
+        pinnedMessagePreview?: string;
+        [key: string]: any;
+    } | null;
 }

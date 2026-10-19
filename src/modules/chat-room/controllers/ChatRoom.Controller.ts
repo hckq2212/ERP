@@ -56,7 +56,7 @@ export class ChatRoomController {
             const isParticipant = await ChatRoomService.isParticipant(roomId, userId);
             if (!isParticipant) return res.status(403).json({ message: "Bạn không thuộc phòng chat này" });
 
-            const updatedParticipants = await ChatRoomService.addParticipants(roomId, participantIds);
+            const updatedParticipants = await ChatRoomService.addParticipants(roomId, participantIds, userId);
             res.status(200).json(updatedParticipants);
         } catch (error: any) {
             res.status(500).json({ message: error.message });
