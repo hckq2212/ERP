@@ -71,6 +71,12 @@ export class Jobs extends BaseEntity {
     @Column({ type: "decimal", precision: 10, scale: 2, nullable: true })
     timeToComplete: number;
 
+    @Column({ type: "text", nullable: true })
+    description: string | null;
+
+    @Column({ type: "varchar", length: 2048, nullable: true })
+    sampleDocumentUrl: string | null;
+
     @OneToMany(() => ServiceJob, (serviceJob) => serviceJob.job)
     serviceJobs: ServiceJob[];
 

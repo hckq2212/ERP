@@ -30,6 +30,28 @@ export class JobService {
                 throw new Error("Vai trò phụ trách job không hợp lệ");
             }
         }
+        if (Object.prototype.hasOwnProperty.call(data, "description")) {
+            const description = typeof data.description === "string" ? data.description.trim() : "";
+            data.description = description || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, "sampleDocumentUrl")) {
+            const url = typeof data.sampleDocumentUrl === "string" ? data.sampleDocumentUrl.trim() : "";
+            if (url) {
+                if (url.length > 2048) {
+                    throw new Error("Link tài liệu mẫu không được vượt quá 2048 ký tự");
+                }
+                let parsed: URL;
+                try {
+                    parsed = new URL(url);
+                } catch {
+                    throw new Error("Link tài liệu mẫu không hợp lệ");
+                }
+                if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                    throw new Error("Link tài liệu mẫu phải bắt đầu bằng http:// hoặc https://");
+                }
+            }
+            data.sampleDocumentUrl = url || null;
+        }
         return data;
     }
 
