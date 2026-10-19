@@ -80,6 +80,7 @@ app.use(cors({
             allowedOrigins.includes(origin) ||
             origin.includes("/gdt-api/tax-payer") ||
             origin.endsWith(".vercel.app") ||
+            origin.endsWith(".workers.dev") ||
             origin.endsWith(".onrender.com") ||
             /^http:\/\/localhost:\d+$/.test(origin)
         ) {

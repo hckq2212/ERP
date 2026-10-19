@@ -27,7 +27,7 @@ export class StringHelper {
     }
 
     /**
-     * Generates initials from a full name (e.g., "Trương Mỹ Lan" -> "TML").
+     * Generates initials from a full name (e.g., "Ngô Quốc Bi" -> "NQB").
      * Removes accents before extracting initials.
      */
     static getInitials(fullName: string): string {
