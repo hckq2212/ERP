@@ -5,6 +5,7 @@ import { Users } from "../../user/entities/User.entity";
 import { ChatMessages } from "../entities/ChatMessage.entity";
 import { ChatParticipants } from "../entities/ChatParticipant.entity";
 import { ChatRooms } from "../entities/ChatRoom.entity";
+import { broadcastToRoom, broadcastToUser } from "../../../socket";
 
 export class ChatRoomService {
     private static async resolveUserId(id: string) {
@@ -24,6 +25,37 @@ export class ChatRoomService {
     private static async resolveUserIds(ids: string[]) {
         const resolved = await Promise.all(ids.map((id) => this.resolveUserId(id)));
         return Array.from(new Set(resolved));
+    }
+
+    static async createSystemMessage(
+        roomId: string,
+        actorId: string,
+        content: string,
+        systemMetadata: NonNullable<ChatMessages["systemMetadata"]>
+    ) {
+        const messageRepo = AppDataSource.getRepository(ChatMessages);
+        const newMessage = messageRepo.create({
+            roomId,
+            senderId: actorId,
+            content,
+            isSystem: true,
+            systemMetadata,
+            attachments: null,
+            replyToId: null
+        });
+
+        await messageRepo.save(newMessage);
+
+        const savedMessage = await messageRepo.findOne({
+            where: { id: newMessage.id },
+            relations: ["sender", "replyTo", "replyTo.sender"]
+        });
+
+        if (savedMessage) {
+            await broadcastToRoom(roomId, "receive_message", savedMessage);
+        }
+
+        return savedMessage;
     }
 
     static async getUserRooms(userId: string) {
@@ -176,7 +208,9 @@ export class ChatRoomService {
 
     static async createGroup(creatorId: string, name: string, participantIds: string[], avatarUrl?: string | null) {
         const participantRepo = AppDataSource.getRepository(ChatParticipants);
+        const userRepo = AppDataSource.getRepository(Users);
         const resolvedParticipantIds = await this.resolveUserIds(participantIds);
+        const uniqueParticipantIds = Array.from(new Set([creatorId, ...resolvedParticipantIds]));
 
         const createdRoom = await AppDataSource.transaction(async (transactionalEntityManager) => {
             const newRoom = new ChatRooms();
@@ -188,7 +222,6 @@ export class ChatRoomService {
             }
             await transactionalEntityManager.save(newRoom);
 
-            const uniqueParticipantIds = Array.from(new Set([creatorId, ...resolvedParticipantIds]));
             for (const userId of uniqueParticipantIds) {
                 const participant = new ChatParticipants();
                 participant.roomId = newRoom.id;
@@ -201,6 +234,24 @@ export class ChatRoomService {
             return newRoom;
         });
 
+        const creator = await userRepo.findOne({ where: { id: creatorId }, select: ["id", "fullName"] });
+        const creatorName = creator?.fullName || "Người tạo";
+
+        await this.createSystemMessage(
+            createdRoom.id,
+            creatorId,
+            `${creatorName} đã tạo nhóm chat.`,
+            {
+                action: "CREATE_GROUP",
+                actorId: creatorId,
+                actorName: creatorName
+            }
+        );
+
+        for (const uid of uniqueParticipantIds) {
+            broadcastToUser(uid, "room_added", { roomId: createdRoom.id });
+        }
+
         const participants = await participantRepo.find({
             where: { roomId: createdRoom.id },
             relations: ["user"]
@@ -209,9 +260,11 @@ export class ChatRoomService {
         return { ...createdRoom, participants };
     }
 
-    static async addParticipants(roomId: string, userIds: string[]) {
+    static async addParticipants(roomId: string, userIds: string[], actorId?: string) {
         const participantRepo = AppDataSource.getRepository(ChatParticipants);
+        const userRepo = AppDataSource.getRepository(Users);
         const resolvedUserIds = await this.resolveUserIds(userIds);
+        const newlyAddedIds: string[] = [];
 
         await AppDataSource.transaction(async (transactionalEntityManager) => {
             for (const userId of resolvedUserIds) {
@@ -226,9 +279,39 @@ export class ChatRoomService {
                     participant.role = "MEMBER";
                     participant.lastReadAt = null;
                     await transactionalEntityManager.save(participant);
+                    newlyAddedIds.push(userId);
                 }
             }
         });
+
+        if (newlyAddedIds.length > 0) {
+            const actor = actorId
+                ? await userRepo.findOne({ where: { id: actorId }, select: ["id", "fullName"] })
+                : null;
+            const actorName = actor?.fullName || "Quản trị viên";
+            const addedUsers = await userRepo.find({
+                where: { id: In(newlyAddedIds) },
+                select: ["id", "fullName"]
+            });
+            const targetNames = addedUsers.map((u) => u.fullName || "Thành viên");
+
+            await this.createSystemMessage(
+                roomId,
+                actorId || newlyAddedIds[0],
+                `${actorName} đã thêm ${targetNames.join(", ")} vào nhóm.`,
+                {
+                    action: "ADD_MEMBER",
+                    actorId: actorId || newlyAddedIds[0],
+                    actorName,
+                    targetIds: newlyAddedIds,
+                    targetNames
+                }
+            );
+
+            for (const uid of newlyAddedIds) {
+                broadcastToUser(uid, "room_added", { roomId });
+            }
+        }
 
         return participantRepo.find({
             where: { roomId },
@@ -351,6 +434,42 @@ export class ChatRoomService {
             }
         });
 
+        const userRepo = AppDataSource.getRepository(Users);
+        const [requesterUser, targetUser] = await Promise.all([
+            userRepo.findOne({ where: { id: requesterId }, select: ["id", "fullName"] }),
+            userRepo.findOne({ where: { id: targetUserId }, select: ["id", "fullName"] })
+        ]);
+        const requesterName = requesterUser?.fullName || "Quản trị viên";
+        const targetName = targetUser?.fullName || "Thành viên";
+
+        if (newRole === "ADMIN" || newRole === "DEPUTY") {
+            await this.createSystemMessage(
+                roomId,
+                requesterId,
+                `${requesterName} đã thêm ${targetName} làm quản trị viên nhóm.`,
+                {
+                    action: "SET_ADMIN",
+                    actorId: requesterId,
+                    actorName: requesterName,
+                    targetId: targetUserId,
+                    targetName
+                }
+            );
+        } else {
+            await this.createSystemMessage(
+                roomId,
+                requesterId,
+                `${requesterName} đã gỡ quyền quản trị viên của ${targetName}.`,
+                {
+                    action: "REMOVE_ADMIN",
+                    actorId: requesterId,
+                    actorName: requesterName,
+                    targetId: targetUserId,
+                    targetName
+                }
+            );
+        }
+
         const updatedParticipants = await participantRepo.find({
             where: { roomId },
             relations: ["user"]
@@ -407,7 +526,42 @@ export class ChatRoomService {
             }
         }
 
+        const userRepo = AppDataSource.getRepository(Users);
+        const [requesterUser, targetUser] = await Promise.all([
+            userRepo.findOne({ where: { id: requesterId }, select: ["id", "fullName"] }),
+            userRepo.findOne({ where: { id: targetUserId }, select: ["id", "fullName"] })
+        ]);
+        const requesterName = requesterUser?.fullName || "Quản trị viên";
+        const targetName = targetUser?.fullName || "Thành viên";
+
         await participantRepo.remove(target);
+
+        if (isSelfLeaving) {
+            await this.createSystemMessage(
+                roomId,
+                requesterId,
+                `${targetName} đã rời khỏi nhóm.`,
+                {
+                    action: "LEAVE_GROUP",
+                    actorId: requesterId,
+                    actorName: targetName
+                }
+            );
+        } else {
+            await this.createSystemMessage(
+                roomId,
+                requesterId,
+                `${requesterName} đã xóa ${targetName} khỏi nhóm.`,
+                {
+                    action: "REMOVE_MEMBER",
+                    actorId: requesterId,
+                    actorName: requesterName,
+                    targetId: targetUserId,
+                    targetName
+                }
+            );
+            broadcastToUser(targetUserId, "room_removed", { roomId });
+        }
 
         const remainingParticipants = await participantRepo.find({
             where: { roomId },
@@ -444,6 +598,9 @@ export class ChatRoomService {
             throw error;
         }
 
+        const oldName = room.name;
+        const oldAvatar = room.avatarUrl;
+
         if (updateData.name !== undefined) {
             const trimmedName = updateData.name.trim();
             if (!trimmedName) {
@@ -459,6 +616,40 @@ export class ChatRoomService {
         }
 
         await roomRepo.save(room);
+
+        if (room.isGroup) {
+            const userRepo = AppDataSource.getRepository(Users);
+            const actor = await userRepo.findOne({ where: { id: userId }, select: ["id", "fullName"] });
+            const actorName = actor?.fullName || "Thành viên";
+
+            if (updateData.name !== undefined && room.name !== oldName) {
+                await this.createSystemMessage(
+                    roomId,
+                    userId,
+                    `${actorName} đã đổi tên nhóm thành "${room.name}".`,
+                    {
+                        action: "RENAME_GROUP",
+                        actorId: userId,
+                        actorName,
+                        oldName,
+                        newName: room.name
+                    }
+                );
+            }
+
+            if (updateData.avatarUrl !== undefined && room.avatarUrl !== oldAvatar) {
+                await this.createSystemMessage(
+                    roomId,
+                    userId,
+                    `${actorName} đã đổi ảnh đại diện nhóm.`,
+                    {
+                        action: "CHANGE_AVATAR",
+                        actorId: userId,
+                        actorName
+                    }
+                );
+            }
+        }
 
         const participants = await participantRepo.find({
             where: { roomId },
@@ -606,6 +797,40 @@ export class ChatRoomService {
         message.pinnedAt = isPinned ? new Date() : null;
         message.pinnedById = isPinned ? userId : null;
         await messageRepo.save(message);
+
+        const userRepo = AppDataSource.getRepository(Users);
+        const actor = await userRepo.findOne({ where: { id: userId }, select: ["id", "fullName"] });
+        const actorName = actor?.fullName || "Thành viên";
+
+        if (isPinned) {
+            const preview = message.content
+                ? (message.content.length > 50 ? message.content.slice(0, 50) + "..." : message.content)
+                : "[Tệp đính kèm]";
+            await this.createSystemMessage(
+                roomId,
+                userId,
+                `${actorName} đã ghim một tin nhắn.`,
+                {
+                    action: "PIN_MESSAGE",
+                    actorId: userId,
+                    actorName,
+                    pinnedMessageId: messageId,
+                    pinnedMessagePreview: preview
+                }
+            );
+        } else {
+            await this.createSystemMessage(
+                roomId,
+                userId,
+                `${actorName} đã bỏ ghim một tin nhắn.`,
+                {
+                    action: "UNPIN_MESSAGE",
+                    actorId: userId,
+                    actorName,
+                    pinnedMessageId: messageId
+                }
+            );
+        }
 
         return {
             messageId,

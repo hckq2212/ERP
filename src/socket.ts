@@ -56,14 +56,31 @@ export async function broadcastToRoom(roomId: string, event: string, payload: an
     try {
         const participantRepo = AppDataSource.getRepository(ChatParticipants);
         const allParticipants = await participantRepo.find({ where: { roomId } });
+        const targetSocketIds = new Set<string>();
         allParticipants.forEach((participant) => {
             const socketIds = onlineUsers.get(participant.userId);
             socketIds?.forEach((socketId) => {
-                ioInstance?.to(socketId).emit(event, payload);
+                targetSocketIds.add(socketId);
             });
+        });
+        targetSocketIds.forEach((socketId) => {
+            ioInstance?.to(socketId).emit(event, payload);
         });
     } catch (err) {
         console.error("Error broadcasting to room:", err);
+    }
+}
+
+export function broadcastToUser(userId: string, event: string, payload: any) {
+    if (!ioInstance) return;
+    try {
+        const socketIds = onlineUsers.get(userId);
+        socketIds?.forEach((socketId) => {
+            ioInstance?.to(socketId).emit(event, payload);
+        });
+        ioInstance.to(`user:${userId}`).emit(event, payload);
+    } catch (err) {
+        console.error("Error broadcasting to user:", err);
     }
 }
 
@@ -128,6 +145,7 @@ export function initSocket(httpServer: HttpServer) {
     io.on("connection", (socket: AuthenticatedSocket) => {
         const userId = socket.user?.userId;
         if (userId) {
+            socket.join(`user:${userId}`);
             const socketIds = onlineUsers.get(userId) || new Set<string>();
             socketIds.add(socket.id);
             onlineUsers.set(userId, socketIds);
