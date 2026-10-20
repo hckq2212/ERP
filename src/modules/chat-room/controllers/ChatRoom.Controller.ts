@@ -94,6 +94,12 @@ export class ChatRoomController {
             if (!content?.trim() && !hasAttachments) return res.status(400).json({ message: "Tin nhắn không được để trống" });
 
             const message = await ChatRoomService.createMessage(roomId, userId, content || "", attachments || [], replyToId);
+
+            // Phát realtime qua socket cho tất cả thành viên (kể cả khi gửi qua REST fallback)
+            if (message) {
+                await broadcastToRoom(roomId, "receive_message", message);
+            }
+
             res.status(201).json(message);
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ message: error.message });

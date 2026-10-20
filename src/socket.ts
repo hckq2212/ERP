@@ -162,7 +162,9 @@ export function initSocket(httpServer: HttpServer) {
             socket.leave(roomId);
         });
 
-        socket.on("typing", (roomId: string) => {
+        socket.on("typing", (payload: string | { roomId: string }) => {
+            const roomId = typeof payload === "string" ? payload : payload?.roomId;
+            if (!roomId) return;
             socket.to(roomId).emit("user_typing", {
                 roomId,
                 userId: socket.user?.userId,
@@ -170,10 +172,13 @@ export function initSocket(httpServer: HttpServer) {
             });
         });
 
-        socket.on("stop_typing", (roomId: string) => {
+        socket.on("stop_typing", (payload: string | { roomId: string }) => {
+            const roomId = typeof payload === "string" ? payload : payload?.roomId;
+            if (!roomId) return;
             socket.to(roomId).emit("user_stop_typing", {
                 roomId,
-                userId: socket.user?.userId
+                userId: socket.user?.userId,
+                username: socket.user?.username // bổ sung username để Mobile filter đúng
             });
         });
 
