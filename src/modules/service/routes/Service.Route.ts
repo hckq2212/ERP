@@ -7,12 +7,12 @@ const serviceController = new ServiceController();
 
 router.get("/", serviceController.getAll);
 router.get("/:id", serviceController.getOne);
-router.post("/", serviceController.create);
-router.patch("/:id", serviceController.update);
+router.post("/", roleMiddleware(["ADMIN", "BOD"]), serviceController.create);
+router.patch("/:id", roleMiddleware(["ADMIN", "BOD"]), serviceController.update);
 router.delete("/bulk", roleMiddleware(["ADMIN", "BOD"]), serviceController.bulkDelete);
-router.delete("/:id", serviceController.delete);
+router.delete("/:id", roleMiddleware(["ADMIN", "BOD"]), serviceController.delete);
 
-router.post("/:id/jobs/:jobId", serviceController.addJob);
-router.delete("/:id/jobs/:jobId", serviceController.removeJob);
+router.post("/:id/jobs/:jobId", roleMiddleware(["ADMIN", "BOD"]), serviceController.addJob);
+router.delete("/:id/jobs/:jobId", roleMiddleware(["ADMIN", "BOD"]), serviceController.removeJob);
 
 export default router;

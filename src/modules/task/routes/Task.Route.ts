@@ -19,6 +19,7 @@ const upload = multer({
 });
 
 import { validationMiddleware } from "../../../shared/middlewares/Validation.Middleware";
+import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
 import { BulkStartTasksDTO, BulkTaskAssignmentDTO, BulkUnassignTasksDTO, CreateSubtaskDTO, CreateTaskDTO, RequestTaskStaffingDTO, RespondSubtaskPlanDTO, RespondTaskStaffingDTO, TaskAssignmentDTO, UpdateTaskNicknameDTO } from "../dto/Task.dto";
 
 router.get("/", taskController.getAll);
@@ -38,7 +39,7 @@ router.put("/:id/assign", validationMiddleware(TaskAssignmentDTO), taskControlle
 router.patch("/:id/submit-result", taskController.submitResult);
 router.patch("/:id/submit-result-file", upload.single("file"), taskController.submitResultFile);
 router.patch("/:id/submit-result-review", taskController.submitResultForReview);
-router.delete("/:id", taskController.delete);
+router.delete("/:id", roleMiddleware(["ADMIN", "BOD", "PM"]), taskController.delete);
 router.patch("/:id/reassign", taskController.reassign);
 router.post("/:id/pricing", taskController.assessExtraTask);
 router.post('/:id/request-support', taskController.requestSupport);

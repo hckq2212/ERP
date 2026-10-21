@@ -24,10 +24,18 @@ router.post(
     roleMiddleware(["BOD", "ADMIN"]),
     debtController.unlockDebt
 );
-router.delete("/:id", debtController.delete);
+router.delete("/:id", roleMiddleware(["BOD", "ADMIN"]), debtController.delete);
 
-// Payments
-router.post("/payments", paymentController.create);
-router.delete("/payments/:id", paymentController.delete);
+// Payments (Kế toán / Quản trị)
+router.post(
+    "/payments",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    paymentController.create
+);
+router.delete(
+    "/payments/:id",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    paymentController.delete
+);
 
 export default router;
