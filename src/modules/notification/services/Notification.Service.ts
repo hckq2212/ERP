@@ -5,9 +5,11 @@ import { EntityManager } from "typeorm";
 import { SecurityService } from "../../../shared/services/Security.Service";
 
 import { notificationEmitter, NOTIFICATION_EVENTS } from "../events/NotificationEmitter";
+import { PushNotificationService } from "./PushNotification.Service";
 
 export class NotificationService {
     private notificationRepository = AppDataSource.getRepository(Notifications);
+    private pushNotificationService = new PushNotificationService();
 
     async createNotification(data: {
         title: string;
@@ -32,6 +34,19 @@ export class NotificationService {
         notificationEmitter.emit(NOTIFICATION_EVENTS.NEW_NOTIFICATION, {
             recipientId: data.recipient.id,
             notification: savedNotification
+        });
+
+        // Gửi Push Notification tới thiết bị người dùng (chạy ngầm, không block luồng chính)
+        this.pushNotificationService.sendPushNotification(data.recipient.id, {
+            id: savedNotification.id,
+            title: data.title,
+            content: data.content,
+            link: data.link,
+            relatedEntityId: data.relatedEntityId,
+            relatedEntityType: data.relatedEntityType,
+            type: data.type
+        }).catch(err => {
+            console.error("[NotificationService] Push notification error:", err);
         });
 
         return savedNotification;

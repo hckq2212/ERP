@@ -1,10 +1,12 @@
 import { Response } from "express";
 import { NotificationService } from "../services/Notification.Service";
+import { PushNotificationService } from "../services/PushNotification.Service";
 import { AuthRequest } from "../../../shared/middlewares/Auth.Middleware";
 import { GLOBAL_NOTIFICATION_CHANNEL, notificationManager } from "../events/NotificationEmitter";
 
 export class NotificationController {
     private notificationService = new NotificationService();
+    private pushNotificationService = new PushNotificationService();
 
 streamNotifications = async (req: AuthRequest, res: Response) => {
         const userId = req.user?.userId || req.user?.id;
@@ -54,6 +56,45 @@ streamNotifications = async (req: AuthRequest, res: Response) => {
             const notification = await this.notificationService.markAsRead(notificationId);
             res.status(200).json(notification);
         } catch (error) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    registerDevice = async (req: AuthRequest, res: Response) => {
+        try {
+            const userId = req.user?.userId || req.user?.id;
+            if (!userId) {
+                return res.status(401).json({ message: "Unauthorized" });
+            }
+            const { token, deviceId, platform, deviceName } = req.body;
+            if (!token || !deviceId) {
+                return res.status(400).json({ message: "token và deviceId là bắt buộc." });
+            }
+            const saved = await this.pushNotificationService.registerDevice(userId, {
+                token,
+                deviceId,
+                platform,
+                deviceName
+            });
+            res.status(200).json({ success: true, data: saved });
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    unregisterDevice = async (req: AuthRequest, res: Response) => {
+        try {
+            const userId = req.user?.userId || req.user?.id;
+            if (!userId) {
+                return res.status(401).json({ message: "Unauthorized" });
+            }
+            const deviceId = req.params.deviceId as string;
+            if (!deviceId) {
+                return res.status(400).json({ message: "deviceId là bắt buộc." });
+            }
+            await this.pushNotificationService.unregisterDevice(userId, deviceId);
+            res.status(200).json({ success: true });
+        } catch (error: any) {
             res.status(500).json({ message: error.message });
         }
     }

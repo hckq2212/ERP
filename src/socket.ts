@@ -85,20 +85,31 @@ export function broadcastToUser(userId: string, event: string, payload: any) {
 }
 
 export function initSocket(httpServer: HttpServer) {
-    const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : [];
+    const rawAllowedOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim().replace(/\/$/, ""))
+        : [];
 
     const io = new Server(httpServer, {
         cors: {
             origin: (origin, callback) => {
-                if (!origin) return callback(null, true);
+                console.log(`🌐 [Socket.io CORS Check] Incoming origin: ${origin ? `"${origin}"` : "<no origin / undefined>"}`);
+                if (!origin) {
+                    console.log(`✅ [Socket.io CORS Allowed] No origin (Mobile native / Server / cURL)`);
+                    return callback(null, true);
+                }
+                const normalized = origin.trim().replace(/\/$/, "");
                 if (
-                    allowedOrigins.includes(origin) ||
-                    origin.endsWith(".vercel.app") ||
-                    origin.endsWith(".onrender.com") ||
-                    /^http:\/\/localhost:\d+$/.test(origin)
+                    rawAllowedOrigins.includes(normalized) ||
+                    normalized.endsWith(".vercel.app") ||
+                    normalized.endsWith(".workers.dev") ||
+                    normalized.endsWith(".onrender.com") ||
+                    /^http:\/\/localhost:\d+$/.test(normalized) ||
+                    /^http:\/\/(192\.168\.\d+\.\d+|10\.0\.2\.2|127\.0\.0\.1)(:\d+)?$/.test(normalized)
                 ) {
+                    console.log(`✅ [Socket.io CORS Allowed] Origin: "${origin}"`);
                     callback(null, true);
                 } else {
+                    console.warn(`❌ [Socket.io CORS Blocked] Origin: "${origin}"`);
                     callback(new Error("Not allowed by CORS"));
                 }
             },

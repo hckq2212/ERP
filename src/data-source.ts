@@ -26,6 +26,7 @@ import { Debts } from "./modules/debt/entities/Debt.entity"
 import { DebtPayments } from "./modules/debt/entities/DebtPayment.entity"
 import { PaymentRequests } from "./modules/payment-request/entities/PaymentRequest.entity"
 import { Notifications } from "./modules/notification/entities/Notification.entity"
+import { UserDeviceTokens } from "./modules/notification/entities/UserDeviceToken.entity"
 import { Announcements } from "./modules/announcement/entities/Announcement.entity"
 import { AnnouncementRecipients } from "./modules/announcement/entities/AnnouncementRecipient.entity"
 import { AnnouncementComments } from "./modules/announcement/entities/AnnouncementComment.entity"
@@ -134,6 +135,7 @@ export const AppDataSource = new DataSource({
         DebtPayments,
         PaymentRequests,
         Notifications,
+        UserDeviceTokens,
         Announcements,
         AnnouncementRecipients,
         AnnouncementComments,
