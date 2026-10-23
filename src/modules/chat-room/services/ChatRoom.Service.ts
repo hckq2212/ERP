@@ -6,8 +6,10 @@ import { ChatMessages } from "../entities/ChatMessage.entity";
 import { ChatParticipants } from "../entities/ChatParticipant.entity";
 import { ChatRooms } from "../entities/ChatRoom.entity";
 import { broadcastToRoom, broadcastToUser } from "../../../socket";
+import { PushNotificationService } from "../../notification/services/PushNotification.Service";
 
 export class ChatRoomService {
+    private static pushNotificationService = new PushNotificationService();
     private static async resolveUserId(id: string) {
         const userRepo = AppDataSource.getRepository(Users);
         const user = await userRepo.findOne({ where: { id }, select: ["id"] });
@@ -365,10 +367,80 @@ export class ChatRoomService {
 
         await messageRepo.save(newMessage);
 
-        return messageRepo.findOne({
+        const populated = await messageRepo.findOne({
             where: { id: newMessage.id },
             relations: ["sender", "replyTo", "replyTo.sender"]
         });
+
+        // Tự động đẩy Push Notification tới các thành viên khác trong phòng chat (chạy nền, không block)
+        if (populated) {
+            this.sendPushNotificationForMessage(populated, roomId, senderUserId).catch((err) => {
+                console.error("[ChatPushNotification] Lỗi gửi push chat:", err);
+            });
+        }
+
+        return populated;
+    }
+
+    /**
+     * Gửi Push Notification thông báo tin nhắn mới tới các thành viên trong phòng chat
+     */
+    private static async sendPushNotificationForMessage(
+        populatedMessage: ChatMessages,
+        roomId: string,
+        senderUserId: string
+    ) {
+        try {
+            const roomRepo = AppDataSource.getRepository(ChatRooms);
+            const participantRepo = AppDataSource.getRepository(ChatParticipants);
+
+            const [room, participants] = await Promise.all([
+                roomRepo.findOne({ where: { id: roomId } }),
+                participantRepo.find({ where: { roomId } })
+            ]);
+
+            const senderName = populatedMessage.sender?.fullName || "Người dùng";
+            let title = senderName;
+            let body = "";
+
+            if (populatedMessage.content?.trim()) {
+                body = populatedMessage.content.trim().length > 120
+                    ? `${populatedMessage.content.trim().substring(0, 120)}...`
+                    : populatedMessage.content.trim();
+            } else if (populatedMessage.attachments?.length) {
+                body = `[Đã gửi ${populatedMessage.attachments.length} tệp đính kèm]`;
+            } else {
+                body = "Đã gửi tin nhắn cho bạn";
+            }
+
+            if (room?.isGroup) {
+                title = room.name || "Nhóm trò chuyện";
+                body = `${senderName}: ${body}`;
+            }
+
+            // Gửi tới tất cả thành viên khác trong phòng chưa tắt thông báo (isMuted)
+            const recipientIds = participants
+                .filter(p => p.userId !== senderUserId && !p.isMuted)
+                .map(p => p.userId);
+
+            if (recipientIds.length === 0) return;
+
+            await Promise.allSettled(
+                recipientIds.map(recipientId =>
+                    this.pushNotificationService.sendPushNotification(recipientId, {
+                        id: populatedMessage.id,
+                        title,
+                        content: body,
+                        link: `/chat/${roomId}`,
+                        relatedEntityId: roomId,
+                        relatedEntityType: "CHAT_ROOM",
+                        type: "CHAT_MESSAGE"
+                    })
+                )
+            );
+        } catch (error) {
+            console.error("[ChatPushNotification] Lỗi trong quá trình gửi push chat:", error);
+        }
     }
 
     static async isParticipant(roomId: string, userId: string) {

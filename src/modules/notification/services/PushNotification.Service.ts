@@ -1,4 +1,4 @@
-import { Expo, ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
+ import { Expo, ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
 import { AppDataSource } from "../../../data-source";
 import { UserDeviceTokens } from "../entities/UserDeviceToken.entity";
 
@@ -64,7 +64,23 @@ export class PushNotificationService {
             });
         }
 
-        return await this.repo.save(record);
+        try {
+            return await this.repo.save(record);
+        } catch (error: any) {
+            // Trường hợp 2 request song song cùng gửi lên tại 1 thời điểm (race condition)
+            if (error?.code === "23505" || error?.message?.includes("duplicate key")) {
+                const existing = await this.repo.findOne({ where: { token: data.token } });
+                if (existing) {
+                    existing.userId = userId;
+                    existing.deviceId = data.deviceId;
+                    if (data.platform) existing.platform = data.platform;
+                    if (data.deviceName) existing.deviceName = data.deviceName;
+                    existing.lastActiveAt = new Date();
+                    return await this.repo.save(existing);
+                }
+            }
+            throw error;
+        }
     }
 
     /**
