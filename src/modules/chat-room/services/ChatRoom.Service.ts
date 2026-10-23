@@ -7,6 +7,7 @@ import { ChatParticipants } from "../entities/ChatParticipant.entity";
 import { ChatRooms } from "../entities/ChatRoom.entity";
 import { broadcastToRoom, broadcastToUser } from "../../../socket";
 import { PushNotificationService } from "../../notification/services/PushNotification.Service";
+import { formatChatPushContent } from "../helpers/ChatPushContent.helper";
 
 export class ChatRoomService {
     private static pushNotificationService = new PushNotificationService();
@@ -404,9 +405,7 @@ export class ChatRoomService {
             let body = "";
 
             if (populatedMessage.content?.trim()) {
-                body = populatedMessage.content.trim().length > 120
-                    ? `${populatedMessage.content.trim().substring(0, 120)}...`
-                    : populatedMessage.content.trim();
+                body = formatChatPushContent(populatedMessage.content, 120);
             } else if (populatedMessage.attachments?.length) {
                 body = `[Đã gửi ${populatedMessage.attachments.length} tệp đính kèm]`;
             } else {
