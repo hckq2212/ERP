@@ -182,3 +182,72 @@ export const streamUploadToCloudinary = (diskFile: Express.Multer.File, folder: 
         fs.createReadStream(diskFile.path).pipe(uploadStream);
     });
 };
+
+/**
+ * Extract Cloudinary publicId and resourceType from secure_url
+ */
+export const parseCloudinaryAssetInfo = (url: string, declaredType?: string): { publicId: string; resourceType: 'image' | 'video' | 'raw' } => {
+    if (!url) return { publicId: '', resourceType: 'image' };
+
+    // Determine resource_type from url or declared type
+    let resourceType: 'image' | 'video' | 'raw' = 'image';
+    if (url.includes('/video/upload/') || declaredType?.includes('audio') || url.match(/\.(m4a|mp3|wav|ogg|webm|mp4)($|\?)/i)) {
+        resourceType = 'video'; // Cloudinary treats audio under video
+    } else if (url.includes('/raw/upload/') || (!url.includes('/image/upload/') && !url.match(/\.(jpeg|jpg|png|webp|gif|svg)($|\?)/i))) {
+        resourceType = 'raw';
+    }
+
+    try {
+        const urlWithoutQuery = url.split('?')[0];
+        const uploadIndex = urlWithoutQuery.indexOf('/upload/');
+        if (uploadIndex === -1) {
+            return { publicId: '', resourceType };
+        }
+
+        // Get substring after /upload/
+        let afterUpload = urlWithoutQuery.substring(uploadIndex + '/upload/'.length);
+        // Remove version string like v1729987899/
+        afterUpload = afterUpload.replace(/^v\d+\//, '');
+
+        // If image or video, remove the file extension from publicId
+        if (resourceType === 'image' || resourceType === 'video') {
+            afterUpload = afterUpload.replace(/\.[a-zA-Z0-9]+$/, '');
+        }
+
+        return {
+            publicId: decodeURIComponent(afterUpload),
+            resourceType
+        };
+    } catch {
+        return { publicId: '', resourceType };
+    }
+};
+
+/**
+ * Destroy/delete an asset on Cloudinary safely
+ */
+export const destroyCloudinaryAsset = async (publicId: string, resourceType: 'image' | 'video' | 'raw' = 'image'): Promise<boolean> => {
+    if (!publicId) return false;
+    try {
+        const result = await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+        return result?.result === 'ok';
+    } catch (err: any) {
+        console.warn(`[Cloudinary] Failed to destroy asset ${publicId}:`, err?.message || err);
+        return false;
+    }
+};
+
+/**
+ * Add archive tag to a Cloudinary asset
+ */
+export const tagCloudinaryAsset = async (publicId: string, tag: string = 'recalled_archive', resourceType: 'image' | 'video' | 'raw' = 'image'): Promise<boolean> => {
+    if (!publicId) return false;
+    try {
+        await cloudinary.uploader.add_tag(tag, [publicId], { resource_type: resourceType });
+        return true;
+    } catch (err: any) {
+        console.warn(`[Cloudinary] Failed to tag asset ${publicId}:`, err?.message || err);
+        return false;
+    }
+};
+

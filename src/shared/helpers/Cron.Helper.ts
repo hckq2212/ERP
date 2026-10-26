@@ -9,6 +9,8 @@ import { ProjectPauseService } from '../../modules/project/services/ProjectPause
 import { VinicoinTransactions, VinicoinTransactionType } from '../../modules/vinicoin/entities/VinicoinTransaction.entity';
 import { LessThan, MoreThan, In } from 'typeorm';
 import { ulid } from 'ulid';
+import { ChatMessages } from '../../modules/chat-room/entities/ChatMessage.entity';
+import { destroyCloudinaryAsset, parseCloudinaryAssetInfo } from './cloudinary.helper';
 
 export class CronHelper {
     /**
@@ -207,6 +209,15 @@ export class CronHelper {
             }
         }, { timezone: 'Asia/Ho_Chi_Minh' });
 
+        /**
+         * Recalled Chat Attachments 30-Day Purge Job
+         * Runs daily at 02:30 AM to permanently delete expired attachments from Cloudinary.
+         */
+        cron.schedule('30 2 * * *', async () => {
+            console.log('[Cron] Running daily purge of 30-day recalled chat attachments at', new Date().toLocaleString());
+            await CronHelper.purgeExpiredRecalledChatAttachments();
+        }, { timezone: 'Asia/Ho_Chi_Minh' });
+
         console.log('[Cron] Service initialized successfully.');
     }
 
@@ -275,11 +286,63 @@ export class CronHelper {
         }
 
         console.log(`[Cron] Manual check: closed ${closedProjects} projects, sent ${remindersSent} reminders.`);
+        
+        // Also run attachment purge during manual check
+        await CronHelper.purgeExpiredRecalledChatAttachments();
+
         return {
             tasks: result.affected || 0,
             debts: debtResult.affected || 0,
             closedProjects,
             remindersSent
         };
+    }
+
+    /**
+     * Purges chat attachments from Cloudinary for messages recalled more than 30 days ago.
+     */
+    static async purgeExpiredRecalledChatAttachments() {
+        try {
+            const messageRepo = AppDataSource.getRepository(ChatMessages);
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+            // Tìm các tin nhắn đã thu hồi hơn 30 ngày trước
+            const recalledMessages = await messageRepo.find({
+                where: {
+                    isRecalled: true,
+                    recalledAt: LessThan(thirtyDaysAgo)
+                }
+            });
+
+            let purgedCount = 0;
+            for (const msg of recalledMessages) {
+                const archived = msg.systemMetadata?.archivedAttachments;
+                if (archived && Array.isArray(archived) && archived.length > 0) {
+                    for (const att of archived) {
+                        if (att.url) {
+                            const assetInfo = parseCloudinaryAssetInfo(att.url, att.type);
+                            if (assetInfo.publicId) {
+                                await destroyCloudinaryAsset(assetInfo.publicId, assetInfo.resourceType);
+                                purgedCount++;
+                            }
+                        }
+                    }
+
+                    // Cập nhật metadata đánh dấu đã xóa vĩnh viễn trên Cloudinary
+                    msg.systemMetadata = {
+                        ...(msg.systemMetadata || {}),
+                        archivedAttachments: [],
+                        purgedFromCloudinaryAt: new Date().toISOString()
+                    };
+                    await messageRepo.save(msg);
+                }
+            }
+
+            if (purgedCount > 0) {
+                console.log(`[Cron Chat Purge] Successfully purged ${purgedCount} expired attachments from Cloudinary.`);
+            }
+        } catch (error) {
+            console.error('[Cron Chat Purge] Error purging expired recalled attachments:', error);
+        }
     }
 }

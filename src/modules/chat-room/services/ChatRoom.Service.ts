@@ -8,6 +8,7 @@ import { ChatRooms } from "../entities/ChatRoom.entity";
 import { broadcastToRoom, broadcastToUser } from "../../../socket";
 import { PushNotificationService } from "../../notification/services/PushNotification.Service";
 import { formatChatPushContent } from "../helpers/ChatPushContent.helper";
+import { parseCloudinaryAssetInfo, tagCloudinaryAsset } from "../../../shared/helpers/cloudinary.helper";
 
 export class ChatRoomService {
     private static pushNotificationService = new PushNotificationService();
@@ -962,6 +963,30 @@ export class ChatRoomService {
             const error: any = new Error("Bạn chỉ có thể thu hồi tin nhắn do chính mình gửi");
             error.statusCode = 403;
             throw error;
+        }
+
+        // Lưu trữ tạm attachments vào systemMetadata để lưu trữ trong 30 ngày (Option C)
+        const previousAttachments = message.attachments;
+        if (previousAttachments && Array.isArray(previousAttachments) && previousAttachments.length > 0) {
+            const retentionDays = 30;
+            const purgeDate = new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000);
+            message.systemMetadata = {
+                ...(message.systemMetadata || {}),
+                action: message.systemMetadata?.action || "RECALL_MESSAGE",
+                archivedAttachments: previousAttachments,
+                recalledAt: new Date().toISOString(),
+                purgeAt: purgeDate.toISOString(),
+            };
+
+            // Đánh dấu tag 'recalled_archive' trên Cloudinary (non-blocking)
+            previousAttachments.forEach((att) => {
+                if (att.url) {
+                    const assetInfo = parseCloudinaryAssetInfo(att.url, att.type);
+                    if (assetInfo.publicId) {
+                        tagCloudinaryAsset(assetInfo.publicId, 'recalled_archive', assetInfo.resourceType).catch(() => {});
+                    }
+                }
+            });
         }
 
         message.isRecalled = true;

@@ -81,7 +81,7 @@ export class ChatMessages extends BaseEntity {
 
     @Column({ type: "json", nullable: true })
     systemMetadata: {
-        action:
+        action?:
             | "CREATE_GROUP"
             | "ADD_MEMBER"
             | "REMOVE_MEMBER"
@@ -91,7 +91,8 @@ export class ChatMessages extends BaseEntity {
             | "RENAME_GROUP"
             | "PIN_MESSAGE"
             | "UNPIN_MESSAGE"
-            | "CHANGE_AVATAR";
+            | "CHANGE_AVATAR"
+            | "RECALL_MESSAGE";
         actorId?: string;
         actorName?: string;
         targetIds?: string[];
