@@ -7,7 +7,7 @@ export type PricingTotals = {
     totalWithVat: number;
 };
 
-const asFiniteNumber = (value: unknown, fallback = 0): number => {
+export const asFiniteNumber = (value: unknown, fallback = 0): number => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
 };

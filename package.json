@@ -44,14 +44,7 @@
       "postinstall": "tsc",
       "build": "tsc",
       "start": "node build/index.js",
-      "dev": "nodemon --exec ts-node src/index.ts",
-      "test": "echo No test runner configured",
-      "test:dashboard": "node --test -r ts-node/register src/modules/dashboard/**/*.spec.ts",
-      "test:project-hold": "node --test -r ts-node/register src/modules/project/helpers/**/*.spec.ts",
-      "test:payment-request": "node --test -r ts-node/register src/modules/payment-request/**/*.spec.ts",
-      "test:opportunity": "node --test -r ts-node/register src/modules/opportunity/**/*.spec.ts",
-      "migrate:service-budgets": "node -r ts-node/register src/maintenance/enable-service-budgets.ts",
-      "test:scan-scope": "node --test -r ts-node/register src/modules/task/helpers/ScanScope.helper.spec.ts"
+      "dev": "nodemon --exec ts-node src/index.ts"
    },
    "devDependencies": {
       "@types/cookie-parser": "^1.4.10",
