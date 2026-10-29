@@ -669,7 +669,8 @@ export class ProjectBaseService {
                     isPackageService: true,
                     service: {
                         id: true,
-                        name: true
+                        name: true,
+                        isBudget: true
                     },
                     tasks: {
                         id: true,
