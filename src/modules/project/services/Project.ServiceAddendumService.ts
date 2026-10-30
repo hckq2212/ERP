@@ -1,3 +1,5 @@
+import { Decimal } from "decimal.js";
+import { resolveAddendumBudget, calculateServiceAddendumCost } from "../../../shared/helpers/ServiceAddendumBudget.helper";
 import { AppDataSource } from "../../../data-source";
 import { AddendumStatus, AddendumType, ContractAddendums } from "../../contract-addendum/entities/ContractAddendum.entity";
 import { Services } from "../../service/entities/Service.entity";
@@ -16,6 +18,7 @@ type AddServiceItem = {
     isPackageService?: boolean;
     sellingPrice?: number;
     cost?: number;
+    budget?: number;
 };
 
 export class ProjectServiceAddendumService extends ProjectBaseService {
@@ -87,6 +90,7 @@ export class ProjectServiceAddendumService extends ProjectBaseService {
                 isPackageService: !!item.isPackageService,
                 sellingPrice: unitPrice,
                 cost: unitCost,
+                budget: resolveAddendumBudget(service, item.budget),
                 unit: service.unit || "",
                 description: service.description
             };
@@ -99,8 +103,8 @@ export class ProjectServiceAddendumService extends ProjectBaseService {
             description: data.description,
             type: AddendumType.ADD_SERVICES,
             selectedItems,
-            sellingPrice: selectedItems.reduce((sum, item) => sum + Number(item.sellingPrice || 0) * Number(item.quantity || 1), 0),
-            cost: selectedItems.reduce((sum, item) => sum + Number(item.cost || 0) * Number(item.quantity || 1), 0),
+            sellingPrice: selectedItems.reduce((sum, item) => sum.plus(new Decimal(item.sellingPrice || 0).mul(item.quantity || 1)), new Decimal(0)).toNumber(),
+            cost: calculateServiceAddendumCost(selectedItems),
             status: AddendumStatus.PENDING_SALE,
             ...SecurityService.getTenantWhere(userInfo)
         } as any);

@@ -1,3 +1,4 @@
+import { resolveAddendumBudget, calculateServiceAddendumCost } from "../../../shared/helpers/ServiceAddendumBudget.helper";
 import { AppDataSource } from "../../../data-source";
 import { ContractAddendums, AddendumStatus, AddendumType } from "../entities/ContractAddendum.entity";
 import { Contracts } from "../../contract/entities/Contract.entity";
@@ -305,14 +306,14 @@ export class ContractAddendumService {
         return saved;
     }
 
-    private applySaleSelectedItems(addendum: ContractAddendums, selectedItems?: any[]) {
+    private async applySaleSelectedItems(addendum: ContractAddendums, selectedItems?: any[]) {
         if (!selectedItems) return;
         const currentItems = Array.isArray(addendum.selectedItems) ? addendum.selectedItems : [];
         if (selectedItems.length !== currentItems.length) {
             throw new Error("Danh sách dịch vụ cập nhật không hợp lệ");
         }
 
-        addendum.selectedItems = selectedItems.map((item, index) => {
+        const updatedItems = await Promise.all(selectedItems.map(async (item, index) => {
             const currentItem = currentItems[index];
             if (String(item.serviceId || "") !== String(currentItem.serviceId || "")) {
                 throw new Error("Danh sách dịch vụ cập nhật không hợp lệ");
@@ -323,11 +324,21 @@ export class ContractAddendumService {
                 throw new Error("Đơn giá dịch vụ không hợp lệ");
             }
 
+            const budget = addendum.type === AddendumType.ADD_SERVICES
+                ? resolveAddendumBudget(
+                    await this.serviceRepository.findOneBy({ id: currentItem.serviceId }),
+                    item.budget, currentItem.budget ?? 0
+                ) : currentItem.budget;
             return {
                 ...currentItem,
-                sellingPrice
+                sellingPrice,
+                ...(addendum.type === AddendumType.ADD_SERVICES ? { budget } : {})
             };
-        });
+        }));
+        addendum.selectedItems = updatedItems;
+        if (addendum.type === AddendumType.ADD_SERVICES) {
+            addendum.cost = calculateServiceAddendumCost(updatedItems);
+        }
         Object.assign(addendum, calculatePricingTotals(addendum.selectedItems.reduce((sum, item) =>
             sum + Number(item.sellingPrice || 0) * Number(item.quantity || 1), 0)));
     }
@@ -347,7 +358,7 @@ export class ContractAddendumService {
         if (![AddendumType.MONTHLY_TASKS, AddendumType.ADD_SERVICES].includes(addendum.type)) throw new Error("Phụ lục này không thuộc luồng cần duyệt");
         if (addendum.status !== AddendumStatus.PENDING_SALE) throw new Error("Phụ lục không ở trạng thái chờ Sale duyệt");
 
-        this.applySaleSelectedItems(addendum, selectedItems);
+        await this.applySaleSelectedItems(addendum, selectedItems);
         addendum.status = AddendumStatus.PENDING_BOD;
         addendum.saleReviewedBy = await this.getReviewer(userInfo) as any;
         addendum.saleReviewedAt = new Date();
@@ -385,7 +396,7 @@ export class ContractAddendumService {
             addendum.description = data.description;
         }
 
-        this.applySaleSelectedItems(addendum, data.selectedItems);
+        await this.applySaleSelectedItems(addendum, data.selectedItems);
         addendum.status = AddendumStatus.PENDING_SALE;
         addendum.saleReviewedBy = null as any;
         addendum.saleReviewedAt = null as any;
