@@ -41,7 +41,6 @@ router.patch("/:id/submit-result-file", upload.single("file"), taskController.su
 router.patch("/:id/submit-result-review", taskController.submitResultForReview);
 router.delete("/:id", roleMiddleware(["ADMIN", "BOD", "PM"]), taskController.delete);
 router.patch("/:id/reassign", taskController.reassign);
-router.post("/:id/pricing", taskController.assessExtraTask);
 router.post('/:id/request-support', taskController.requestSupport);
 // Deprecated cross-team support routes
 // router.post('/:id/respond-support', taskController.respondToSupport);

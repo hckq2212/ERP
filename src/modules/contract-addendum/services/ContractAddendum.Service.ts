@@ -1,3 +1,4 @@
+import { publishAddendumEvent } from "../events/publishAddendumEvent";
 import { resolveAddendumBudget, calculateServiceAddendumCost } from "../../../shared/helpers/ServiceAddendumBudget.helper";
 import { AppDataSource } from "../../../data-source";
 import { ContractAddendums, AddendumStatus, AddendumType } from "../entities/ContractAddendum.entity";
@@ -16,7 +17,7 @@ import { NotificationService } from "../../notification/services/Notification.Se
 import { EntityManager } from "typeorm";
 import { UserRole } from "../../account/entities/Account.entity";
 import { calculatePricingTotals, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
-import { contractAddendumEmitter, CONTRACT_ADDENDUM_EVENTS } from "../events/ContractAddendumEmitter";
+import { CONTRACT_ADDENDUM_EVENTS } from "../events/ContractAddendumEmitter";
 
 export class ContractAddendumService {
     private addendumRepository = AppDataSource.getRepository(ContractAddendums);
@@ -157,7 +158,7 @@ export class ContractAddendumService {
             content: `Phụ lục "${saved.name}" vừa được tạo ở trạng thái nháp.`,
             type: "CONTRACT_ADDENDUM_CREATED"
         });
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.CREATED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.CREATED, saved);
         return saved;
     }
 
@@ -238,7 +239,7 @@ export class ContractAddendumService {
         Object.assign(addendum, calculatePricingTotals(totalSellingPrice));
         addendum.cost = totalCost; // Update addendum cost estimate
         const saved = await this.addendumRepository.save(addendum);
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.UPDATED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.UPDATED, saved);
         return saved;
     }
 
@@ -272,7 +273,7 @@ export class ContractAddendumService {
             content: `Phụ lục "${saved.name}" đã được upload bản ký và kích hoạt các mốc thanh toán liên quan.`,
             type: "CONTRACT_ADDENDUM_SIGNED"
         });
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.SIGNED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.SIGNED, saved);
         return saved;
     }
 
@@ -302,7 +303,7 @@ export class ContractAddendumService {
             content: `Phụ lục "${saved.name}" đã được cập nhật cắt giảm hạng mục với giá trị hoàn/giảm ${Math.abs(Number(data.refundAmount || 0)).toLocaleString("vi-VN")}đ.`,
             type: "CONTRACT_ADDENDUM_SCALE_DOWN"
         });
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.UPDATED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.UPDATED, saved);
         return saved;
     }
 
@@ -368,7 +369,7 @@ export class ContractAddendumService {
             title: "Phụ lục đã được duyệt bước Sale",
             content: `Phụ lục "${saved.name}" đã được duyệt và chuyển sang bước BOD duyệt.`
         });
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.UPDATED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.UPDATED, saved);
         return saved;
     }
 
@@ -411,7 +412,7 @@ export class ContractAddendumService {
             content: `Phụ lục "${saved.name}" đã được gửi lại và đang chờ Sale duyệt.`,
             type: "CONTRACT_ADDENDUM_RESUBMITTED"
         });
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.UPDATED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.UPDATED, saved);
         return saved;
     }
 
@@ -433,7 +434,7 @@ export class ContractAddendumService {
             title: "Phụ lục không được duyệt bước Sale",
             content: `Phụ lục "${saved.name}" đã bị từ chối ở bước Sale${note ? `: ${note}` : "."}`
         });
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.REJECTED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.REJECTED, saved);
         return saved;
     }
 
@@ -545,7 +546,7 @@ export class ContractAddendumService {
                 : "Đã duyệt phụ lục và sinh công việc tháng mới";
             return { message, addendum: saved, createdTasks };
         });
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.APPROVED, result.addendum);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.APPROVED, result.addendum);
         return result;
     }
 
@@ -567,7 +568,7 @@ export class ContractAddendumService {
             title: "Phụ lục không được duyệt bước BOD",
             content: `Phụ lục "${saved.name}" đã bị từ chối ở bước BOD${note ? `: ${note}` : "."}`
         });
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.REJECTED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.REJECTED, saved);
         return saved;
     }
 }

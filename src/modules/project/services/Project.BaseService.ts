@@ -1,4 +1,5 @@
 import { AppDataSource } from "../../../data-source";
+import { Decimal } from "decimal.js";
 import { EntityManager, Like, ILike, In, IsNull, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { Contracts, ContractStatus } from "../../contract/entities/Contract.entity";
@@ -520,7 +521,7 @@ export class ProjectBaseService {
 
     async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
         const userInfoKey = userInfo ? `:role_${userInfo.role}:user_${userInfo.userId || userInfo.id}` : '';
-        const cacheKey = `projects:${SecurityService.getTenantCachePart(userInfo)}:detail:${id}${userInfoKey}`;
+        const cacheKey = `projects:${SecurityService.getTenantCachePart(userInfo)}:detail:${id}${userInfoKey}:servicePricingV2`;
 
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             let rbacWhere: any = {};
@@ -655,9 +656,10 @@ export class ProjectBaseService {
         if (project.contract) {
             project.contract.services = await this.contractServiceRepository.find({
                 where: { contract: { id: project.contract.id } },
-                relations: ["service", "tasks", "tasks.job", "tasks.assignee", "tasks.helper"],
+                relations: ["service", "addendum", "opportunityService", "tasks", "tasks.job", "tasks.assignee", "tasks.helper"],
                 select: {
                     id: true,
+                    serviceId: true,
                     sellingPrice: true,
                     budget: true,
                     status: true,
@@ -667,6 +669,8 @@ export class ProjectBaseService {
                     code: true,
                     packageName: true,
                     isPackageService: true,
+                    addendum: { id: true, name: true, type: true, selectedItems: true },
+                    opportunityService: { id: true, costAtSale: true },
                     service: {
                         id: true,
                         name: true,
@@ -694,6 +698,21 @@ export class ProjectBaseService {
                     }
                 }
             });
+            for (const service of project.contract.services) {
+                const addendum = service.addendum;
+                const matchingItems = (addendum?.selectedItems || []).filter(item =>
+                    item.serviceId === service.serviceId &&
+                    (item.packageName || '') === (service.packageName || '') &&
+                    new Decimal(item.sellingPrice ?? 0).eq(service.sellingPrice ?? 0) &&
+                    new Decimal(item.budget ?? 0).eq(service.budget ?? 0)
+                );
+                const costs = [...new Set(matchingItems.filter(item => item.cost != null).map(item => String(item.cost)))];
+                const baseCost = addendum ? (costs.length === 1 ? costs[0] : null) : service.opportunityService?.costAtSale;
+                (service as any).pricingCost = baseCost == null ? null : new Decimal(baseCost).plus(service.budget ?? 0).toString();
+                (service as any).addendumInfo = addendum ? { id: addendum.id, name: addendum.name, type: addendum.type } : null;
+                delete (service as any).addendum;
+                delete (service as any).opportunityService;
+            }
         }
 
         // Filter out system attachments that handled by separate fields
@@ -721,6 +740,7 @@ export class ProjectBaseService {
                     if (project.contract.services) {
                         project.contract.services.forEach(s => {
                             s.sellingPrice = 0;
+                            (s as any).pricingCost = null;
                         });
                     }
                 }

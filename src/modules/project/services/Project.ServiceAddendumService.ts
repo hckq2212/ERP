@@ -1,11 +1,13 @@
+import { publishAddendumEvent } from "../../contract-addendum/events/publishAddendumEvent";
 import { Decimal } from "decimal.js";
+import { calculatePricingTotals, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
 import { resolveAddendumBudget, calculateServiceAddendumCost } from "../../../shared/helpers/ServiceAddendumBudget.helper";
 import { AppDataSource } from "../../../data-source";
 import { AddendumStatus, AddendumType, ContractAddendums } from "../../contract-addendum/entities/ContractAddendum.entity";
 import { Services } from "../../service/entities/Service.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
-import { contractAddendumEmitter, CONTRACT_ADDENDUM_EVENTS } from "../../contract-addendum/events/ContractAddendumEmitter";
+import { CONTRACT_ADDENDUM_EVENTS } from "../../contract-addendum/events/ContractAddendumEmitter";
 import { ProjectBaseService } from "./Project.BaseService";
 
 type AddServiceItem = {
@@ -88,7 +90,7 @@ export class ProjectServiceAddendumService extends ProjectBaseService {
                 packageName: item.packageName,
                 packageQuantity: item.packageQuantity,
                 isPackageService: !!item.isPackageService,
-                sellingPrice: unitPrice,
+                sellingPrice: roundUnitSellingPrice(unitPrice),
                 cost: unitCost,
                 budget: resolveAddendumBudget(service, item.budget),
                 unit: service.unit || "",
@@ -103,7 +105,7 @@ export class ProjectServiceAddendumService extends ProjectBaseService {
             description: data.description,
             type: AddendumType.ADD_SERVICES,
             selectedItems,
-            sellingPrice: selectedItems.reduce((sum, item) => sum.plus(new Decimal(item.sellingPrice || 0).mul(item.quantity || 1)), new Decimal(0)).toNumber(),
+            ...calculatePricingTotals(selectedItems.reduce((sum, item) => sum.plus(new Decimal(item.sellingPrice).mul(item.quantity)), new Decimal(0)).toNumber()),
             cost: calculateServiceAddendumCost(selectedItems),
             status: AddendumStatus.PENDING_SALE,
             ...SecurityService.getTenantWhere(userInfo)
@@ -118,7 +120,7 @@ export class ProjectServiceAddendumService extends ProjectBaseService {
             relatedEntityType: "ContractAddendum"
         });
         projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.CREATED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.CREATED, saved);
         return saved;
     }
 }

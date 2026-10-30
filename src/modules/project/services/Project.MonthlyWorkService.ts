@@ -1,3 +1,4 @@
+import { publishAddendumEvent } from "../../contract-addendum/events/publishAddendumEvent";
 import { AppDataSource } from "../../../data-source";
 import { Like, ILike, In, IsNull, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
@@ -19,7 +20,7 @@ import { SecurityService } from "../../../shared/services/Security.Service";
 import { isProjectManagementRole, isStaffRole, UserRole } from "../../account/entities/Account.entity";
 import { projectEmitter, PROJECT_EVENTS } from "../events/ProjectEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
-import { contractAddendumEmitter, CONTRACT_ADDENDUM_EVENTS } from "../../contract-addendum/events/ContractAddendumEmitter";
+import { CONTRACT_ADDENDUM_EVENTS } from "../../contract-addendum/events/ContractAddendumEmitter";
 // Google Sheet integration is temporarily disabled.
 // import { GoogleSheetService } from "../../../shared/services/GoogleSheet.Service";
 
@@ -215,7 +216,7 @@ export class ProjectMonthlyWorkService extends ProjectBaseService {
             relatedEntityType: "ContractAddendum"
         });
         projectEmitter.emit(PROJECT_EVENTS.UPDATED, project);
-        contractAddendumEmitter.emit(CONTRACT_ADDENDUM_EVENTS.CREATED, saved);
+        await publishAddendumEvent(CONTRACT_ADDENDUM_EVENTS.CREATED, saved);
         return saved;
     }
 }
