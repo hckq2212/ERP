@@ -521,7 +521,7 @@ export class ProjectBaseService {
 
     async getOne(id: string, userInfo?: { id: string, role: string, userId?: string }) {
         const userInfoKey = userInfo ? `:role_${userInfo.role}:user_${userInfo.userId || userInfo.id}` : '';
-        const cacheKey = `projects:${SecurityService.getTenantCachePart(userInfo)}:detail:${id}${userInfoKey}:servicePricingV2`;
+        const cacheKey = `projects:${SecurityService.getTenantCachePart(userInfo)}:detail:${id}${userInfoKey}:servicePricingV3`;
 
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             let rbacWhere: any = {};
@@ -549,6 +549,7 @@ export class ProjectBaseService {
                 "team",
                 "team.teamLead",
                 "team.members",
+                "team.members.roles",
                 "team.members.user",
                 "team.members.user.accounts",
                 "confirmedBy"

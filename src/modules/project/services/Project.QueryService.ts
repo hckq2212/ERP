@@ -112,7 +112,7 @@ export class ProjectQueryService extends ProjectBaseService {
         return await RedisService.fetchWithCache(cacheKey, 3600, async () => {
             const [items, total] = await this.projectRepository.findAndCount({
                 where: where.length > 1 ? where : where[0],
-                relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user", "team.members.user.accounts"],
+                relations: ["contract", "team", "team.teamLead", "team.members", "team.members.roles", "team.members.user", "team.members.user.accounts"],
                 order: { [sortBy]: sortDir },
                 skip: (page - 1) * limit,
                 take: limit
@@ -140,7 +140,7 @@ export class ProjectQueryService extends ProjectBaseService {
             : { ...rbacWhere, contract: { ...(rbacWhere.contract || {}), id: contractId } };
         const project = await this.projectRepository.findOne({
             where,
-            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.user", "team.members.user.accounts", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation"]
+            relations: ["contract", "team", "team.teamLead", "team.members", "team.members.roles", "team.members.user", "team.members.user.accounts", "tasks", "tasks.assignee", "tasks.job", "tasks.quotation"]
         });
 
         if (!project) {
