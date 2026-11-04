@@ -126,7 +126,7 @@ export class ProjectTeamService {
     private async syncAccountRoleAsLead(member: TeamMembers) {
         const team = await this.teamRepository.findOne({
             where: SecurityService.withTenant({ id: member.team.id }),
-            relations: ["teamLead", "members", "members.user"]
+            relations: ["teamLead", "members", "members.roles", "members.user"]
         });
         if (!team) throw this.httpError("Không tìm thấy team", 404);
 
@@ -152,14 +152,14 @@ export class ProjectTeamService {
     async getAll() {
         return await this.teamRepository.find({
             where: SecurityService.getTenantWhere(),
-            relations: ["teamLead", "teamLead.accounts", "members", "members.user", "members.user.accounts"]
+            relations: ["teamLead", "teamLead.accounts", "members", "members.roles", "members.user", "members.user.accounts"]
         });
     }
 
     async getOne(id: string) {
         const team = await this.teamRepository.findOne({
             where: SecurityService.withTenant({ id }),
-            relations: ["teamLead", "teamLead.accounts", "members", "members.user", "members.user.accounts"]
+            relations: ["teamLead", "teamLead.accounts", "members", "members.roles", "members.user", "members.user.accounts"]
         });
         if (!team) throw new Error("Không tìm thấy team");
         return team;
@@ -168,7 +168,7 @@ export class ProjectTeamService {
     async getMembers(teamId: string, month?: number, year?: number) {
         const team = await this.teamRepository.findOne({
             where: SecurityService.withTenant({ id: teamId }),
-            relations: ["members", "members.user", "members.user.accounts"]
+            relations: ["members", "members.roles", "members.user", "members.user.accounts"]
         });
         if (!team) throw new Error("Không tìm thấy team");
         const userIds = (team.members || []).map(member => member.user?.id).filter(Boolean);
@@ -224,7 +224,7 @@ export class ProjectTeamService {
         await this.assertTeamProjectNotClosedOrOnHold(teamId);
         const team = await this.teamRepository.findOne({
             where: SecurityService.withTenant({ id: teamId }),
-            relations: ["teamLead", "members", "members.user"]
+            relations: ["teamLead", "members", "members.roles", "members.user"]
         });
         if (!team) throw new Error("Không tìm thấy team");
 

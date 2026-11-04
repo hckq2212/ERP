@@ -19,6 +19,7 @@
       "cookie-parser": "^1.4.7",
       "cors": "^2.8.6",
       "date-fns": "^4.1.0",
+      "decimal.js": "^10.6.0",
       "dotenv": "^17.2.3",
       "exceljs": "^3.4.0",
       "expo-server-sdk": "^7.2.0",

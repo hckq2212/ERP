@@ -183,6 +183,10 @@ export class TaskCreationService extends TaskBaseService {
             taskSequenceNumber = count + 1;
             taskCode = `${opportunity.opportunityCode}-${job.code || `JOB${job.id}`}-${String(taskSequenceNumber).padStart(2, "0")}`;
         }
+        if (data.isExtra) {
+            throw new Error("Vui lòng thêm dịch vụ qua phụ lục hợp đồng để tạo công việc phát sinh");
+        }
+
         const taskNickname = taskSequenceNumber
             ? buildDefaultTaskNickname(job, taskSequenceNumber)
             : null;
@@ -197,9 +201,7 @@ export class TaskCreationService extends TaskBaseService {
             opportunityServiceJob,
             opportunityServiceJobId: opportunityServiceJob?.id || null,
             job: job,
-            status: data.isExtra
-                ? TaskStatus.AWAITING_PRICING
-                : data.assigneeId
+            status: data.assigneeId
                     ? TaskStatus.NOT_STARTED
                     : TaskStatus.PENDING,
             performerType: data.performerType || job.defaultPerformerType,
@@ -207,7 +209,7 @@ export class TaskCreationService extends TaskBaseService {
             plannedStartDate: data.plannedStartDate,
             plannedEndDate: data.plannedEndDate,
             isExtra: data.isExtra || false,
-            pricingStatus: data.isExtra ? PricingStatus.PENDING : null,
+            pricingStatus: null,
             assignerId: null
         });
 

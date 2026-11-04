@@ -100,11 +100,11 @@ export const AppDataSource = new DataSource({
         max: 25,
         min: 5,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-        statement_timeout: 15000,
-        query_timeout: 15000,
+        connectionTimeoutMillis: 30000,
+        statement_timeout: 120000,
+        query_timeout: 120000,
     },
-    synchronize: true,
+    synchronize: false,
     schema: "public",
     logging: isProduction ? false : ["error", "warn"], // Enabled some logging in dev
     entities: [
