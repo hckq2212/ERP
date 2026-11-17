@@ -125,16 +125,29 @@ export class PaymentMilestoneService {
                 where: SecurityService.withTenant({ contract: { id: contractId } })
             });
 
-            // 3. Validate Total Percentage with locked, authoritative data
-            const currentTotal = existingMilestones.reduce((sum, m) => sum + Number(m.percentage), 0);
-            const newTotal = milestones.reduce((sum, m) => sum + Number(m.percentage), 0);
+            // 3. Chuẩn hóa từng milestone theo đúng độ chính xác cột DB numeric(5, 2)
+            const normalizedMilestones = milestones.map(item => ({
+                ...item,
+                percentage: toDecimal(item.percentage || 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()
+            }));
 
-            if (currentTotal + newTotal > 100) {
-                throw new Error(`Tổng phần trăm thanh toán vượt quá 100% (Hiện tại: ${currentTotal}%, Thêm mới: ${newTotal}%)`);
+            // Validate Total Percentage with locked, authoritative data
+            const currentTotal = existingMilestones.reduce(
+                (sum, m) => sum.add(toDecimal(m.percentage || 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)),
+                new Decimal(0)
+            );
+            const newTotal = normalizedMilestones.reduce(
+                (sum, m) => sum.add(toDecimal(m.percentage || 0)),
+                new Decimal(0)
+            );
+            const combinedTotal = currentTotal.add(newTotal).toNumber();
+
+            if (combinedTotal > 100) {
+                throw new Error(`Tổng phần trăm thanh toán vượt quá 100% (Hiện tại: ${currentTotal.toNumber()}%, Thêm mới: ${newTotal.toNumber()}%)`);
             }
 
             const collectible = getContractCollectibleTotalDecimal(lockedContract);
-            const entities = milestones.map(item => {
+            const entities = normalizedMilestones.map(item => {
                 const amount = collectible
                     .mul(toDecimal(item.percentage))
                     .div(100)
@@ -202,26 +215,30 @@ export class PaymentMilestoneService {
             }
 
             // Re-validate if percentage changes
-            if (data.percentage !== undefined && data.percentage !== null && Number(data.percentage) !== Number(milestone.percentage)) {
-                const existingMilestones = await milestoneRepo.find({
-                    where: SecurityService.withTenant({ contract: { id: milestone.contract.id } })
-                });
+            if (data.percentage !== undefined && data.percentage !== null) {
+                const normalizedNewPercentage = toDecimal(data.percentage).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
+                if (normalizedNewPercentage !== Number(milestone.percentage)) {
+                    const existingMilestones = await milestoneRepo.find({
+                        where: SecurityService.withTenant({ contract: { id: milestone.contract.id } })
+                    });
 
-                const otherMilestonesTotal = existingMilestones
-                    .filter(m => String(m.id) !== String(id))
-                    .reduce((sum, m) => sum + Number(m.percentage), 0);
+                    const otherMilestonesTotal = existingMilestones
+                        .filter(m => String(m.id) !== String(id))
+                        .reduce((sum, m) => sum.add(toDecimal(m.percentage || 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)), new Decimal(0));
 
-                if (otherMilestonesTotal + Number(data.percentage) > 100) {
-                    throw new Error(`Tổng phần trăm thanh toán vượt quá 100%`);
+                    const combined = otherMilestonesTotal.add(toDecimal(normalizedNewPercentage)).toNumber();
+                    if (combined > 100) {
+                        throw new Error(`Tổng phần trăm thanh toán vượt quá 100%`);
+                    }
+
+                    // Recalculate amount using Decimal
+                    milestone.percentage = normalizedNewPercentage;
+                    milestone.amount = getContractCollectibleTotalDecimal(lockedContract)
+                        .mul(toDecimal(normalizedNewPercentage))
+                        .div(100)
+                        .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
+                        .toNumber();
                 }
-
-                // Recalculate amount using Decimal
-                milestone.percentage = data.percentage;
-                milestone.amount = getContractCollectibleTotalDecimal(lockedContract)
-                    .mul(toDecimal(data.percentage))
-                    .div(100)
-                    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
-                    .toNumber();
             }
 
             if (data.name) milestone.name = data.name;
@@ -268,9 +285,19 @@ export class PaymentMilestoneService {
             throw new Error("Danh sách lộ trình thanh toán trống");
         }
 
-        // 1. Validate Total Percentage (allow slight floating delta e.g. 99.95% - 100.05%)
-        const total = milestones.reduce((sum, m) => sum + Number(m.percentage || 0), 0);
-        if (Math.abs(total - 100) > 0.05) {
+        // 1. Chuẩn hóa từng milestone theo đúng độ chính xác cột DB numeric(5, 2)
+        const normalizedMilestones = milestones.map(m => ({
+            ...m,
+            percentage: toDecimal(m.percentage || 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()
+        }));
+
+        // Validate Total Percentage: Tuyệt đối không được vượt quá 100% sau khi làm tròn
+        const totalDecimal = normalizedMilestones.reduce((sum, m) => sum.add(toDecimal(m.percentage)), new Decimal(0));
+        const total = totalDecimal.toNumber();
+        if (total > 100) {
+            throw new Error(`Tổng phần trăm thanh toán không được vượt quá 100% (Hiện tại: ${total}%)`);
+        }
+        if (100 - total > 0.05) {
             throw new Error(`Tổng phần trăm thanh toán phải bằng 100% (Hiện tại: ${total}%)`);
         }
 
@@ -292,6 +319,15 @@ export class PaymentMilestoneService {
             });
             if (contract) this.assertContractAndProjectNotClosed(contract);
 
+            const totalDecimalUnderLock = normalizedMilestones.reduce((sum, m) => sum.add(toDecimal(m.percentage)), new Decimal(0));
+            const totalUnderLock = totalDecimalUnderLock.toNumber();
+            if (totalUnderLock > 100) {
+                throw new Error(`Tổng phần trăm thanh toán không được vượt quá 100% (Hiện tại: ${totalUnderLock}%)`);
+            }
+            if (100 - totalUnderLock > 0.05) {
+                throw new Error(`Tổng phần trăm thanh toán phải bằng 100% (Hiện tại: ${totalUnderLock}%)`);
+            }
+
             // 2. Fetch all existing milestones for this contract with their debts and payments under lock
             const existingMilestones = await milestoneRepo.find({
                 where: { contract: { id: contractId } },
@@ -302,7 +338,7 @@ export class PaymentMilestoneService {
             for (const existing of existingMilestones) {
                 const isUnmodifiable = this.isDebtUnmodifiable(existing.debt);
                 if (isUnmodifiable) {
-                    const incoming = milestones.find(m => m.id && String(m.id) === String(existing.id));
+                    const incoming = normalizedMilestones.find(m => m.id && String(m.id) === String(existing.id));
                     if (!incoming) {
                         throw new Error(`Đợt thanh toán "${existing.name}" đã bị khóa hoặc đã phát sinh thanh toán, không thể xóa.`);
                     }
@@ -314,7 +350,7 @@ export class PaymentMilestoneService {
 
             // 4. Perform updates, deletions, and additions in the transaction
             // A. Remove existing milestones that are not in incoming milestones list
-            const incomingIds = new Set(milestones.filter(m => m.id).map(m => String(m.id)));
+            const incomingIds = new Set(normalizedMilestones.filter(m => m.id).map(m => String(m.id)));
             const debtsToRemove = [];
             const milestonesToRemove = [];
             for (const existing of existingMilestones) {
@@ -338,7 +374,7 @@ export class PaymentMilestoneService {
             const milestonesToCreate = [];
 
             const collectible = getContractCollectibleTotalDecimal(lockedContract);
-            for (const item of milestones) {
+            for (const item of normalizedMilestones) {
                 const amount = collectible
                     .mul(toDecimal(item.percentage))
                     .div(100)
