@@ -15,6 +15,7 @@ import { NotificationService } from "../../notification/services/Notification.Se
 import { Users } from "../../user/entities/User.entity";
 import { isProjectManagementRole, UserRole } from "../../account/entities/Account.entity";
 import { RedisService } from "../../../shared/services/Redis.Service";
+import { DashboardCacheCoordinator } from "../../dashboard/services/DashboardCache.Coordinator";
 import { contractEmitter, CONTRACT_EVENTS } from "../events/ContractEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 import { SecurityService } from "../../../shared/services/Security.Service";
@@ -476,15 +477,29 @@ export class ContractService {
                     finalCost = costSum;
                 }
             }
-        } else {
+        }
+
+        // Maps for direct contract services and packages lookups (scoped for calculations and saving)
+        let directServiceMap = new Map<string, Services>();
+        let directPackageMap = new Map<string, ServicePackages>();
+
+        if (!opportunity) {
             // Direct contract: calculate based on services and packages arrays
             let computedSellingPrice = 0;
             let computedCost = 0;
 
+            const serviceIds = (data.services && Array.isArray(data.services))
+                ? [...new Set(data.services.map((item: any) => item.serviceId || item.id).filter(Boolean))]
+                : [];
+            const directServices = serviceIds.length > 0
+                ? await this.serviceRepository.find({ where: SecurityService.withTenant({ id: In(serviceIds) }, userInfo) })
+                : [];
+            directServiceMap = new Map(directServices.map(s => [s.id, s]));
+
             if (data.services && Array.isArray(data.services)) {
                 for (const item of data.services) {
                     const serviceId = item.serviceId || item.id;
-                    const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }, userInfo) });
+                    const service = directServiceMap.get(serviceId);
                     if (service) {
                         const qty = item.quantity || 1;
                         const budget = Number(item.budget || 0);
@@ -495,12 +510,20 @@ export class ContractService {
                 }
             }
 
+            const packageIds = (data.packages && Array.isArray(data.packages))
+                ? [...new Set(data.packages.map((pkgItem: any) => pkgItem.servicePackageId).filter(Boolean))]
+                : [];
+            const directPackages = packageIds.length > 0
+                ? await this.packageRepository.find({
+                    where: SecurityService.withTenant({ id: In(packageIds) }, userInfo),
+                    relations: ["items", "items.service"]
+                })
+                : [];
+            directPackageMap = new Map(directPackages.map(p => [p.id, p]));
+
             if (data.packages && Array.isArray(data.packages)) {
                 for (const pkgItem of data.packages) {
-                    const pkg = await this.packageRepository.findOne({
-                        where: SecurityService.withTenant({ id: pkgItem.servicePackageId }, userInfo),
-                        relations: ["items", "items.service"]
-                    });
+                    const pkg = directPackageMap.get(pkgItem.servicePackageId);
                     if (pkg) {
                         const pkgQty = pkgItem.quantity || 1;
                         for (const item of pkg.items) {
@@ -557,14 +580,22 @@ export class ContractService {
             throw new Error("Không thể tạo hợp đồng");
         }
 
-        // MAP Opportunity Services to Contract Services
+        // MAP Opportunity Services to Contract Services - Batched
+        const contractServicesToSave: ContractServices[] = [];
+
         if (opportunity) {
             if (approvedQuotationDetails.length > 0) {
+                const missingServiceIds = [...new Set(approvedQuotationDetails
+                    .filter(d => !d.service && (d.serviceId || d.service?.id))
+                    .map(d => d.service?.id || d.serviceId))].filter(Boolean) as string[];
+                const fetchedServices = missingServiceIds.length > 0
+                    ? await this.serviceRepository.find({ where: SecurityService.withTenant({ id: In(missingServiceIds) }, userInfo) })
+                    : [];
+                const fetchedServiceMap = new Map(fetchedServices.map(s => [s.id, s]));
+
                 for (const detail of approvedQuotationDetails) {
                     const detailServiceId = detail.service?.id || detail.serviceId;
-                    const detailService = detail.service || (detailServiceId
-                        ? await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: detailServiceId }, userInfo) })
-                        : null);
+                    const detailService = detail.service || (detailServiceId ? fetchedServiceMap.get(detailServiceId) || null : null);
                     const opportunityService = detail.opportunityService ||
                         opportunity.services?.find(item => item.id === detail.opportunityServiceId) ||
                         opportunity.services?.find(item =>
@@ -587,7 +618,7 @@ export class ContractService {
                             isPackageService: detail.isPackageService,
                             ...SecurityService.getTenantWhere(userInfo)
                         } as any);
-                        await this.contractServiceRepository.save(cs);
+                        contractServicesToSave.push(cs as unknown as ContractServices);
                     }
                 }
             } else {
@@ -612,16 +643,16 @@ export class ContractService {
                             isPackageService: os.isPackageService,
                             ...SecurityService.getTenantWhere(userInfo)
                         } as any);
-                        await this.contractServiceRepository.save(cs);
+                        contractServicesToSave.push(cs as unknown as ContractServices);
                     }
                 }
             }
         } else {
-            // Direct contract services mapping
+            // Direct contract services mapping - Batched using pre-fetched maps
             if (data.services && Array.isArray(data.services)) {
                 for (const item of data.services) {
                     const serviceId = item.serviceId || item.id;
-                    const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId }, userInfo) });
+                    const service = directServiceMap.get(serviceId);
                     if (service) {
                         const qty = item.quantity || 1;
                         const sellPrice = roundUnitSellingPrice(item.sellingPrice !== undefined ? item.sellingPrice : service.costPrice || 0);
@@ -637,7 +668,7 @@ export class ContractService {
                                 isPackageService: false,
                                 ...SecurityService.getTenantWhere(userInfo)
                             } as any);
-                            await this.contractServiceRepository.save(cs);
+                            contractServicesToSave.push(cs as unknown as ContractServices);
                         }
                     }
                 }
@@ -645,10 +676,7 @@ export class ContractService {
 
             if (data.packages && Array.isArray(data.packages)) {
                 for (const pkgItem of data.packages) {
-                    const pkg = await this.packageRepository.findOne({
-                        where: SecurityService.withTenant({ id: pkgItem.servicePackageId }, userInfo),
-                        relations: ["items", "items.service"]
-                    });
+                    const pkg = directPackageMap.get(pkgItem.servicePackageId);
                     if (pkg) {
                         const pkgQty = pkgItem.quantity || 1;
                         for (const item of pkg.items) {
@@ -671,13 +699,17 @@ export class ContractService {
                                         isPackageService: true,
                                         ...SecurityService.getTenantWhere(userInfo)
                                     } as any);
-                                    await this.contractServiceRepository.save(cs);
+                                    contractServicesToSave.push(cs as unknown as ContractServices);
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+
+        if (contractServicesToSave.length > 0) {
+            await this.contractServiceRepository.save(contractServicesToSave);
         }
 
         // Update Opportunity Status
@@ -702,7 +734,7 @@ export class ContractService {
         // Invalidate contract caches before returning the freshly loaded detail
         await RedisService.deleteCache('contracts:*all*');
         await RedisService.deleteCache(`contracts:*:detail:${savedContract.id}*`);
-        await RedisService.deleteCache('dashboard:*');
+        await DashboardCacheCoordinator.invalidateSystem();
 
         const creatorName = await this.getUserFullName(userInfo?.userId);
 
@@ -751,23 +783,52 @@ export class ContractService {
     }
 
     async approveProposal(id: string, userInfo?: { id: string, userId?: string }) {
-        const contract = await this.contractRepository.findOne({
-            where: { id },
-            relations: ["opportunity", "createdBy"]
+        const afterCommit: Array<() => void> = [];
+        let isNewlyApproved = false;
+
+        const savedContract = await AppDataSource.transaction(async (manager) => {
+            const contractRepo = manager.getRepository(Contracts);
+            const oppRepo = manager.getRepository(Opportunities);
+
+            // 1. Lock hàng hợp đồng độc quyền trên PostgreSQL (tránh FOR UPDATE trên LEFT JOIN gây lỗi 0A000)
+            const lockedContract = await contractRepo.findOne({
+                where: { id },
+                lock: { mode: "pessimistic_write" }
+            });
+            if (!lockedContract) throw new Error("Không tìm thấy hợp đồng");
+
+            if (lockedContract.status === ContractStatus.PROPOSAL_APPROVED) {
+                return lockedContract as Contracts;
+            }
+
+            // 2. Tải relations trên hàng đã được giữ khóa
+            const contract = await contractRepo.findOne({
+                where: { id },
+                relations: ["opportunity", "createdBy"]
+            });
+            if (!contract) throw new Error("Không tìm thấy hợp đồng");
+
+            contract.status = ContractStatus.PROPOSAL_APPROVED;
+            const updated = (await contractRepo.save(contract)) as unknown as Contracts;
+            isNewlyApproved = true;
+
+            if (contract.opportunity) {
+                contract.opportunity.status = OpportunityStatus.CONTRACT_APPROVED;
+                await oppRepo.save(contract.opportunity);
+                afterCommit.push(() => {
+                    opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, contract.opportunity);
+                });
+            }
+
+            // Auto Create Project (Draft) inside the SAME transaction
+            await this.projectService.createFromContract(updated, userInfo, manager, afterCommit);
+
+            return updated;
         });
-        if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
-        contract.status = ContractStatus.PROPOSAL_APPROVED;
-        const savedContract = (await this.contractRepository.save(contract)) as unknown as Contracts;
-
-        if (contract.opportunity) {
-            contract.opportunity.status = OpportunityStatus.CONTRACT_APPROVED;
-            await this.opportunityRepository.save(contract.opportunity);
-            opportunityEmitter.emit(OPPORTUNITY_EVENTS.UPDATED, contract.opportunity);
+        if (!isNewlyApproved) {
+            return savedContract;
         }
-
-        // Auto Create Project (Draft)
-        await this.projectService.createFromContract(savedContract, userInfo);
 
         // Notify management
         await this.notifyManagement({
@@ -785,34 +846,56 @@ export class ContractService {
         // Invalidate caches
         await RedisService.deleteCache('contracts:*all*');
         await RedisService.deleteCache(`contracts:*:detail:${id}*`);
-        await RedisService.deleteCache('dashboard:*');
+        await DashboardCacheCoordinator.invalidateSystem();
         await RedisService.deleteCache('projects:*all*');
 
         contractEmitter.emit(CONTRACT_EVENTS.UPDATED, savedContract);
+        afterCommit.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
 
         return savedContract;
     }
 
 
     async uploadSigned(id: string, fileData: any, userInfo?: { id: string, userId?: string }) {
-        const contract = await this.contractRepository.findOne({
-            where: { id },
-            relations: ["project", "customer", "opportunity", "milestones", "services", "debts"]
+        let isNewlySigned = false;
+
+        const savedContract = await AppDataSource.transaction(async (manager) => {
+            const contractRepo = manager.getRepository(Contracts);
+            // 1. Lock hàng hợp đồng độc quyền trên PostgreSQL (tránh FOR UPDATE trên LEFT JOIN gây lỗi 0A000)
+            const lockedContract = await contractRepo.findOne({
+                where: { id },
+                lock: { mode: "pessimistic_write" }
+            });
+            if (!lockedContract) throw this.httpError("Không tìm thấy hợp đồng", 404);
+
+            if (lockedContract.status === ContractStatus.SIGNED) {
+                return lockedContract; // idempotent
+            }
+
+            if (lockedContract.signed_contract) {
+                throw this.httpError("Hợp đồng đã có bản ký, không thể upload lại", 409);
+            }
+            if (lockedContract.status !== ContractStatus.PROPOSAL_APPROVED) {
+                throw this.httpError("Hợp đồng cần được duyệt trước khi upload bản ký", 409);
+            }
+
+            // 2. Tải relations trên hàng đã được giữ khóa
+            const contract = await contractRepo.findOne({
+                where: { id },
+                relations: ["project", "customer", "opportunity", "milestones", "services", "debts"]
+            });
+            if (!contract) throw this.httpError("Không tìm thấy hợp đồng", 404);
+
+            contract.signed_contract = fileData.url;
+            contract.status = ContractStatus.SIGNED;
+            isNewlySigned = true;
+
+            return await contractRepo.save(contract);
         });
-        if (!contract) throw this.httpError("Không tìm thấy hợp đồng", 404);
 
-        if (contract.signed_contract) {
-            throw this.httpError("Hợp đồng đã có bản ký, không thể upload lại", 409);
+        if (!isNewlySigned) {
+            return savedContract;
         }
-        if (contract.status !== ContractStatus.PROPOSAL_APPROVED) {
-            throw this.httpError("Hợp đồng cần được duyệt trước khi upload bản ký", 409);
-        }
-
-        contract.signed_contract = fileData.url;
-        contract.status = ContractStatus.SIGNED;
-
-
-        const savedContract = await this.contractRepository.save(contract);
 
         const uploaderName = await this.getUserFullName(userInfo?.userId);
 
@@ -826,7 +909,7 @@ export class ContractService {
         // Invalidate caches
         await RedisService.deleteCache('contracts:*all*');
         await RedisService.deleteCache(`contracts:*:detail:${id}*`);
-        await RedisService.deleteCache('dashboard:*');
+        await DashboardCacheCoordinator.invalidateSystem();
 
         contractEmitter.emit(CONTRACT_EVENTS.SIGNED, savedContract);
 
@@ -911,7 +994,7 @@ export class ContractService {
         // Invalidate caches
         await RedisService.deleteCache('contracts:*all*');
         await RedisService.deleteCache(`contracts:*:detail:${id}*`);
-        await RedisService.deleteCache('dashboard:*');
+        await DashboardCacheCoordinator.invalidateSystem();
 
         contractEmitter.emit(CONTRACT_EVENTS.DELETED, { id });
 
@@ -937,7 +1020,7 @@ export class ContractService {
         // Invalidate caches
         await RedisService.deleteCache('contracts:*all*');
         await RedisService.deleteCache(`contracts:*:detail:${id}*`);
-        await RedisService.deleteCache('dashboard:*');
+        await DashboardCacheCoordinator.invalidateSystem();
 
         // Notify management
         await this.notifyManagement({

@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import path from "path";
 import { DataSource } from "typeorm"
 import { Accounts } from "./modules/account/entities/Account.entity"
 import { Users } from "./modules/user/entities/User.entity"
@@ -174,6 +175,9 @@ export const AppDataSource = new DataSource({
         VatInvoices,
     ],
 
-    migrations: [],
+    migrations: [path.join(__dirname, "migrations", "*.{ts,js}")],
+    migrationsTableName: "migrations",
+    migrationsTransactionMode: "all",
+    migrationsRun: false,
     subscribers: [],
 })

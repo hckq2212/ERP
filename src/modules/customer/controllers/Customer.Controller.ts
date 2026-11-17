@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
 import { CustomerService } from "../services/Customer.Service";
+import { TaxLookupService } from "../services/TaxLookup.Service";
 
 export class CustomerController {
     private customerService = new CustomerService();
+    private taxLookupService = new TaxLookupService();
 
     getAll = async (req: Request, res: Response) => {
         try {
@@ -60,6 +62,31 @@ export class CustomerController {
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });
+        }
+    }
+
+    lookupTax = async (req: Request, res: Response) => {
+        try {
+            const taxId = req.params.taxId as string;
+            const data = await this.taxLookupService.lookup(taxId);
+            if (!data) {
+                res.status(404).json({
+                    success: false,
+                    message: "Không tìm thấy thông tin doanh nghiệp theo mã số thuế này",
+                    data: null
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                data
+            });
+        } catch (error: any) {
+            res.status(400).json({
+                success: false,
+                message: error.message || "Lỗi tra cứu mã số thuế",
+                data: null
+            });
         }
     }
 }

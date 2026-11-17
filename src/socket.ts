@@ -51,24 +51,23 @@ export function getSocketIO() {
     return ioInstance;
 }
 
-export async function broadcastToRoom(roomId: string, event: string, payload: any) {
+export function broadcastToRoom(roomId: string, event: string, payload: unknown): void {
     if (!ioInstance) return;
     try {
-        const participantRepo = AppDataSource.getRepository(ChatParticipants);
-        const allParticipants = await participantRepo.find({ where: { roomId } });
-        const targetSocketIds = new Set<string>();
-        allParticipants.forEach((participant) => {
-            const socketIds = onlineUsers.get(participant.userId);
-            socketIds?.forEach((socketId) => {
-                targetSocketIds.add(socketId);
-            });
-        });
-        targetSocketIds.forEach((socketId) => {
-            ioInstance?.to(socketId).emit(event, payload);
-        });
+        ioInstance.to(roomId).emit(event, payload);
     } catch (err) {
         console.error("Error broadcasting to room:", err);
     }
+}
+
+export function userJoinRoom(userId: string, roomId: string): void {
+    if (!ioInstance) return;
+    ioInstance.in(`user:${userId}`).socketsJoin(roomId);
+}
+
+export function userLeaveRoom(userId: string, roomId: string): void {
+    if (!ioInstance) return;
+    ioInstance.in(`user:${userId}`).socketsLeave(roomId);
 }
 
 export function broadcastToUser(userId: string, event: string, payload: any) {
@@ -146,6 +145,22 @@ export function initSocket(httpServer: HttpServer) {
                 username: account.username
             };
 
+            // Pre-join socket vào các phòng chat của user NGAY TRONG handshake
+            // Đảm bảo khi handshake hoàn tất và event 'connection' kích hoạt, socket ĐÃ nằm trong toàn bộ rooms!
+            const userId = socket.user.userId;
+            if (userId) {
+                try {
+                    const participations = await AppDataSource.getRepository(ChatParticipants).find({
+                        where: { userId },
+                        select: ["roomId"]
+                    });
+                    socket.join(`user:${userId}`);
+                    participations.forEach((p) => socket.join(p.roomId));
+                } catch (roomErr) {
+                    console.error("Error pre-joining chat rooms in socket handshake:", roomErr);
+                }
+            }
+
             next();
         } catch (error) {
             console.error("Socket authentication error:", error);
@@ -156,7 +171,6 @@ export function initSocket(httpServer: HttpServer) {
     io.on("connection", (socket: AuthenticatedSocket) => {
         const userId = socket.user?.userId;
         if (userId) {
-            socket.join(`user:${userId}`);
             const socketIds = onlineUsers.get(userId) || new Set<string>();
             socketIds.add(socket.id);
             onlineUsers.set(userId, socketIds);
@@ -165,12 +179,39 @@ export function initSocket(httpServer: HttpServer) {
 
         console.log(`User connected to Socket.io: ${socket.user?.username} (${socket.id})`);
 
-        socket.on("join_room", (roomId: string) => {
-            socket.join(roomId);
+        socket.on("join_room", async (roomId: string) => {
+            const userId = socket.user?.userId;
+            if (!userId || !roomId) return;
+            try {
+                const isMember = await AppDataSource.getRepository(ChatParticipants).count({
+                    where: { roomId, userId }
+                });
+                if (isMember > 0) {
+                    socket.join(roomId);
+                } else {
+                    console.warn(`[Socket] User ${userId} không có quyền join phòng chat ${roomId}`);
+                }
+            } catch (err) {
+                console.error("Lỗi xác thực tham gia phòng trên socket join_room:", err);
+            }
         });
 
-        socket.on("leave_room", (roomId: string) => {
-            socket.leave(roomId);
+        socket.on("leave_room", async (roomId: string) => {
+            const userId = socket.user?.userId;
+            if (!userId || !roomId) return;
+            try {
+                const isMember = await AppDataSource.getRepository(ChatParticipants).count({
+                    where: { roomId, userId }
+                });
+                // Nếu user vẫn là thành viên trong phòng (chỉ là chuyển màn hình/active room trên UI),
+                // giữ nguyên socket trong room để tiếp tục nhận tin nhắn thời gian thực.
+                // Chỉ ngắt socket khỏi room khi user thực sự không còn là thành viên trong DB.
+                if (isMember === 0) {
+                    socket.leave(roomId);
+                }
+            } catch (err) {
+                console.error("Lỗi kiểm tra tham gia phòng trên socket leave_room:", err);
+            }
         });
 
         socket.on("typing", (payload: string | { roomId: string }) => {
@@ -206,8 +247,6 @@ export function initSocket(httpServer: HttpServer) {
                     return;
                 }
 
-                const participantRepo = AppDataSource.getRepository(ChatParticipants);
-                const allParticipants = await participantRepo.find({ where: { roomId } });
                 const populatedMessage = await ChatRoomService.createMessage(
                     roomId,
                     senderUserId,
@@ -217,12 +256,7 @@ export function initSocket(httpServer: HttpServer) {
                 );
 
                 if (populatedMessage) {
-                    allParticipants.forEach((participant) => {
-                        const socketIds = onlineUsers.get(participant.userId);
-                        socketIds?.forEach((socketId) => {
-                            io.to(socketId).emit("receive_message", populatedMessage);
-                        });
-                    });
+                    io.to(roomId).emit("receive_message", populatedMessage);
                     ack?.({ ok: true, message: populatedMessage });
                 }
             } catch (error: any) {

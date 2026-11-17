@@ -4,7 +4,8 @@ import { Contracts, ContractStatus } from "../../contract/entities/Contract.enti
 import { Debts, DebtStatus } from "../../debt/entities/Debt.entity";
 import { ProjectStatus } from "../../project/entities/Project.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
-import { getContractCollectibleTotal } from "../../../shared/helpers/PricingTax.helper";
+import Decimal from "decimal.js";
+import { getContractCollectibleTotal, getContractCollectibleTotalDecimal, toDecimal } from "../../../shared/helpers/PricingTax.helper";
 
 export class PaymentMilestoneService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
@@ -95,109 +96,150 @@ export class PaymentMilestoneService {
     async create(data: { contractId: string, milestones: any[] }) {
         const { contractId, milestones } = data;
 
-        const contract = await this.contractRepository.findOne({
-            where: SecurityService.withTenant({ id: contractId }),
-            relations: ["milestones", "project"]
-        });
-
-        if (!contract) throw new Error("Không tìm thấy hợp đồng");
-        this.assertContractAndProjectNotClosed(contract);
-
         if (!milestones || milestones.length === 0) {
             throw new Error("Danh sách lộ trình thanh toán trống");
         }
 
-        // Validate Total Percentage
-        const currentTotal = contract.milestones.reduce((sum, m) => sum + Number(m.percentage), 0);
-        const newTotal = milestones.reduce((sum, m) => sum + Number(m.percentage), 0);
+        const savedMilestones = await AppDataSource.transaction(async (manager) => {
+            const contractRepo = manager.getRepository(Contracts);
+            const milestoneRepo = manager.getRepository(PaymentMilestones);
+            const debtRepo = manager.getRepository(Debts);
 
-        if (currentTotal + newTotal > 100) {
-            throw new Error(`Tổng phần trăm thanh toán vượt quá 100% (Hiện tại: ${currentTotal}%, Thêm mới: ${newTotal}%)`);
-        }
+            // 1. Lock contract row to prevent concurrent milestone modifications
+            const lockedContract = await contractRepo.findOne({
+                where: SecurityService.withTenant({ id: contractId }),
+                lock: { mode: "pessimistic_write" }
+            });
+            if (!lockedContract) throw new Error("Không tìm thấy hợp đồng");
 
-        const savedMilestones = [];
+            const contract = await contractRepo.findOne({
+                where: SecurityService.withTenant({ id: contractId }),
+                relations: ["project"]
+            });
+            if (contract) {
+                this.assertContractAndProjectNotClosed(contract);
+            }
 
-        for (const item of milestones) {
-            const amount = (getContractCollectibleTotal(contract) * Number(item.percentage)) / 100;
+            // 2. Fetch all existing milestones under lock
+            const existingMilestones = await milestoneRepo.find({
+                where: SecurityService.withTenant({ contract: { id: contractId } })
+            });
 
-            const milestone: PaymentMilestones = this.milestoneRepository.create({
-                contract,
-                name: item.name,
-                percentage: item.percentage,
-                amount: amount,
-                description: item.description,
-                dueDate: item.dueDate ? item.dueDate : null,
-                ...SecurityService.getTenantWhere()
-            } as object);
+            // 3. Validate Total Percentage with locked, authoritative data
+            const currentTotal = existingMilestones.reduce((sum, m) => sum + Number(m.percentage), 0);
+            const newTotal = milestones.reduce((sum, m) => sum + Number(m.percentage), 0);
 
-            const saved = await this.milestoneRepository.save(milestone);
-            savedMilestones.push(saved);
+            if (currentTotal + newTotal > 100) {
+                throw new Error(`Tổng phần trăm thanh toán vượt quá 100% (Hiện tại: ${currentTotal}%, Thêm mới: ${newTotal}%)`);
+            }
 
-            const debt = this.debtRepository.create({
-                name: `Phải thu: ${saved.name}`,
-                contract,
-                milestone: saved,
-                amount: saved.amount,
-                dueDate: saved.dueDate || new Date(),
+            const collectible = getContractCollectibleTotalDecimal(lockedContract);
+            const entities = milestones.map(item => {
+                const amount = collectible
+                    .mul(toDecimal(item.percentage))
+                    .div(100)
+                    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
+                    .toNumber();
+                return milestoneRepo.create({
+                    contract: lockedContract,
+                    name: item.name,
+                    percentage: item.percentage,
+                    amount: amount,
+                    description: item.description,
+                    dueDate: item.dueDate ? item.dueDate : null,
+                    ...SecurityService.getTenantWhere()
+                } as object);
+            });
+
+            const saved = await milestoneRepo.save(entities);
+
+            const newDebts: Debts[] = saved.map(s => debtRepo.create({
+                name: `Phải thu: ${s.name}`,
+                contract: lockedContract,
+                milestone: s,
+                amount: s.amount,
+                dueDate: s.dueDate || new Date(),
                 status: DebtStatus.UNPAID,
                 ...SecurityService.getTenantWhere()
-            } as any);
-            await this.debtRepository.save(debt);
-        }
+            } as any) as unknown as Debts);
+
+            await debtRepo.save(newDebts);
+
+            return saved;
+        });
 
         return savedMilestones;
     }
 
     async update(id: string, data: any) {
-        const milestone = await this.milestoneRepository.findOne({
-            where: SecurityService.withTenant({ id }),
-            relations: ["contract", "contract.project", "debt", "debt.payments"]
-        });
+        return await AppDataSource.transaction(async (manager) => {
+            const contractRepo = manager.getRepository(Contracts);
+            const milestoneRepo = manager.getRepository(PaymentMilestones);
+            const debtRepo = manager.getRepository(Debts);
 
-        if (!milestone) throw new Error("Không tìm thấy giai đoạn thanh toán");
-        this.assertContractAndProjectNotClosed(milestone.contract);
+            const milestone = await milestoneRepo.findOne({
+                where: SecurityService.withTenant({ id }),
+                relations: ["contract", "debt", "debt.payments"]
+            });
 
-        if (this.isDebtUnmodifiable(milestone.debt)) {
-            throw new Error(`Đợt thanh toán "${milestone.name}" đã bị khóa hoặc đã phát sinh thanh toán, không thể chỉnh sửa.`);
-        }
+            if (!milestone) throw new Error("Không tìm thấy giai đoạn thanh toán");
 
-        const contract = await this.contractRepository.findOne({
-            where: SecurityService.withTenant({ id: milestone.contract.id }),
-            relations: ["milestones"]
-        });
+            // 1. Lock contract row to prevent concurrent milestone modifications
+            const lockedContract = await contractRepo.findOne({
+                where: SecurityService.withTenant({ id: milestone.contract.id }),
+                lock: { mode: "pessimistic_write" }
+            });
+            if (!lockedContract) throw new Error("Không tìm thấy hợp đồng");
 
-        if (!contract) throw new Error("Không tìm thấy hợp đồng");
+            const contract = await contractRepo.findOne({
+                where: SecurityService.withTenant({ id: milestone.contract.id }),
+                relations: ["project"]
+            });
+            if (contract) this.assertContractAndProjectNotClosed(contract);
 
-        // Re-validate if percentage changes
-        if (data.percentage !== undefined && data.percentage !== null && Number(data.percentage) !== Number(milestone.percentage)) {
-            const otherMilestonesTotal = contract.milestones
-                .filter(m => String(m.id) !== String(id))
-                .reduce((sum, m) => sum + Number(m.percentage), 0);
-
-            if (otherMilestonesTotal + Number(data.percentage) > 100) {
-                throw new Error(`Tổng phần trăm thanh toán vượt quá 100%`);
+            if (this.isDebtUnmodifiable(milestone.debt)) {
+                throw new Error(`Đợt thanh toán "${milestone.name}" đã bị khóa hoặc đã phát sinh thanh toán, không thể chỉnh sửa.`);
             }
 
-            // Recalculate amount
-            milestone.percentage = data.percentage;
-            milestone.amount = (getContractCollectibleTotal(contract) * Number(data.percentage)) / 100;
-        }
+            // Re-validate if percentage changes
+            if (data.percentage !== undefined && data.percentage !== null && Number(data.percentage) !== Number(milestone.percentage)) {
+                const existingMilestones = await milestoneRepo.find({
+                    where: SecurityService.withTenant({ contract: { id: milestone.contract.id } })
+                });
 
-        if (data.name) milestone.name = data.name;
-        if (data.description !== undefined) milestone.description = data.description;
-        if (data.dueDate !== undefined) milestone.dueDate = data.dueDate ? data.dueDate : null;
+                const otherMilestonesTotal = existingMilestones
+                    .filter(m => String(m.id) !== String(id))
+                    .reduce((sum, m) => sum + Number(m.percentage), 0);
 
-        const savedMilestone = await this.milestoneRepository.save(milestone);
+                if (otherMilestonesTotal + Number(data.percentage) > 100) {
+                    throw new Error(`Tổng phần trăm thanh toán vượt quá 100%`);
+                }
 
-        // If debt exists and has no payments, sync debt with updated milestone
-        if (milestone.debt) {
-            if (data.name) milestone.debt.name = `Phải thu: ${milestone.name}`;
-            if (milestone.amount !== undefined) milestone.debt.amount = milestone.amount;
-            if (data.dueDate !== undefined) milestone.debt.dueDate = data.dueDate ? data.dueDate : new Date();
-            await this.debtRepository.save(milestone.debt);
-        }
+                // Recalculate amount using Decimal
+                milestone.percentage = data.percentage;
+                milestone.amount = getContractCollectibleTotalDecimal(lockedContract)
+                    .mul(toDecimal(data.percentage))
+                    .div(100)
+                    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
+                    .toNumber();
+            }
 
-        return savedMilestone;
+            if (data.name) milestone.name = data.name;
+            if (data.description !== undefined) milestone.description = data.description;
+            if (data.dueDate !== undefined) milestone.dueDate = data.dueDate ? data.dueDate : null;
+
+            const savedMilestone = await milestoneRepo.save(milestone);
+
+            // If debt exists and has no payments, sync debt with updated milestone
+            if (milestone.debt) {
+                if (data.name) milestone.debt.name = `Phải thu: ${milestone.name}`;
+                if (milestone.amount !== undefined) milestone.debt.amount = milestone.amount;
+                if (data.dueDate !== undefined) milestone.debt.dueDate = data.dueDate ? data.dueDate : new Date();
+                await debtRepo.save(milestone.debt);
+            }
+
+            return savedMilestone;
+        });
     }
 
     async delete(id: string) {
@@ -222,14 +264,6 @@ export class PaymentMilestoneService {
     }
 
     async bulkSave(contractId: string, milestones: any[]) {
-        const contract = await this.contractRepository.findOne({
-            where: SecurityService.withTenant({ id: contractId }),
-            relations: ["project"]
-        });
-
-        if (!contract) throw new Error("Không tìm thấy hợp đồng");
-        this.assertContractAndProjectNotClosed(contract);
-
         if (!milestones || milestones.length === 0) {
             throw new Error("Danh sách lộ trình thanh toán trống");
         }
@@ -240,46 +274,76 @@ export class PaymentMilestoneService {
             throw new Error(`Tổng phần trăm thanh toán phải bằng 100% (Hiện tại: ${total}%)`);
         }
 
-        // 2. Fetch all existing milestones for this contract with their debts and payments
-        const existingMilestones = await this.milestoneRepository.find({
-            where: { contract: { id: contractId } },
-            relations: ["debt", "debt.payments"]
-        });
-
-        // 3. Check for existing milestones that have payments or are locked
-        for (const existing of existingMilestones) {
-            const isUnmodifiable = this.isDebtUnmodifiable(existing.debt);
-            if (isUnmodifiable) {
-                const incoming = milestones.find(m => m.id && String(m.id) === String(existing.id));
-                if (!incoming) {
-                    throw new Error(`Đợt thanh toán "${existing.name}" đã bị khóa hoặc đã phát sinh thanh toán, không thể xóa.`);
-                }
-                if (Number(incoming.percentage) !== Number(existing.percentage)) {
-                    throw new Error(`Đợt thanh toán "${existing.name}" đã bị khóa hoặc đã phát sinh thanh toán, không thể thay đổi tỷ lệ.`);
-                }
-            }
-        }
-
-        // 4. Perform updates, deletions, and additions in a transaction
         return await AppDataSource.transaction(async (manager) => {
+            const contractRepo = manager.getRepository(Contracts);
             const milestoneRepo = manager.getRepository(PaymentMilestones);
             const debtRepo = manager.getRepository(Debts);
 
-            // A. Remove existing milestones that are not in incoming milestones list
-            const incomingIds = new Set(milestones.filter(m => m.id).map(m => String(m.id)));
+            // 1. Lock contract row to prevent concurrent bulkSave
+            const lockedContract = await contractRepo.findOne({
+                where: SecurityService.withTenant({ id: contractId }),
+                lock: { mode: "pessimistic_write" }
+            });
+            if (!lockedContract) throw new Error("Không tìm thấy hợp đồng");
+
+            const contract = await contractRepo.findOne({
+                where: SecurityService.withTenant({ id: contractId }),
+                relations: ["project"]
+            });
+            if (contract) this.assertContractAndProjectNotClosed(contract);
+
+            // 2. Fetch all existing milestones for this contract with their debts and payments under lock
+            const existingMilestones = await milestoneRepo.find({
+                where: { contract: { id: contractId } },
+                relations: ["debt", "debt.payments"]
+            });
+
+            // 3. Check for existing milestones that have payments or are locked
             for (const existing of existingMilestones) {
-                if (!incomingIds.has(String(existing.id))) {
-                    if (existing.debt) {
-                        await debtRepo.remove(existing.debt);
+                const isUnmodifiable = this.isDebtUnmodifiable(existing.debt);
+                if (isUnmodifiable) {
+                    const incoming = milestones.find(m => m.id && String(m.id) === String(existing.id));
+                    if (!incoming) {
+                        throw new Error(`Đợt thanh toán "${existing.name}" đã bị khóa hoặc đã phát sinh thanh toán, không thể xóa.`);
                     }
-                    await milestoneRepo.remove(existing);
+                    if (Number(incoming.percentage) !== Number(existing.percentage)) {
+                        throw new Error(`Đợt thanh toán "${existing.name}" đã bị khóa hoặc đã phát sinh thanh toán, không thể thay đổi tỷ lệ.`);
+                    }
                 }
             }
 
-            // B. Upsert (update existing or create new)
-            const savedMilestones = [];
+            // 4. Perform updates, deletions, and additions in the transaction
+            // A. Remove existing milestones that are not in incoming milestones list
+            const incomingIds = new Set(milestones.filter(m => m.id).map(m => String(m.id)));
+            const debtsToRemove = [];
+            const milestonesToRemove = [];
+            for (const existing of existingMilestones) {
+                if (!incomingIds.has(String(existing.id))) {
+                    if (existing.debt) {
+                        debtsToRemove.push(existing.debt);
+                    }
+                    milestonesToRemove.push(existing);
+                }
+            }
+            if (debtsToRemove.length > 0) {
+                await debtRepo.remove(debtsToRemove);
+            }
+            if (milestonesToRemove.length > 0) {
+                await milestoneRepo.remove(milestonesToRemove);
+            }
+
+            // B. Upsert (update existing or create new) - Batched
+            const milestonesToUpdate = [];
+            const debtsToUpdate = [];
+            const milestonesToCreate = [];
+
+            const collectible = getContractCollectibleTotalDecimal(lockedContract);
             for (const item of milestones) {
-                const amount = (getContractCollectibleTotal(contract) * Number(item.percentage)) / 100;
+                const amount = collectible
+                    .mul(toDecimal(item.percentage))
+                    .div(100)
+                    .toDecimalPlaces(3, Decimal.ROUND_HALF_UP)
+                    .toNumber();
 
                 if (item.id) {
                     const existing = existingMilestones.find(m => String(m.id) === String(item.id));
@@ -291,15 +355,14 @@ export class PaymentMilestoneService {
                         if (item.description !== undefined) existing.description = item.description;
                         if (item.dueDate !== undefined) existing.dueDate = item.dueDate ? item.dueDate : null;
 
-                        const saved = await milestoneRepo.save(existing);
-                        savedMilestones.push(saved);
+                        milestonesToUpdate.push(existing);
 
                         // If debt exists and is not unmodifiable, sync debt with updated milestone
                         if (existing.debt && !isUnmodifiable) {
                             existing.debt.name = `Phải thu: ${existing.name}`;
                             existing.debt.amount = amount;
                             if (existing.dueDate) existing.debt.dueDate = existing.dueDate;
-                            await debtRepo.save(existing.debt);
+                            debtsToUpdate.push(existing.debt);
                         }
                         continue;
                     }
@@ -307,7 +370,7 @@ export class PaymentMilestoneService {
 
                 // If new milestone (no id or not in existing)
                 const newMilestone: PaymentMilestones = milestoneRepo.create({
-                    contract,
+                    contract: lockedContract,
                     name: item.name,
                     percentage: item.percentage,
                     amount: amount,
@@ -315,24 +378,29 @@ export class PaymentMilestoneService {
                     dueDate: item.dueDate ? item.dueDate : null,
                     ...SecurityService.getTenantWhere()
                 } as object);
+                milestonesToCreate.push(newMilestone);
+            }
 
-                const saved = await milestoneRepo.save(newMilestone);
-                savedMilestones.push(saved);
+            const savedUpdated = milestonesToUpdate.length > 0 ? await milestoneRepo.save(milestonesToUpdate) : [];
+            if (debtsToUpdate.length > 0) {
+                await debtRepo.save(debtsToUpdate);
+            }
 
-                // Tự động tạo bản ghi Công nợ (Debt) cho đợt mới thêm
-                const newDebt = debtRepo.create({
+            const savedCreated = milestonesToCreate.length > 0 ? await milestoneRepo.save(milestonesToCreate) : [];
+            if (savedCreated.length > 0) {
+                const newDebts = savedCreated.map(saved => debtRepo.create({
                     name: `Phải thu: ${saved.name}`,
-                    contract,
+                    contract: lockedContract,
                     milestone: saved,
                     amount: saved.amount,
                     dueDate: saved.dueDate || new Date(),
                     status: DebtStatus.UNPAID,
                     ...SecurityService.getTenantWhere()
-                } as any);
-                await debtRepo.save(newDebt);
+                } as any) as unknown as Debts);
+                await debtRepo.save(newDebts);
             }
 
-            return savedMilestones;
+            return [...savedUpdated, ...savedCreated];
         });
     }
 }

@@ -8,6 +8,7 @@ const router = Router();
 const customerController = new CustomerController();
 
 router.get("/", customerController.getAll);
+router.get("/tax-lookup/:taxId", customerController.lookupTax);
 router.get("/:id", customerController.getOne);
 router.post("/", validationMiddleware(CreateCustomerDTO), customerController.create);
 router.put("/:id", validationMiddleware(UpdateCustomerDTO), customerController.update);

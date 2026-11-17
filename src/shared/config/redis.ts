@@ -1,24 +1,17 @@
-// import { createClient } from 'redis';
+import { createClient } from 'redis';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// TẠM THỜI COMMENT CONFIG REDIS:
-// Hệ thống tự động fallback an toàn sang In-memory MicroCache (LRU) + Direct DB Loader
-// Khi nào cần dùng lại Redis thực tế, chỉ cần bỏ comment các dòng cấu hình bên dưới.
-
-/*
 const isEnabled = process.env.REDIS_ENABLED !== 'false';
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 const connectTimeoutMs = Number(process.env.REDIS_CONNECT_TIMEOUT_MS) || 5000;
 
 const isTestEnv = process.env.NODE_ENV === 'test' || process.argv.some((arg) => arg.includes('test') || arg.includes('spec'));
-*/
 
 let isReady = false;
 let clientInstance: any = null;
 
-/*
 if (!isTestEnv) {
     clientInstance = createClient({
         url: redisUrl,
@@ -68,7 +61,6 @@ if (!isTestEnv) {
         })();
     }
 }
-*/
 
 /**
  * Kiểm tra trạng thái sẵn sàng của Redis
