@@ -279,6 +279,44 @@ export class RedisService {
     // -------------------------------------------------------------------------
     // METRICS QUAN SÁT (OBSERVABILITY)
     // -------------------------------------------------------------------------
+    private static detailedMetrics = {
+        dashboardHits: 0,
+        dashboardMisses: 0,
+        patternInvalidations: new Map<string, number>(),
+        scanDurations: [] as number[],
+    };
+
+    public static recordDashboardAccess(hit: boolean) {
+        if (hit) this.detailedMetrics.dashboardHits++;
+        else this.detailedMetrics.dashboardMisses++;
+    }
+
+    public static recordPatternInvalidation(pattern: string, durationMs: number) {
+        const cur = this.detailedMetrics.patternInvalidations.get(pattern) || 0;
+        this.detailedMetrics.patternInvalidations.set(pattern, cur + 1);
+        this.detailedMetrics.scanDurations.push(durationMs);
+        if (this.detailedMetrics.scanDurations.length > 50) this.detailedMetrics.scanDurations.shift();
+    }
+
+    public static getMetrics() {
+        return this.metrics.getStats();
+    }
+
+    public static getDetailedMetrics() {
+        const { dashboardHits: hits, dashboardMisses: misses, scanDurations } = this.detailedMetrics;
+        const total = hits + misses;
+        return {
+            ...this.getMetrics(),
+            dashboardHits: hits,
+            dashboardMisses: misses,
+            dashboardHitRate: total > 0 ? ((hits / total) * 100).toFixed(2) + '%' : '0%',
+            patternInvalidations: Object.fromEntries(this.detailedMetrics.patternInvalidations),
+            avgScanDurationMs: scanDurations.length
+                ? (scanDurations.reduce((a, b) => a + b, 0) / scanDurations.length).toFixed(2)
+                : '0',
+        };
+    }
+
     public static metrics = {
         totalCalls: 0,
         singleFlightHits: 0,
@@ -333,7 +371,12 @@ export class RedisService {
         const existing = this.inflightMap.get(key);
         if (existing) {
             this.metrics.singleFlightHits++;
-            return existing.then((res) => this.parseOrRecover(key, ttl, res, loader, retried));
+            return existing.then((res) => {
+                if (key.startsWith('dashboard:')) {
+                    this.recordDashboardAccess(true);
+                }
+                return this.parseOrRecover(key, ttl, res, loader, retried);
+            });
         }
 
         const promise: Promise<ResolveResult> = this.resolve<T>(key, ttl, loader).finally(() => {
@@ -343,7 +386,12 @@ export class RedisService {
         });
 
         this.inflightMap.set(key, promise);
-        return promise.then((res) => this.parseOrRecover(key, ttl, res, loader, retried));
+        return promise.then((res) => {
+            if (key.startsWith('dashboard:')) {
+                this.recordDashboardAccess(res.fromRedisHit);
+            }
+            return this.parseOrRecover(key, ttl, res, loader, retried);
+        });
     }
 
     /**
@@ -568,6 +616,7 @@ export class RedisService {
         }
 
         if (!isRedisReady()) {
+            this.recordPatternInvalidation(pattern, 0);
             return { complete: false };
         }
 
@@ -578,6 +627,7 @@ export class RedisService {
             if (!pattern.includes('*')) {
                 if (pattern.startsWith('lock:')) return { complete: true };
                 const success = await this.executeUnlinkWithRetry([pattern]);
+                this.recordPatternInvalidation(pattern, Date.now() - scanStart);
                 return { complete: success };
             }
 
@@ -609,6 +659,7 @@ export class RedisService {
             complete = false;
         }
 
+        this.recordPatternInvalidation(pattern, Date.now() - scanStart);
         return { complete };
     }
 
@@ -643,6 +694,124 @@ export class RedisService {
         if (!this.circuit.allowsPassive()) return;
         const rawJson = JSON.stringify(data === undefined ? null : data);
         await this.safeSetRaw(key, rawJson, ttl);
+    }
+
+    // -------------------------------------------------------------------------
+    // HỖ TRỢ ATOMIC CHO IDEMPOTENCY KEY
+    // -------------------------------------------------------------------------
+    static async setIfNotExists(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+        if (!isRedisReady()) return true; // fail-open nếu Redis chưa sẵn sàng
+        try {
+            const result = await this.withTimeout(redisClient.set(key, value, { NX: true, EX: ttlSeconds }));
+            return result === 'OK';
+        } catch (err: any) {
+            console.error(`[Redis Error] setIfNotExists (${key}):`, err.message);
+            return true; // fail-open
+        }
+    }
+
+    static async get(key: string): Promise<string | null> {
+        if (!isRedisReady()) return null;
+        try {
+            return (await this.withTimeout(redisClient.get(key))) as string | null;
+        } catch (err: any) {
+            console.error(`[Redis Error] get (${key}):`, err.message);
+            return null;
+        }
+    }
+
+    static async set(key: string, value: string, ttlSeconds: number): Promise<void> {
+        if (!isRedisReady()) return;
+        try {
+            await this.withTimeout(redisClient.set(key, value, { EX: ttlSeconds }));
+        } catch (err: any) {
+            console.error(`[Redis Error] set (${key}):`, err.message);
+        }
+    }
+
+    static async del(key: string): Promise<void> {
+        if (!isRedisReady()) return;
+        try {
+            await this.withTimeout(redisClient.del(key));
+        } catch (err: any) {
+            console.error(`[Redis Error] del (${key}):`, err.message);
+        }
+    }
+
+    private static readonly CAS_SET_LUA = `
+        local curr = redis.call("get", KEYS[1])
+        if not curr then
+            return 0
+        end
+        if string.find(curr, ARGV[1], 1, true) then
+            redis.call("set", KEYS[1], ARGV[2], "EX", tonumber(ARGV[3]))
+            return 1
+        end
+        return 0
+    `;
+
+    private static readonly CAS_DEL_LUA = `
+        local curr = redis.call("get", KEYS[1])
+        if not curr then
+            return 0
+        end
+        if string.find(curr, ARGV[1], 1, true) then
+            return redis.call("del", KEYS[1])
+        end
+        return 0
+    `;
+
+    static async setIfExecutionIdMatches(key: string, value: string, executionId: string, ttlSeconds: number): Promise<boolean> {
+        if (!isRedisReady()) return true;
+        try {
+            const res = await this.withTimeout(redisClient.eval(this.CAS_SET_LUA, {
+                keys: [key],
+                arguments: [executionId, value, String(ttlSeconds)]
+            }));
+            return res === 1;
+        } catch (err: any) {
+            console.error(`[Redis Error] setIfExecutionIdMatches (${key}):`, err.message);
+            return false;
+        }
+    }
+
+    static async delIfExecutionIdMatches(key: string, executionId: string): Promise<boolean> {
+        if (!isRedisReady()) return true;
+        try {
+            const res = await this.withTimeout(redisClient.eval(this.CAS_DEL_LUA, {
+                keys: [key],
+                arguments: [executionId]
+            }));
+            return res === 1;
+        } catch (err: any) {
+            console.error(`[Redis Error] delIfExecutionIdMatches (${key}):`, err.message);
+            return false;
+        }
+    }
+
+    private static readonly REFRESH_TTL_LUA = `
+        local curr = redis.call("get", KEYS[1])
+        if not curr then
+            return 0
+        end
+        if string.find(curr, ARGV[1], 1, true) then
+            return redis.call("expire", KEYS[1], tonumber(ARGV[2]))
+        end
+        return 0
+    `;
+
+    static async refreshPendingTtl(key: string, executionId: string, ttlSeconds: number): Promise<boolean> {
+        if (!isRedisReady()) return true;
+        try {
+            const res = await this.withTimeout(redisClient.eval(this.REFRESH_TTL_LUA, {
+                keys: [key],
+                arguments: [executionId, String(ttlSeconds)]
+            }));
+            return res === 1;
+        } catch (err: any) {
+            console.error(`[Redis Error] refreshPendingTtl (${key}):`, err.message);
+            return false;
+        }
     }
 
     // -------------------------------------------------------------------------

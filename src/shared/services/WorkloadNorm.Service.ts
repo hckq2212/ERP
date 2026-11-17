@@ -4,6 +4,7 @@ import { STAFF_ROLES, UserRole } from "../../modules/account/entities/Account.en
 import { StaffRoleWorkloadNorms } from "../../modules/setting/entities/StaffRoleWorkloadNorm.entity";
 import { TaskStatus } from "../entities/Enums";
 import { RedisService } from "./Redis.Service";
+import { DashboardCacheCoordinator } from "../../modules/dashboard/services/DashboardCache.Coordinator";
 
 export type WorkloadNormItem = {
     role: UserRole;
@@ -115,7 +116,7 @@ export class WorkloadNormService {
 
         await this.repository.save(normalized);
         await RedisService.deleteCache('settings:workload_norms*');
-        await RedisService.deleteCache('dashboard:*');
+        await DashboardCacheCoordinator.invalidateSystem({ workloadAll: true });
         return this.getNorms();
     }
 }

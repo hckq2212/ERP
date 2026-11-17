@@ -105,7 +105,11 @@ export class TaskDeletionService extends TaskBaseService {
                 }
             }
         });
-        taskEmitter.emit(TASK_EVENTS.DELETED, { id });
+        taskEmitter.emit(TASK_EVENTS.DELETED, {
+            id,
+            projectId: task.project?.id || (task as any).projectId,
+            assigneeId: task.assignee?.id || (task as any).assigneeId
+        });
         return { message: "Xóa công việc thành công" };
     }
 }

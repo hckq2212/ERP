@@ -17,6 +17,7 @@ import { DashboardActor, DashboardScopeService } from "./DashboardScope.Service"
 import { WorkloadService } from "../../../shared/services/Workload.Service";
 import { getMemberRoles } from "../../project/entities/TeamMember.entity";
 import { RedisService } from "../../../shared/services/Redis.Service";
+import { DashboardCacheCoordinator } from "./DashboardCache.Coordinator";
 
 export class DashboardService {
     private contractRepo = AppDataSource.getRepository(Contracts);
@@ -39,9 +40,14 @@ export class DashboardService {
         startMonth?: number,
         endMonth?: number
     ) {
-        const cacheKey = `dashboard:${actor.role}:${actor.id}:${requestedUserId || 'self'}:${mode || 'default'}:${projectId || 'all'}:${year || 'curr'}:${month || 'all'}:${startMonth || 0}-${endMonth || 0}`;
+        const verTag = await DashboardCacheCoordinator.getVersionTag(projectId);
 
-        return await RedisService.fetchWithCache(cacheKey, 120, async () => {
+        const cacheKey =
+            `dashboard:v${verTag}:${actor.role}:${actor.id}:${requestedUserId || 'self'}:` +
+            `${mode || 'default'}:${projectId || 'all'}:${year || 'curr'}:${month || 'all'}:` +
+            `${startMonth || 0}-${endMonth || 0}`;
+
+        return await RedisService.fetchWithCache(cacheKey, 60, async () => {
             const data: any = {};
             const dateFilter = this.getDateFilter(month, year, startMonth, endMonth);
             const scope = await this.scopeService.resolve(actor, requestedUserId, projectId, mode);

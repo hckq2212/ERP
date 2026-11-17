@@ -420,6 +420,7 @@ export class TaskAssignmentService extends TaskBaseService {
                     relations: ["project", "project.contract", "project.team", "project.team.teamLead", "project.team.members", "project.team.members.user", "opportunity", "opportunityServiceJob", "job"]
                 });
                 if (!task) continue;
+                const previousAssigneeId = task.assigneeId;
                 await assertSubtaskPlanApproved(
                     transactionalEntityManager.getRepository(Tasks),
                     task,
@@ -581,6 +582,7 @@ export class TaskAssignmentService extends TaskBaseService {
                 }
 
                 const savedTask = await transactionalEntityManager.save(task);
+                (savedTask as any).previousAssigneeId = previousAssigneeId;
                 results.push(savedTask);
 
                 // Task giao cho vendor => tự động xem là chi phí phát sinh, chuẩn bị tạo yêu cầu thanh toán
@@ -771,7 +773,9 @@ export class TaskAssignmentService extends TaskBaseService {
                 task.supportRequestNote = null as any;
                 task.supportReturnNote = null as any;
 
-                unassigned.push(await transactionalEntityManager.save(task));
+                const savedUnassigned = await transactionalEntityManager.save(task);
+                (savedUnassigned as any).previousAssigneeId = oldAssignee?.id;
+                unassigned.push(savedUnassigned);
 
                 if (oldAssignee) {
                     await this.notificationService.createNotification({
