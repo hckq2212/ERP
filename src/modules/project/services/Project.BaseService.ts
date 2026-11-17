@@ -43,6 +43,10 @@ export class ProjectBaseService {
     protected notificationService = new NotificationService();
     // private googleSheetService = new GoogleSheetService();
 
+    protected repo<T extends import("typeorm").ObjectLiteral>(entity: import("typeorm").EntityTarget<T>, manager?: EntityManager) {
+        return (manager ?? AppDataSource.manager).getRepository(entity);
+    }
+
     protected httpError(message: string, statusCode: number) {
         const error: any = new Error(message);
         error.statusCode = statusCode;
@@ -371,10 +375,16 @@ export class ProjectBaseService {
             [TaskStatus.INTERNAL_COMPLETED, TaskStatus.COMPLETED, TaskStatus.ACCEPTED].includes(task.status);
     }
 
-    protected async syncContractServiceJobs(projectId: string, options: { allowCompletedProject?: boolean } = {}) {
+    protected async syncContractServiceJobs(projectId: string, options: { allowCompletedProject?: boolean } = {}, manager?: EntityManager) {
         const syncResult = this.emptySyncResult();
 
-        const project = await this.projectRepository.findOne({
+        const projectRepo = this.repo(Projects, manager);
+        const contractRepo = this.repo(Contracts, manager);
+        const oppServiceRepo = this.repo(OpportunityServices, manager);
+        const contractServiceRepo = this.repo(ContractServices, manager);
+        const taskRepo = this.repo(Tasks, manager);
+
+        const project = await projectRepo.findOne({
             where: { id: projectId },
             relations: ["contract"]
         });
@@ -385,20 +395,20 @@ export class ProjectBaseService {
             throw new Error("Dự án đã hoàn tất hoặc đã hủy, không thể đồng bộ công việc");
         }
 
-        const contract = await this.contractRepository.findOne({
+        const contract = await contractRepo.findOne({
             where: { id: project.contract.id },
             relations: ["opportunity"]
         });
         if (!contract) throw new Error("Không tìm thấy hợp đồng");
 
         const opportunityServices = contract.opportunity
-            ? await this.opportunityServiceRepository.find({
+            ? await oppServiceRepo.find({
                 where: { opportunity: { id: contract.opportunity.id } },
                 relations: ["jobs", "jobs.job"]
             })
             : [];
 
-        const contractServices = await this.contractServiceRepository.find({
+        const contractServices = await contractServiceRepo.find({
             where: { contract: { id: contract.id } },
             relations: [
                 "service",
@@ -440,14 +450,14 @@ export class ProjectBaseService {
                     for (const task of existingTasks) {
                         if (!task.isOutput) {
                             task.isOutput = true;
-                            await this.taskRepository.save(task);
+                            await taskRepo.save(task);
                             syncResult.updatedOutputTasks += 1;
                         }
                     }
                 }
 
                 for (let i = existingTasks.length; i < quantity; i++) {
-                    const totalCountForProject = await this.taskRepository.count({
+                    const totalCountForProject = await taskRepo.count({
                         where: {
                             project: { id: project.id },
                             job: { id: job.id }
@@ -460,7 +470,7 @@ export class ProjectBaseService {
                     const jobCode = job.code || `JOB${job.id}`;
                     const taskCode = [contract.contractCode, serviceCode, jobCode, seq].filter(Boolean).join("-");
 
-                    const task = this.taskRepository.create({
+                    const task = taskRepo.create({
                         code: taskCode,
                         name: job.name,
                         nickname: buildDefaultTaskNickname(job, sequenceNumber),
@@ -473,13 +483,13 @@ export class ProjectBaseService {
                         isOutput: sj.isOutput
                     });
 
-                    const savedTask = await this.taskRepository.save(task);
+                    const savedTask = await taskRepo.save(task);
                     existingTasks.push(savedTask);
                     syncResult.createdTasks += 1;
                 }
             }
 
-            const outputTasks = await this.taskRepository.find({
+            const outputTasks = await taskRepo.find({
                 where: {
                     project: { id: project.id },
                     contractService: { id: cs.id },
@@ -511,7 +521,7 @@ export class ProjectBaseService {
 
             if (serviceBackfilledResults > 0) {
                 cs.results = results;
-                await this.contractServiceRepository.save(cs);
+                await contractServiceRepo.save(cs);
             }
         }
 

@@ -845,9 +845,15 @@ export class OpportunityService {
             ...(Array.isArray(services) ? services.filter(item => typeof item === "object").map(item => ({ item, packageName: undefined })) : []),
             ...(Array.isArray(packages) ? packages.flatMap(pkg => (pkg.services || []).map(item => ({ item, packageName: pkg.name }))) : [])
         ];
+        const serviceIds = [...new Set(selections.map(({ item }) => item.serviceId || item.id).filter(Boolean))];
+        const serviceEntities = serviceIds.length > 0
+            ? await this.serviceRepository.find({ where: SecurityService.withTenant({ id: In(serviceIds) }) })
+            : [];
+        const serviceMap = new Map(serviceEntities.map(s => [s.id, s]));
+
         for (const { item, packageName } of selections) {
             const serviceId = item.serviceId || item.id;
-            const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: serviceId || "__missing__" }) });
+            const service = serviceMap.get(serviceId);
             if (!service) throw new Error(`Không tìm thấy dịch vụ với ID: ${serviceId}`);
             const candidates = existing.filter(row => row.serviceId === serviceId &&
                 Boolean(row.isPackageService) === Boolean(packageName) &&
@@ -877,6 +883,23 @@ export class OpportunityService {
         await this.opportunityServiceRepository.delete(SecurityService.withTenant({ opportunity: { id: opportunity.id } }));
         await this.opportunityPackageRepository.delete(SecurityService.withTenant({ opportunity: { id: opportunity.id } }));
 
+        // Pre-fetch all needed services across packages and standalone services in a single batch query
+        const allPkgServiceIds = (packages && Array.isArray(packages))
+            ? packages.flatMap(pkg => (pkg.services || []).map((s: any) => s.serviceId || s.id))
+            : [];
+        const allStandaloneServiceIds = (services && Array.isArray(services))
+            ? services.map(item => typeof item === 'string' ? item : (item.serviceId || item.id))
+            : [];
+        const allServiceIds = [...new Set([...allPkgServiceIds, ...allStandaloneServiceIds].filter(Boolean))];
+
+        const allServices = allServiceIds.length > 0
+            ? await this.serviceRepository.find({
+                where: SecurityService.withTenant({ id: In(allServiceIds) }),
+                relations: ["serviceJobs", "serviceJobs.job"]
+            })
+            : [];
+        const serviceMap = new Map(allServices.map(s => [s.id, s]));
+
         // Handle Packages
         if (packages && Array.isArray(packages)) {
             for (const pkgItem of packages) {
@@ -899,10 +922,7 @@ export class OpportunityService {
                             continue;
                         }
 
-                        const service = await this.serviceRepository.findOne({
-                            where: SecurityService.withTenant({ id: serviceId }),
-                            relations: ["serviceJobs", "serviceJobs.job"]
-                        });
+                        const service = serviceMap.get(serviceId);
                         if (!service) {
                             console.warn(`[OpportunityService] Service not found for ID: ${serviceId}`);
                             continue;
@@ -937,10 +957,7 @@ export class OpportunityService {
                 const sellingPrice = typeof item === 'object' ? item.sellingPrice : undefined;
                 const budget = typeof item === 'object' ? item.budget : undefined;
 
-                const service = await this.serviceRepository.findOne({
-                    where: SecurityService.withTenant({ id: serviceId }),
-                    relations: ["serviceJobs", "serviceJobs.job"]
-                });
+                const service = serviceMap.get(serviceId);
                 if (!service) {
                     throw new Error(`Không tìm thấy dịch vụ với ID: ${serviceId}.`);
                 }
@@ -975,11 +992,17 @@ export class OpportunityService {
             }))) : [])
         ];
 
-        for (const selection of selections) {
-            const service = await this.serviceRepository.findOne({
-                where: SecurityService.withTenant({ id: selection.serviceId }),
+        const serviceIds = [...new Set(selections.map(s => s.serviceId).filter(Boolean))];
+        const servicesList = serviceIds.length > 0
+            ? await this.serviceRepository.find({
+                where: SecurityService.withTenant({ id: In(serviceIds) }),
                 relations: ["serviceJobs", "serviceJobs.job"]
-            });
+            })
+            : [];
+        const serviceMap = new Map(servicesList.map(s => [s.id, s]));
+
+        for (const selection of selections) {
+            const service = serviceMap.get(selection.serviceId);
             if (!service) continue;
             const inputByJobId = new Map((selection.jobs || []).map((item: any) => [String(item.jobId), item]));
             for (const serviceJob of service.serviceJobs || []) {

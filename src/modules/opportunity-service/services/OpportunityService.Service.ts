@@ -80,6 +80,7 @@ export class OpportunityServiceService {
         item.budget = budget;
 
         if (Array.isArray(data.jobs)) {
+            const jobsToSave = [];
             for (const input of data.jobs) {
                 const job = item.jobs?.find((candidate) => candidate.id === input.id);
                 if (!job) throw new Error("Không tìm thấy hạng mục công việc của cơ hội");
@@ -98,7 +99,11 @@ export class OpportunityServiceService {
                 }
                 if (job.isBriefVideo) job.isQuotationItem = false;
 
-                await this.oppServiceJobRepository.save(job);
+                jobsToSave.push(job);
+            }
+
+            if (jobsToSave.length > 0) {
+                await this.oppServiceJobRepository.save(jobsToSave);
             }
 
             const quotationJobs = (await this.oppServiceJobRepository.find({

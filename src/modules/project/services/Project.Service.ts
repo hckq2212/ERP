@@ -1,3 +1,4 @@
+import { EntityManager } from "typeorm";
 import { Contracts } from "../../contract/entities/Contract.entity";
 import { ProjectAssignmentService } from "./Project.AssignmentService";
 import { ProjectJobSyncService } from "./Project.JobSyncService";
@@ -38,8 +39,8 @@ export class ProjectService {
         return this.assignmentService.assign(data, actor);
     }
 
-    createFromContract(contract: Contracts, userInfo?: { id: string, userId?: string }) {
-        return this.assignmentService.createFromContract(contract, userInfo);
+    createFromContract(contract: Contracts, userInfo?: { id: string, userId?: string }, manager?: EntityManager, afterCommit?: Array<() => void>) {
+        return this.assignmentService.createFromContract(contract, userInfo, manager, afterCommit);
     }
 
     update(id: string, data: { plannedStartDate?: string | null, plannedEndDate?: string | null }, actor?: { id: string, role: string, userId?: string }) {

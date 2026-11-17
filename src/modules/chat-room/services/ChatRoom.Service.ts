@@ -5,7 +5,7 @@ import { Users } from "../../user/entities/User.entity";
 import { ChatMessages } from "../entities/ChatMessage.entity";
 import { ChatParticipants } from "../entities/ChatParticipant.entity";
 import { ChatRooms } from "../entities/ChatRoom.entity";
-import { broadcastToRoom, broadcastToUser } from "../../../socket";
+import { broadcastToRoom, broadcastToUser, userJoinRoom, userLeaveRoom } from "../../../socket";
 import { PushNotificationService } from "../../notification/services/PushNotification.Service";
 import { formatChatPushContent } from "../helpers/ChatPushContent.helper";
 import { parseCloudinaryAssetInfo, tagCloudinaryAsset } from "../../../shared/helpers/cloudinary.helper";
@@ -226,13 +226,16 @@ export class ChatRoomService {
             }
             await transactionalEntityManager.save(newRoom);
 
-            for (const userId of uniqueParticipantIds) {
+            const participantsToSave = uniqueParticipantIds.map((userId) => {
                 const participant = new ChatParticipants();
                 participant.roomId = newRoom.id;
                 participant.userId = userId;
                 participant.role = userId === creatorId ? "ADMIN" : "MEMBER";
                 participant.lastReadAt = null;
-                await transactionalEntityManager.save(participant);
+                return participant;
+            });
+            if (participantsToSave.length > 0) {
+                await transactionalEntityManager.save(participantsToSave);
             }
 
             return newRoom;
@@ -253,6 +256,7 @@ export class ChatRoomService {
         );
 
         for (const uid of uniqueParticipantIds) {
+            userJoinRoom(uid, createdRoom.id);
             broadcastToUser(uid, "room_added", { roomId: createdRoom.id });
         }
 
@@ -271,20 +275,28 @@ export class ChatRoomService {
         const newlyAddedIds: string[] = [];
 
         await AppDataSource.transaction(async (transactionalEntityManager) => {
-            for (const userId of resolvedUserIds) {
-                const exists = await participantRepo.findOne({
-                    where: { roomId, userId }
-                });
+            const existingParticipants = resolvedUserIds.length > 0
+                ? await transactionalEntityManager.getRepository(ChatParticipants).find({
+                    where: { roomId, userId: In(resolvedUserIds) }
+                })
+                : [];
+            const existingUserIds = new Set(existingParticipants.map((p) => p.userId));
 
-                if (!exists) {
+            const participantsToSave: ChatParticipants[] = [];
+            for (const userId of resolvedUserIds) {
+                if (!existingUserIds.has(userId)) {
                     const participant = new ChatParticipants();
                     participant.roomId = roomId;
                     participant.userId = userId;
                     participant.role = "MEMBER";
                     participant.lastReadAt = null;
-                    await transactionalEntityManager.save(participant);
+                    participantsToSave.push(participant);
                     newlyAddedIds.push(userId);
                 }
+            }
+
+            if (participantsToSave.length > 0) {
+                await transactionalEntityManager.save(participantsToSave);
             }
         });
 
@@ -313,6 +325,7 @@ export class ChatRoomService {
             );
 
             for (const uid of newlyAddedIds) {
+                userJoinRoom(uid, roomId);
                 broadcastToUser(uid, "room_added", { roomId });
             }
         }
@@ -608,31 +621,42 @@ export class ChatRoomService {
 
         await participantRepo.remove(target);
 
+        // Luôn ngắt kết nối socket của user khỏi room trước tiên để không rò rỉ sự kiện tin nhắn
         if (isSelfLeaving) {
-            await this.createSystemMessage(
-                roomId,
-                requesterId,
-                `${targetName} đã rời khỏi nhóm.`,
-                {
-                    action: "LEAVE_GROUP",
-                    actorId: requesterId,
-                    actorName: targetName
-                }
-            );
+            userLeaveRoom(requesterId, roomId);
         } else {
-            await this.createSystemMessage(
-                roomId,
-                requesterId,
-                `${requesterName} đã xóa ${targetName} khỏi nhóm.`,
-                {
-                    action: "REMOVE_MEMBER",
-                    actorId: requesterId,
-                    actorName: requesterName,
-                    targetId: targetUserId,
-                    targetName
-                }
-            );
+            userLeaveRoom(targetUserId, roomId);
             broadcastToUser(targetUserId, "room_removed", { roomId });
+        }
+
+        try {
+            if (isSelfLeaving) {
+                await this.createSystemMessage(
+                    roomId,
+                    requesterId,
+                    `${targetName} đã rời khỏi nhóm.`,
+                    {
+                        action: "LEAVE_GROUP",
+                        actorId: requesterId,
+                        actorName: targetName
+                    }
+                );
+            } else {
+                await this.createSystemMessage(
+                    roomId,
+                    requesterId,
+                    `${requesterName} đã xóa ${targetName} khỏi nhóm.`,
+                    {
+                        action: "REMOVE_MEMBER",
+                        actorId: requesterId,
+                        actorName: requesterName,
+                        targetId: targetUserId,
+                        targetName
+                    }
+                );
+            }
+        } catch (msgErr) {
+            console.error("[ChatRoom] Không tạo được tin nhắn hệ thống khi rời/xóa thành viên:", msgErr);
         }
 
         const remainingParticipants = await participantRepo.find({

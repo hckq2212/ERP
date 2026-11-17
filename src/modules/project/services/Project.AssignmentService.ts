@@ -1,5 +1,5 @@
 import { AppDataSource } from "../../../data-source";
-import { Like, ILike, In, IsNull, Not } from "typeorm";
+import { EntityManager, Like, ILike, In, IsNull, Not } from "typeorm";
 import { Projects, ProjectStatus } from "../entities/Project.entity";
 import { Contracts, ContractStatus } from "../../contract/entities/Contract.entity";
 import { ProjectTeams } from "../entities/ProjectTeam.entity";
@@ -160,16 +160,24 @@ export class ProjectAssignmentService extends ProjectBaseService {
         return savedProject;
     }
 
-    async createFromContract(contract: Contracts, userInfo?: { id: string, userId?: string }) {
+    async createFromContract(
+        contract: Contracts,
+        userInfo?: { id: string, userId?: string },
+        manager?: EntityManager,
+        afterCommit?: Array<() => void>
+    ) {
+        const contractRepo = this.repo(Contracts, manager);
+        const projectRepo = this.repo(Projects, manager);
+
         const fullContract = contract.opportunity
             ? contract
-            : await this.contractRepository.findOne({
+            : await contractRepo.findOne({
                 where: { id: contract.id },
                 relations: ["opportunity"]
             }) || contract;
 
         // 1. Check if project already exists
-        let project = await this.projectRepository.findOne({
+        let project = await projectRepo.findOne({
             where: { contract: { id: fullContract.id } },
             relations: ["contract"]
         });
@@ -177,7 +185,7 @@ export class ProjectAssignmentService extends ProjectBaseService {
         let isNewProject = false;
         if (!project) {
             isNewProject = true;
-            project = this.projectRepository.create({
+            project = projectRepo.create({
                 name: `${fullContract.name}`,
                 contract: fullContract,
                 status: ProjectStatus.PENDING_CONFIRMATION,
@@ -186,20 +194,26 @@ export class ProjectAssignmentService extends ProjectBaseService {
         }
 
         this.applyOpportunitySchedule(project, fullContract);
-        project = await this.projectRepository.save(project);
+        project = await projectRepo.save(project);
 
         if (isNewProject) {
             // Google Sheet integration is temporarily disabled.
             // await this.tryCreateGoogleSheet(project.id);
-            project = await this.projectRepository.findOne({
+            project = await projectRepo.findOne({
                 where: { id: project.id },
                 relations: ["contract"]
             }) || project;
         }
 
-        await this.syncContractServiceJobs(project.id, { allowCompletedProject: true });
+        await this.syncContractServiceJobs(project.id, { allowCompletedProject: true }, manager);
 
-        projectEmitter.emit(PROJECT_EVENTS.CREATED, project);
+        if (afterCommit) {
+            afterCommit.push(() => {
+                projectEmitter.emit(PROJECT_EVENTS.CREATED, project);
+            });
+        } else {
+            projectEmitter.emit(PROJECT_EVENTS.CREATED, project);
+        }
         return project;
     }
 

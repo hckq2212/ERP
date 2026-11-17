@@ -1,4 +1,5 @@
 import { AppDataSource } from "../../../data-source";
+import { In } from "typeorm";
 import { Quotations, QuotationStatus, QuotationType } from "../entities/Quotation.entity";
 import { QuotationDetails } from "../entities/QuotationDetail.entity";
 import { Opportunities, OpportunityStatus } from "../../opportunity/entities/Opportunity.entity";
@@ -12,7 +13,8 @@ import { NotificationService } from "../../notification/services/Notification.Se
 import { quotationEmitter, QUOTATION_EVENTS } from "../events/QuotationEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 import { ContractService } from "../../contract/services/Contract.Service";
-import { calculatePricingTotals, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
+import Decimal from "decimal.js";
+import { calculatePricingTotals, calculatePricingTotalsDecimal, calculateLinePricingDecimal, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
 import { validateQuotationBudgets } from "../helpers/QuotationBudgetValidation.helper";
 import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
 
@@ -187,15 +189,27 @@ export class QuotationService {
 
         const savedQuotation = await this.quotationRepository.save(quotation);
 
-        let total = 0;
+        let totalDecimal = new Decimal(0);
 
         // If details are provided from frontend, use them. Otherwise, copy from Opportunity.
         if (details && Array.isArray(details)) {
             const serviceRepository = AppDataSource.getRepository(Services);
+            const serviceIds = [...new Set(details.map((d: any) => d.serviceId).filter(Boolean))];
+            const oppServiceIds = [...new Set(details.map((d: any) => d.opportunityServiceId).filter(Boolean))];
+
+            const services = serviceIds.length > 0 ? await serviceRepository.findBy({ id: In(serviceIds) }) : [];
+            const serviceMap = new Map(services.map(s => [s.id, s]));
+
+            const oppServices = oppServiceIds.length > 0 ? await this.opportunityServiceRepository.findBy({ id: In(oppServiceIds) }) : [];
+            const oppServiceMap = new Map(oppServices.map(os => [os.id, os]));
+
+            const detailsToSave = [];
+            const oppServicesToUpdate = [];
+
             for (const item of details) {
-                const service = item.serviceId ? await serviceRepository.findOneBy({ id: item.serviceId }) : null;
+                const service = item.serviceId ? serviceMap.get(item.serviceId) || null : null;
                 const opportunityService = item.opportunityServiceId
-                    ? await this.opportunityServiceRepository.findOneBy({ id: item.opportunityServiceId })
+                    ? oppServiceMap.get(item.opportunityServiceId) || null
                     : null;
                 const detail = this.quotationDetailRepository.create({
                     quotation: savedQuotation,
@@ -214,17 +228,25 @@ export class QuotationService {
                     servicePackageId: item.servicePackageId,
                     isPackageService: item.isPackageService || false
                 });
-                await this.quotationDetailRepository.save(detail);
+                detailsToSave.push(detail);
+
                 if (opportunityService && service?.isBudget === true) {
                     opportunityService.budget = Number(detail.budget || 0);
-                    await this.opportunityServiceRepository.save(opportunityService);
+                    oppServicesToUpdate.push(opportunityService);
                 }
-                total += Number(detail.sellingPrice) * detail.quantity;
+                totalDecimal = totalDecimal.plus(calculateLinePricingDecimal(detail.sellingPrice, detail.quantity).sellingPrice);
+            }
+
+            if (detailsToSave.length > 0) {
+                await this.quotationDetailRepository.save(detailsToSave);
+            }
+            if (oppServicesToUpdate.length > 0) {
+                await this.opportunityServiceRepository.save(oppServicesToUpdate);
             }
         } else {
             // FALLBACK: Copy standalone services from Opportunity
             const standaloneServices = opportunity.services?.filter(s => !s.opportunityPackageId) || [];
-            for (const oppService of standaloneServices) {
+            const standaloneDetails = standaloneServices.map(oppService => {
                 const detail = this.quotationDetailRepository.create({
                     quotation: savedQuotation,
                     service: oppService.service,
@@ -239,12 +261,16 @@ export class QuotationService {
                     packageQuantity: 1,
                     isPackageService: false
                 });
-                await this.quotationDetailRepository.save(detail);
-                total += Number(detail.sellingPrice) * detail.quantity;
+                totalDecimal = totalDecimal.plus(calculateLinePricingDecimal(detail.sellingPrice, detail.quantity).sellingPrice);
+                return detail;
+            });
+            if (standaloneDetails.length > 0) {
+                await this.quotationDetailRepository.save(standaloneDetails);
             }
 
             // FALLBACK: Copy packages from Opportunity
             if (opportunity.packages) {
+                const packageDetails = [];
                 for (const oppPkg of opportunity.packages) {
                     if (oppPkg.services) {
                         for (const s of oppPkg.services) {
@@ -265,15 +291,24 @@ export class QuotationService {
                                 servicePackageId: oppPkg.servicePackageId,
                                 isPackageService: true
                             });
-                            await this.quotationDetailRepository.save(detail);
-                            total += Number(detail.sellingPrice) * detail.quantity;
+                            packageDetails.push(detail);
+                            totalDecimal = totalDecimal.plus(calculateLinePricingDecimal(detail.sellingPrice, detail.quantity).sellingPrice);
                         }
                     }
+                }
+                if (packageDetails.length > 0) {
+                    await this.quotationDetailRepository.save(packageDetails);
                 }
             }
         }
 
-        Object.assign(savedQuotation, calculatePricingTotals(total), { totalAmount: total });
+        const dec = calculatePricingTotalsDecimal(totalDecimal);
+        Object.assign(savedQuotation, {
+            totalAmount: dec.sellingPrice.toFixed(6) as any,
+            vatRate: dec.vatRate.toFixed(2) as any,
+            vatAmount: dec.vatAmount.toFixed(6) as any,
+            totalWithVat: dec.totalWithVat.toFixed(6) as any
+        });
 
         // Update Opportunity Status to QUOTATION_DRAFTING if it's new
         if (opportunity.status === OpportunityStatus.PENDING_OPP_APPROVAL) {
@@ -333,7 +368,7 @@ export class QuotationService {
 
         const savedQuotation = await this.quotationRepository.save(quotation);
 
-        let total = 0;
+        let totalDecimal = new Decimal(0);
         const serviceRepo = AppDataSource.getRepository(Services);
 
         for (const task of tasks) {
@@ -364,7 +399,7 @@ export class QuotationService {
                     costAtSale: task.cost
                 });
                 await this.quotationDetailRepository.save(detail);
-                total += Number(detail.sellingPrice);
+                totalDecimal = totalDecimal.plus(calculateLinePricingDecimal(detail.sellingPrice, 1).sellingPrice);
                 continue;
             }
 
@@ -376,10 +411,16 @@ export class QuotationService {
                 costAtSale: task.cost
             });
             await this.quotationDetailRepository.save(detail);
-            total += Number(detail.sellingPrice);
+            totalDecimal = totalDecimal.plus(calculateLinePricingDecimal(detail.sellingPrice, 1).sellingPrice);
         }
 
-        Object.assign(savedQuotation, calculatePricingTotals(total), { totalAmount: total });
+        const dec = calculatePricingTotalsDecimal(totalDecimal);
+        Object.assign(savedQuotation, {
+            totalAmount: dec.sellingPrice.toFixed(6) as any,
+            vatRate: dec.vatRate.toFixed(2) as any,
+            vatAmount: dec.vatAmount.toFixed(6) as any,
+            totalWithVat: dec.totalWithVat.toFixed(6) as any
+        });
         savedQuotation.tasks = tasks; // Link tasks to quotation
         const saved = await this.quotationRepository.save(savedQuotation);
 
@@ -408,7 +449,7 @@ export class QuotationService {
 
         // If details provided, update them
         if (data.details && Array.isArray(data.details)) {
-            let total = 0;
+            let totalDecimal = new Decimal(0);
 
             await validateQuotationBudgets(data.details, quotation.opportunity.id, quotation.details);
 
@@ -420,13 +461,25 @@ export class QuotationService {
 
             const serviceRepository = AppDataSource.getRepository(Services);
 
+            const serviceIds = [...new Set(data.details.map((d: any) => d.serviceId).filter(Boolean))];
+            const oppServiceIds = [...new Set(data.details.map((d: any) => d.opportunityServiceId).filter(Boolean))];
+
+            const services = serviceIds.length > 0 ? await serviceRepository.findBy({ id: In(serviceIds) }) : [];
+            const serviceMap = new Map(services.map(s => [s.id, s]));
+
+            const oppServices = oppServiceIds.length > 0 ? await this.opportunityServiceRepository.findBy({ id: In(oppServiceIds) }) : [];
+            const oppServiceMap = new Map(oppServices.map(os => [os.id, os]));
+
+            const detailsToSave = [];
+            const oppServicesToUpdate = [];
+
             for (const item of data.details) {
-                const service = await serviceRepository.findOneBy({ id: item.serviceId });
+                const service = serviceMap.get(item.serviceId);
                 if (!service) {
                     throw new Error(`Không tìm thấy dịch vụ với ID: ${item.serviceId}`);
                 }
                 const opportunityService = item.opportunityServiceId
-                    ? await this.opportunityServiceRepository.findOneBy({ id: item.opportunityServiceId })
+                    ? oppServiceMap.get(item.opportunityServiceId) || null
                     : null;
 
                 const detail = this.quotationDetailRepository.create({
@@ -447,17 +500,30 @@ export class QuotationService {
                     isPackageService: item.isPackageService || false
                 });
 
-                await this.quotationDetailRepository.save(detail);
+                detailsToSave.push(detail);
                 if (opportunityService && service?.isBudget === true) {
                     opportunityService.budget = Number(detail.budget || 0);
-                    await this.opportunityServiceRepository.save(opportunityService);
+                    oppServicesToUpdate.push(opportunityService);
                 }
-                total += Number(detail.sellingPrice) * detail.quantity;
+                totalDecimal = totalDecimal.plus(calculateLinePricingDecimal(detail.sellingPrice, detail.quantity).sellingPrice);
 
                 // Keep in memory for the final return
                 quotation.details.push(detail);
             }
-            Object.assign(quotation, calculatePricingTotals(total), { totalAmount: total });
+
+            if (detailsToSave.length > 0) {
+                await this.quotationDetailRepository.save(detailsToSave);
+            }
+            if (oppServicesToUpdate.length > 0) {
+                await this.opportunityServiceRepository.save(oppServicesToUpdate);
+            }
+            const dec = calculatePricingTotalsDecimal(totalDecimal);
+            Object.assign(quotation, {
+                totalAmount: dec.sellingPrice.toFixed(6) as any,
+                vatRate: dec.vatRate.toFixed(2) as any,
+                vatAmount: dec.vatAmount.toFixed(6) as any,
+                totalWithVat: dec.totalWithVat.toFixed(6) as any
+            });
         }
 
         const saved = await this.quotationRepository.save(quotation);

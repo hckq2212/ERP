@@ -201,7 +201,7 @@ export class AcceptanceService {
 
     const savedRequest = await this.acceptanceRepo.save(request);
 
-    // Update services status
+    // Update services status (Batched)
     for (const s of services) {
       s.status = ContractServiceStatus.AWAITING_ACCEPTANCE;
       if (s.results) {
@@ -211,7 +211,9 @@ export class AcceptanceService {
           }
         }
       }
-      await this.serviceRepo.save(s);
+    }
+    if (services.length > 0) {
+      await this.serviceRepo.save(services);
     }
 
     // Notify BOD (Mock: find first admin/bod user for now or common group)
@@ -280,7 +282,7 @@ export class AcceptanceService {
 
       for (const service of request.services) {
         this.assertSubtaskPlansApproved(service.tasks || []);
-        if (service.results)
+        if (service.results) {
           service.results = service.results.map((result) => {
             // Chỉ cập nhật result thuộc request hiện tại, giữ nguyên lịch sử cũ
             const belongsToCurrentRequest =
@@ -293,17 +295,24 @@ export class AcceptanceService {
               acceptanceRequestId: request.id,
             };
           });
+        }
         service.status = ContractServiceStatus.COMPLETED;
-        await manager.save(service);
+      }
+
+      if (request.services && request.services.length > 0) {
+        await manager.save(request.services);
+        const serviceIds = request.services.map((s) => s.id);
         await manager.update(
           Tasks,
-          { contractService: { id: service.id } },
+          { contractService: { id: In(serviceIds) } },
           {
             status: TaskStatus.ACCEPTED,
             actualEndDate: new Date(),
           },
         );
-        await this.triggerRewards(service, manager);
+        for (const service of request.services) {
+          await this.triggerRewards(service, manager);
+        }
       }
 
       if (request.projectId)
@@ -358,7 +367,7 @@ export class AcceptanceService {
       request.feedback = feedback;
       await manager.save(request);
       for (const service of request.services) {
-        if (service.results)
+        if (service.results) {
           service.results = service.results.map((result) => {
             // Chỉ cập nhật result thuộc request hiện tại, giữ nguyên lịch sử cũ
             const belongsToCurrentRequest =
@@ -372,12 +381,17 @@ export class AcceptanceService {
               acceptanceRequestId: request.id,
             };
           });
+        }
         service.status = ContractServiceStatus.ACCEPTANCE_REJECTED;
         service.feedback = feedback;
-        await manager.save(service);
+      }
+
+      if (request.services && request.services.length > 0) {
+        await manager.save(request.services);
+        const serviceIds = request.services.map((s) => s.id);
         await manager.update(
           Tasks,
-          { contractService: { id: service.id } },
+          { contractService: { id: In(serviceIds) } },
           { status: TaskStatus.DOING },
         );
       }

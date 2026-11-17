@@ -1,3 +1,4 @@
+import { In } from "typeorm";
 import { AppDataSource } from "../../../data-source";
 import { AiElements } from "../entities/AiElement.entity";
 import { AiElementImages } from "../entities/AiElementImage.entity";
@@ -228,13 +229,18 @@ export class AiElementService {
     ): Promise<Assets[]> {
         const result: Assets[] = [];
 
-        for (const id of assetIds ?? []) {
-            const asset = await this.assetRepository.findOne({ where: { id } });
-            if (!asset) throw new Error(`Không tìm thấy ảnh tham chiếu đã chọn (id=${id})`);
-            if (String(asset.userId) !== String(userId)) {
-                throw new Error("Không có quyền dùng ảnh này");
+        const ids = assetIds ?? [];
+        if (ids.length > 0) {
+            const assets = await this.assetRepository.findBy({ id: In(ids) });
+            const assetMap = new Map(assets.map(a => [a.id, a]));
+            for (const id of ids) {
+                const asset = assetMap.get(id);
+                if (!asset) throw new Error(`Không tìm thấy ảnh tham chiếu đã chọn (id=${id})`);
+                if (String(asset.userId) !== String(userId)) {
+                    throw new Error("Không có quyền dùng ảnh này");
+                }
+                result.push(asset);
             }
-            result.push(asset);
         }
 
         for (const file of files ?? []) {

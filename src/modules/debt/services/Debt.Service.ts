@@ -62,10 +62,19 @@ export class DebtService {
             });
 
             const contract = milestones[0]?.contract;
-            if (!isContractClosed(contract)) {
-                for (const m of milestones) {
-                    if (m.debt) continue;
-                    await this.createFromMilestone(m.id);
+            if (contract && !isContractClosed(contract)) {
+                const unlinkedMilestones = milestones.filter(m => !m.debt);
+                if (unlinkedMilestones.length > 0) {
+                    const newDebts = unlinkedMilestones.map(m => this.debtRepository.create({
+                        name: `Phải thu: ${m.name}`,
+                        contract: m.contract,
+                        milestone: m,
+                        amount: m.amount,
+                        dueDate: m.dueDate || new Date(),
+                        status: DebtStatus.UNPAID,
+                        ...SecurityService.getTenantWhere()
+                    } as any) as unknown as Debts);
+                    await this.debtRepository.save(newDebts);
                 }
             }
         } catch (syncErr) {

@@ -36,14 +36,14 @@ export class ServicePackageService {
         const savedPkg = await this.packageRepository.save(pkg);
 
         if (items && Array.isArray(items)) {
-            for (const item of items) {
-                const serviceItem = this.itemRepository.create({
-                    package: savedPkg,
-                    serviceId: item.serviceId,
-                    defaultQuantity: item.defaultQuantity || 1,
-                    ...SecurityService.getTenantWhere()
-                });
-                await this.itemRepository.save(serviceItem);
+            const serviceItems = items.map(item => this.itemRepository.create({
+                package: savedPkg,
+                serviceId: item.serviceId,
+                defaultQuantity: item.defaultQuantity || 1,
+                ...SecurityService.getTenantWhere()
+            } as any) as unknown as ServicePackageItems);
+            if (serviceItems.length > 0) {
+                await this.itemRepository.save(serviceItems);
             }
         }
         
@@ -68,14 +68,14 @@ export class ServicePackageService {
         if (items && Array.isArray(items)) {
             // Re-sync items
             await this.itemRepository.delete(SecurityService.withTenant({ package: { id } }));
-            for (const item of items) {
-                const serviceItem = this.itemRepository.create({
-                    package: pkg,
-                    serviceId: item.serviceId,
-                    defaultQuantity: item.defaultQuantity || 1,
-                    ...SecurityService.getTenantWhere()
-                });
-                await this.itemRepository.save(serviceItem);
+            const serviceItems = items.map(item => this.itemRepository.create({
+                package: pkg,
+                serviceId: item.serviceId,
+                defaultQuantity: item.defaultQuantity || 1,
+                ...SecurityService.getTenantWhere()
+            } as any) as unknown as ServicePackageItems);
+            if (serviceItems.length > 0) {
+                await this.itemRepository.save(serviceItems);
             }
         }
 

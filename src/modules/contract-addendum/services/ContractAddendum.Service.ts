@@ -14,7 +14,7 @@ import { MemberRole, memberHasRole } from "../../project/entities/TeamMember.ent
 import { DebtService } from "../../debt/services/Debt.Service";
 import { buildDefaultTaskNickname } from "../../../shared/helpers/TaskNickname.helper";
 import { NotificationService } from "../../notification/services/Notification.Service";
-import { EntityManager } from "typeorm";
+import { EntityManager, In } from "typeorm";
 import { UserRole } from "../../account/entities/Account.entity";
 import { calculatePricingTotals, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
 import { CONTRACT_ADDENDUM_EVENTS } from "../events/ContractAddendumEmitter";
@@ -179,61 +179,69 @@ export class ContractAddendumService {
                 relations: ["details", "details.service", "details.job"]
             }) as any;
 
-            if (quotation) {
-                for (const d of quotation.details) {
-                    const addendumService = this.contractServiceRepository.create({
+            if (quotation && Array.isArray(quotation.details)) {
+                const quotationServices = quotation.details.map((d: any) => {
+                    const price = roundUnitSellingPrice(d.sellingPrice);
+                    totalSellingPrice += price;
+                    totalCost += Number(d.costAtSale || 0);
+                    return this.contractServiceRepository.create({
                         contract: addendum.contract,
                         addendum: addendum,
                         service: d.service,
                         job: d.job,
                         serviceId: d.service?.id,
-                        sellingPrice: roundUnitSellingPrice(d.sellingPrice),
+                        sellingPrice: price,
                         budget: Number(d.budget || 0),
                         name: d.name || d.service?.name,
                         code: d.service?.code,
                         status: ContractServiceStatus.ACTIVE
                     });
-                    await this.contractServiceRepository.save(addendumService);
-                    totalSellingPrice += roundUnitSellingPrice(d.sellingPrice);
-                    totalCost += Number(d.costAtSale || 0);
+                });
+                if (quotationServices.length > 0) {
+                    await this.contractServiceRepository.save(quotationServices);
                 }
             }
         }
 
-        // 2. Process Manual Services (If provided directly)
-        if (data.services) {
-            for (const s of data.services) {
-                const serviceDef = await this.serviceRepository.findOneBy({ id: s.serviceId });
-                const addendumService = this.contractServiceRepository.create({
+        // 2. Process Manual Services (If provided directly) - Batched
+        if (data.services && data.services.length > 0) {
+            const serviceIds = [...new Set(data.services.map((s: any) => s.serviceId).filter(Boolean))];
+            const serviceDefs = serviceIds.length > 0
+                ? await this.serviceRepository.findBy({ id: In(serviceIds) })
+                : [];
+            const serviceMap = new Map(serviceDefs.map(s => [s.id, s]));
+
+            const manualServices = data.services.map((s: any) => {
+                const serviceDef = serviceMap.get(s.serviceId);
+                const price = roundUnitSellingPrice(s.sellingPrice);
+                totalSellingPrice += price;
+                return this.contractServiceRepository.create({
                     contract: addendum.contract,
                     addendum: addendum,
                     service: serviceDef,
                     serviceId: serviceDef?.id,
-                    sellingPrice: roundUnitSellingPrice(s.sellingPrice),
+                    sellingPrice: price,
                     budget: Number(s.budget || 0),
                     name: s.serviceName || serviceDef?.name,
                     code: serviceDef?.code,
                     status: ContractServiceStatus.ACTIVE
                 });
-                await this.contractServiceRepository.save(addendumService);
-                totalSellingPrice += roundUnitSellingPrice(s.sellingPrice);
-            }
+            });
+            await this.contractServiceRepository.save(manualServices);
         }
 
-        // 3. Process Milestones
-        if (data.milestones) {
-            for (const m of data.milestones) {
-                const milestone = this.milestoneRepository.create({
-                    contract: addendum.contract,
-                    addendum: addendum,
-                    name: m.name,
-                    percentage: m.percentage,
-                    amount: m.amount,
-                    status: MilestoneStatus.PENDING,
-                    dueDate: m.dueDate
-                });
-                await this.milestoneRepository.save(milestone);
-            }
+        // 3. Process Milestones - Batched
+        if (data.milestones && data.milestones.length > 0) {
+            const milestones = data.milestones.map((m: any) => this.milestoneRepository.create({
+                contract: addendum.contract,
+                addendum: addendum,
+                name: m.name,
+                percentage: m.percentage,
+                amount: m.amount,
+                status: MilestoneStatus.PENDING,
+                dueDate: m.dueDate
+            }));
+            await this.milestoneRepository.save(milestones);
         }
 
         Object.assign(addendum, calculatePricingTotals(totalSellingPrice));
@@ -284,12 +292,16 @@ export class ContractAddendumService {
         });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
 
-        // 1. Cancel services
-        for (const sId of data.cancelServiceIds) {
-            const contractService = await this.contractServiceRepository.findOneBy({ id: sId });
-            if (contractService) {
-                contractService.status = ContractServiceStatus.CANCELLED;
-                await this.contractServiceRepository.save(contractService);
+        // 1. Cancel services (Batched)
+        if (data.cancelServiceIds && data.cancelServiceIds.length > 0) {
+            const contractServices = await this.contractServiceRepository.findBy({
+                id: In(data.cancelServiceIds)
+            });
+            for (const cs of contractServices) {
+                cs.status = ContractServiceStatus.CANCELLED;
+            }
+            if (contractServices.length > 0) {
+                await this.contractServiceRepository.save(contractServices);
             }
         }
 
@@ -458,15 +470,20 @@ export class ContractAddendumService {
             const selectedItems = Array.isArray(addendum.selectedItems) ? addendum.selectedItems : [];
             if (selectedItems.length === 0) throw new Error("Phụ lục chưa có dịch vụ được chọn");
 
+            // Batch fetch all services and their relations upfront to avoid N+1 queries
+            const serviceIds = [...new Set(selectedItems.map((item: any) => item.serviceId).filter(Boolean))];
+            const services = serviceIds.length > 0 ? await serviceRepository.find({
+                where: { id: In(serviceIds) },
+                relations: ["serviceJobs", "serviceJobs.job"]
+            }) : [];
+            const serviceMap = new Map(services.map(s => [s.id, s]));
+
             let createdTasks = 0;
             for (const item of selectedItems) {
                 const serviceQuantity = Number(item.quantity || 1);
                 if (!Number.isInteger(serviceQuantity) || serviceQuantity <= 0) throw new Error("Số lượng dịch vụ không hợp lệ");
 
-                const service = await serviceRepository.findOne({
-                    where: { id: item.serviceId },
-                    relations: ["serviceJobs", "serviceJobs.job"]
-                });
+                const service = serviceMap.get(item.serviceId);
                 if (!service) throw new Error(`Không tìm thấy dịch vụ ${item.serviceName || item.serviceId}`);
 
                 for (let serviceIndex = 0; serviceIndex < serviceQuantity; serviceIndex++) {

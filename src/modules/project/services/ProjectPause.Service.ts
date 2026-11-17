@@ -672,24 +672,30 @@ export class ProjectPauseService extends ProjectBaseService {
         }
         if (toCancel.length > 0) await manager.save(toCancel);
 
-        // ── 2. Cập nhật ContractService theo task ─────────────────────────
+        // ── 2. Cập nhật ContractService theo task (Batched) ───────────────
         const serviceIds = [...new Set(tasks.map(task => task.contractService?.id).filter(Boolean))] as string[];
         if (serviceIds.length > 0) {
             const serviceRepo = manager.getRepository(ContractServices);
-            for (const serviceId of serviceIds) {
-                const serviceTasks = tasks.filter(task => task.contractService?.id === serviceId);
+            const services = await serviceRepo.findBy({ id: In(serviceIds) });
+            const servicesToSave: ContractServices[] = [];
+
+            for (const service of services) {
+                const serviceTasks = tasks.filter(task => task.contractService?.id === service.id);
                 const anyAccepted = serviceTasks.some(task => task.status === TaskStatus.ACCEPTED);
                 const allCancelled = serviceTasks.length > 0
                     && serviceTasks.every(task => task.status === TaskStatus.CANCELLED);
 
-                const service = await serviceRepo.findOneBy({ id: serviceId });
-                if (!service) continue;
                 if (anyAccepted) {
                     service.status = ContractServiceStatus.COMPLETED;
+                    servicesToSave.push(service);
                 } else if (allCancelled) {
                     service.status = ContractServiceStatus.CANCELLED;
+                    servicesToSave.push(service);
                 }
-                await serviceRepo.save(service);
+            }
+
+            if (servicesToSave.length > 0) {
+                await serviceRepo.save(servicesToSave);
             }
         }
 

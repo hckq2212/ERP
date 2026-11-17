@@ -12,7 +12,10 @@ scripts/
 test/
 n8n_data/
 docs/
+!docs/migrations.md
 migrations/
+!src/migrations/
 .agents/
 skills-lock.json
 *.md
+!docs/*.md

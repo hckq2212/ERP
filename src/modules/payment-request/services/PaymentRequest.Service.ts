@@ -1929,7 +1929,9 @@ export class PaymentRequestService {
                 byId: actorId,
                 note: "Tự động hủy do công việc bị đổi phân công"
             });
-            await repo.save(request);
+        }
+        if (pending.length > 0) {
+            await repo.save(pending);
         }
 
         const approvedUnpaid = await repo.find({
