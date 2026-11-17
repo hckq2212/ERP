@@ -700,7 +700,10 @@ export class RedisService {
     // HỖ TRỢ ATOMIC CHO IDEMPOTENCY KEY
     // -------------------------------------------------------------------------
     static async setIfNotExists(key: string, value: string, ttlSeconds: number): Promise<boolean> {
-        if (!isRedisReady()) return true; // fail-open nếu Redis chưa sẵn sàng
+        if (!isRedisReady()) {
+            console.warn(`[Redis Warn] Redis chưa sẵn sàng (setIfNotExists: ${key}), thực hiện fail-open.`);
+            return true; // fail-open nếu Redis chưa sẵn sàng
+        }
         try {
             const result = await this.withTimeout(redisClient.set(key, value, { NX: true, EX: ttlSeconds }));
             return result === 'OK';
@@ -711,7 +714,10 @@ export class RedisService {
     }
 
     static async get(key: string): Promise<string | null> {
-        if (!isRedisReady()) return null;
+        if (!isRedisReady()) {
+            console.warn(`[Redis Warn] Redis chưa sẵn sàng (get: ${key}), thực hiện fail-open.`);
+            return null;
+        }
         try {
             return (await this.withTimeout(redisClient.get(key))) as string | null;
         } catch (err: any) {
@@ -721,7 +727,10 @@ export class RedisService {
     }
 
     static async set(key: string, value: string, ttlSeconds: number): Promise<void> {
-        if (!isRedisReady()) return;
+        if (!isRedisReady()) {
+            console.warn(`[Redis Warn] Redis chưa sẵn sàng (set: ${key}), bỏ qua ghi.`);
+            return;
+        }
         try {
             await this.withTimeout(redisClient.set(key, value, { EX: ttlSeconds }));
         } catch (err: any) {
@@ -730,7 +739,10 @@ export class RedisService {
     }
 
     static async del(key: string): Promise<void> {
-        if (!isRedisReady()) return;
+        if (!isRedisReady()) {
+            console.warn(`[Redis Warn] Redis chưa sẵn sàng (del: ${key}), bỏ qua xóa.`);
+            return;
+        }
         try {
             await this.withTimeout(redisClient.del(key));
         } catch (err: any) {
@@ -762,7 +774,10 @@ export class RedisService {
     `;
 
     static async setIfExecutionIdMatches(key: string, value: string, executionId: string, ttlSeconds: number): Promise<boolean> {
-        if (!isRedisReady()) return true;
+        if (!isRedisReady()) {
+            console.warn(`[Redis Warn] Redis chưa sẵn sàng (setIfExecutionIdMatches: ${key}), thực hiện fail-open.`);
+            return true;
+        }
         try {
             const res = await this.withTimeout(redisClient.eval(this.CAS_SET_LUA, {
                 keys: [key],
@@ -776,7 +791,10 @@ export class RedisService {
     }
 
     static async delIfExecutionIdMatches(key: string, executionId: string): Promise<boolean> {
-        if (!isRedisReady()) return true;
+        if (!isRedisReady()) {
+            console.warn(`[Redis Warn] Redis chưa sẵn sàng (delIfExecutionIdMatches: ${key}), thực hiện fail-open.`);
+            return true;
+        }
         try {
             const res = await this.withTimeout(redisClient.eval(this.CAS_DEL_LUA, {
                 keys: [key],
@@ -801,7 +819,10 @@ export class RedisService {
     `;
 
     static async refreshPendingTtl(key: string, executionId: string, ttlSeconds: number): Promise<boolean> {
-        if (!isRedisReady()) return true;
+        if (!isRedisReady()) {
+            console.warn(`[Redis Warn] Redis chưa sẵn sàng (refreshPendingTtl: ${key}), thực hiện fail-open.`);
+            return true;
+        }
         try {
             const res = await this.withTimeout(redisClient.eval(this.REFRESH_TTL_LUA, {
                 keys: [key],
