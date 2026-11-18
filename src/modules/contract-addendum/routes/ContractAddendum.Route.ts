@@ -3,8 +3,22 @@ import { ContractAddendumController } from "../controllers/ContractAddendum.Cont
 import multer from "multer";
 import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
 
+const DANGEROUS_EXTENSIONS = /\.(exe|bat|cmd|sh|php|js|mjs|cjs|vbs|msi|bin|scr|jar|apk|com|pif|reg|dll|sys|html|htm)$/i;
+
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 25 * 1024 * 1024, // 25MB cho tệp phụ lục hợp đồng
+        files: 1
+    },
+    fileFilter: (_req, file, cb) => {
+        if (DANGEROUS_EXTENSIONS.test(file.originalname || "")) {
+            return cb(new Error("Định dạng tệp thực thi hoặc mã độc bị cấm tải lên"));
+        }
+        cb(null, true);
+    }
+});
 
 const router = Router();
 const controller = new ContractAddendumController();

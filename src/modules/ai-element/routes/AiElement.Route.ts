@@ -3,7 +3,22 @@ import multer from "multer";
 import { AiElementController } from "../controllers/AiElement.Controller";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+
+const DANGEROUS_EXTENSIONS = /\.(exe|bat|cmd|sh|php|js|mjs|cjs|vbs|msi|bin|scr|jar|apk|com|pif|reg|dll|sys|html|htm)$/i;
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB cho tệp AI element
+        files: 5
+    },
+    fileFilter: (_req, file, cb) => {
+        if (DANGEROUS_EXTENSIONS.test(file.originalname || "")) {
+            return cb(new Error("Định dạng tệp thực thi hoặc mã độc bị cấm tải lên"));
+        }
+        cb(null, true);
+    }
+});
 
 const aiElementController = new AiElementController();
 

@@ -157,6 +157,17 @@ app.head("/health", (req, res) => {
     res.status(200).end();
 });
 
+// Global Error Handler: Bắt toàn bộ lỗi chưa xử lý và che giấu stack trace/lỗi database trên Production
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error("[Unhandled Error]:", err);
+    const statusCode = typeof err.statusCode === "number" ? err.statusCode : (typeof err.status === "number" ? err.status : 500);
+    const isProduction = process.env.NODE_ENV === "production";
+    const message = (isProduction && statusCode === 500)
+        ? "Đã có lỗi hệ thống xảy ra. Vui lòng thử lại sau."
+        : (err.message || "Lỗi không xác định");
+    res.status(statusCode).json({ message });
+});
+
 
 
 AppDataSource.initialize().then(async () => {

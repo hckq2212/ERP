@@ -1,7 +1,10 @@
 import { AppDataSource } from "../../../data-source";
 import { Accounts } from "../entities/Account.entity";
 import { Users } from "../../user/entities/User.entity";
+import { RefreshSessions } from "../../auth/entities/RefreshSession.entity";
 import { encrypt } from "../../../shared/helpers/helpers";
+import { validatePasswordStrength } from "../../../shared/helpers/PasswordPolicy.helper";
+import { IsNull } from "typeorm";
 
 export class AccountService {
     private accountRepository = AppDataSource.getRepository(Accounts);
@@ -68,7 +71,15 @@ export class AccountService {
         }
 
         account.isActive = false;
-        return await this.accountRepository.save(account);
+        await this.accountRepository.save(account);
+
+        // Thu hồi toàn bộ Refresh Sessions đang hoạt động của tài khoản bị vô hiệu hóa
+        await AppDataSource.getRepository(RefreshSessions).update(
+            { accountId: id, revokedAt: IsNull() },
+            { revokedAt: new Date() }
+        );
+
+        return account;
     }
 
     async resetPassword(id: string, newPassword: string) {
@@ -78,9 +89,17 @@ export class AccountService {
             throw new Error("Không tìm thấy tài khoản");
         }
 
+        validatePasswordStrength(newPassword);
         const hashedPassword = await encrypt.encryptPassword(newPassword);
         account.password = hashedPassword;
+        await this.accountRepository.save(account);
+
+        // Thu hồi toàn bộ Refresh Sessions cũ để kẻ tấn công không thể tiếp tục dùng token
+        await AppDataSource.getRepository(RefreshSessions).update(
+            { accountId: id, revokedAt: IsNull() },
+            { revokedAt: new Date() }
+        );
         
-        return await this.accountRepository.save(account);
+        return account;
     }
 }

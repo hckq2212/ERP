@@ -1,7 +1,10 @@
 import { AppDataSource } from "../../../data-source";
 import { Accounts } from "../../account/entities/Account.entity";
 import { Users } from "../../user/entities/User.entity";
+import { RefreshSessions } from "../../auth/entities/RefreshSession.entity";
 import { encrypt } from "../../../shared/helpers/helpers";
+import { validatePasswordStrength } from "../../../shared/helpers/PasswordPolicy.helper";
+import { IsNull } from "typeorm";
 
 export class ProfileService {
     private accountRepository = AppDataSource.getRepository(Accounts);
@@ -43,11 +46,26 @@ export class ProfileService {
 
         if (!account) throw new Error("Không tìm thấy tài khoản");
 
-        const { fullName, phoneNumber, birthday, email, password, avatarUrl, portfolioUrl, hobbies } = data;
+        const { fullName, phoneNumber, birthday, email, password, oldPassword, currentPassword, avatarUrl, portfolioUrl, hobbies } = data;
 
-        // 1. Update Password if provided
+        // 1. Update Password if provided (Kiểm tra xác thực mật khẩu cũ + chính sách độ phức tạp + thu hồi phiên cũ)
         if (password) {
+            const previousPassword = oldPassword || currentPassword;
+            if (!previousPassword) {
+                throw new Error("Vui lòng nhập mật khẩu hiện tại để xác nhận đổi mật khẩu");
+            }
+            const isOldValid = encrypt.comparePassword(previousPassword, account.password);
+            if (!isOldValid) {
+                throw new Error("Mật khẩu hiện tại không chính xác");
+            }
+            validatePasswordStrength(password);
             account.password = await encrypt.encryptPassword(password);
+
+            // Thu hồi toàn bộ Refresh Sessions cũ để bắt buộc đăng nhập lại
+            await AppDataSource.getRepository(RefreshSessions).update(
+                { accountId: account.id, revokedAt: IsNull() },
+                { revokedAt: new Date() }
+            );
         }
 
         // 2. Tuân thủ Rule 29: Khóa quyền tự đổi email qua Profile, chỉ ADMIN mới có quyền đổi email

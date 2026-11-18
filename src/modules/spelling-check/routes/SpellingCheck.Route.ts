@@ -1,13 +1,23 @@
 import { Router } from "express";
 import multer from "multer";
+import path from "path";
 import { SpellingCheckController } from "../controllers/SpellingCheck.Controller";
 
 const router = Router();
 const controller = new SpellingCheckController();
 
+const ALLOWED_EXTENSIONS = new Set([".txt", ".csv", ".xlsx", ".xlsm"]);
+
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 500 * 1024 * 1024, files: 1 },
+    limits: { fileSize: 30 * 1024 * 1024, files: 1 }, // Giảm từ 500MB xuống 30MB chống DoS tràn RAM V8
+    fileFilter: (_req, file, cb) => {
+        const ext = path.extname(file.originalname || "").toLowerCase();
+        if (!ALLOWED_EXTENSIONS.has(ext)) {
+            return cb(new Error(`Định dạng tệp ${ext} không được hỗ trợ kiểm tra chính tả`));
+        }
+        cb(null, true);
+    }
 });
 
 router.post("/sheets", upload.single("file"), controller.listSheets);

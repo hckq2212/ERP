@@ -1,7 +1,11 @@
 import axios from "axios";
 import { assertAiServiceUrl, AI_SERVICE_MAX_FETCH_BYTES as MAX_FETCH_BYTES, AI_SERVICE_REQUEST_TIMEOUT_MS as REQUEST_TIMEOUT_MS } from "../../../shared/config/aiService";
+import { validateSafeUrl } from "../../../shared/helpers/SsrfProtection.helper";
 
 export async function fetchRemoteFile(fileUrl: string): Promise<Buffer> {
+    // Chặn đứng tấn công SSRF (chặn IP private, loopback, cloud metadata 169.254.169.254)
+    await validateSafeUrl(fileUrl);
+
     let fileRes;
     try {
         fileRes = await axios.get(fileUrl, {
@@ -14,6 +18,9 @@ export async function fetchRemoteFile(fileUrl: string): Promise<Buffer> {
             },
         });
     } catch (e: any) {
+        if (e.message?.includes("SSRF") || e.message?.includes("nội bộ") || e.message?.includes("an toàn")) {
+            throw Object.assign(new Error(e.message), { statusCode: 400 });
+        }
         throw Object.assign(new Error("Không thể tải file từ link, vui lòng kiểm tra lại đường dẫn hoặc quyền chia sẻ"), { statusCode: 400 });
     }
 

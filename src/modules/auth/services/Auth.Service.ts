@@ -2,6 +2,7 @@ import { AppDataSource } from "../../../data-source";
 import { Accounts } from "../../account/entities/Account.entity";
 import { Users } from "../../user/entities/User.entity";
 import { encrypt } from "../../../shared/helpers/helpers";
+import { validatePasswordStrength } from "../../../shared/helpers/PasswordPolicy.helper";
 import { RefreshSessions } from "../entities/RefreshSession.entity";
 import { ulid } from "ulid";
 
@@ -29,6 +30,7 @@ export class AuthService {
             throw new Error("Tên đăng nhập hoặc email đã tồn tại");
         }
 
+        validatePasswordStrength(password);
         const hashedPassword = await encrypt.encryptPassword(password);
 
         const account = new Accounts();

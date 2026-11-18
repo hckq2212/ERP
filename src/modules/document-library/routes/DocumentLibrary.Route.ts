@@ -7,7 +7,19 @@ import { UpdateDocumentDTO } from "../dto/DocumentLibrary.dto";
 
 const router = Router();
 const documentLibraryController = new DocumentLibraryController();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+const DANGEROUS_EXTENSIONS = /\.(exe|bat|cmd|sh|php|js|mjs|cjs|vbs|msi|bin|scr|jar|apk|com|pif|reg|dll|sys|html|htm|svg)$/i;
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+    fileFilter: (_req, file, cb) => {
+        if (DANGEROUS_EXTENSIONS.test(file.originalname || "")) {
+            return cb(new Error("Định dạng tệp không an toàn, bị cấm lưu trữ trong thư viện tài liệu"));
+        }
+        cb(null, true);
+    }
+});
 
 const MANAGE_ROLES = ["BOD", "ADMIN", "ADMIN_SALE"];
 
