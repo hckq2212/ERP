@@ -80,10 +80,11 @@ export class OpportunityController {
     delete = async (req: Request, res: Response) => {
         try {
             const id = req.params.id as string;
-            const result = await this.opportunityService.delete(id);
+            const userInfo = (req as any).user;
+            const result = await this.opportunityService.delete(id, userInfo);
             res.status(200).json(result);
         } catch (error: any) {
-            res.status(400).json({ message: error.message });
+            res.status(error.statusCode || 400).json({ message: error.message });
         }
     }
 

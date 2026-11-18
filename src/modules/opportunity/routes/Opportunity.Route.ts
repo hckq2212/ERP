@@ -16,6 +16,6 @@ router.patch("/:id/resubmit", opportunityController.resubmit);
 router.patch("/:id/addcustomer", roleMiddleware(["BOD", "ADMIN", "BD"]), opportunityController.addCustomer);
 router.patch("/:id/approve", roleMiddleware(["BOD", "ADMIN"]), opportunityController.approve);
 router.patch("/:id/reject", roleMiddleware(["BOD", "ADMIN"]), opportunityController.reject);
-router.delete("/:id", opportunityController.delete);
+router.delete("/:id", roleMiddleware(["BOD", "ADMIN", "BD"]), opportunityController.delete);
 
 export default router;

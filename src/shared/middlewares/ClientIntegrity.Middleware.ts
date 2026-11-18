@@ -13,8 +13,7 @@ const PARTNER_PREFIX = process.env.PARTNER_PATH_PREFIX || '/api/partner';
 const DEFAULT_PUBLIC_PATHS = [
     '/api/health',
     '/api/auth/login',
-    '/api/auth/refresh',
-    '/api/auth/register'
+    '/api/auth/refresh'
 ];
 
 const envPublicPaths = (process.env.CLIENT_INTEGRITY_PUBLIC_PATHS || '')

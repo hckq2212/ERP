@@ -617,8 +617,29 @@ export class OpportunityService {
         return freshData;
     }
 
-    async delete(id: string) {
-        const opportunity = await this.getOne(id);
+    async delete(id: string, userInfo?: any) {
+        const opportunity = await this.opportunityRepository.findOne({
+            where: { id },
+            relations: ["createdBy", "contracts"]
+        });
+        if (!opportunity) throw new Error("Không tìm thấy cơ hội kinh doanh");
+
+        if (userInfo) {
+            const isManager = ["BOD", "ADMIN"].includes(userInfo.role);
+            const isCreator = opportunity.createdBy?.id === (userInfo.userId || userInfo.id);
+            if (!isManager && !isCreator) {
+                const err: any = new Error("Bạn không có quyền xóa cơ hội kinh doanh này");
+                err.statusCode = 403;
+                throw err;
+            }
+        }
+
+        if (opportunity.contracts && opportunity.contracts.length > 0) {
+            const err: any = new Error("Không thể xóa cơ hội kinh doanh đã có hợp đồng liên kết");
+            err.statusCode = 400;
+            throw err;
+        }
+
         await this.opportunityRepository.remove(opportunity);
 
         // Invalidate list and detail caches

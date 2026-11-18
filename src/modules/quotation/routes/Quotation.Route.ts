@@ -12,7 +12,7 @@ router.post("/", quotationController.create);
 router.post("/addendum", quotationController.createAddendum);
 router.put("/:id", quotationController.update);
 router.post("/:id/approve", roleMiddleware(["BOD", "ADMIN"]), quotationController.approve); // Approve endpoint
-router.post("/:id/reject", quotationController.reject); // Reject endpoint
-router.delete("/:id", quotationController.delete);
+router.post("/:id/reject", roleMiddleware(["BOD", "ADMIN"]), quotationController.reject); // Reject endpoint
+router.delete("/:id", roleMiddleware(["BOD", "ADMIN", "BD", "ADMIN_SALE"]), quotationController.delete);
 
 export default router;

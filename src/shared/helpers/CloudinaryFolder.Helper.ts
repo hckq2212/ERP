@@ -15,7 +15,15 @@ export const getDefaultCloudinaryFolder = () => {
 
 export const getCloudinaryFolder = (folder?: string) => {
     const companyFolder = getDefaultCloudinaryFolder();
-    const cleanFolder = (folder || "ERP/others").replace(/^\/+|\/+$/g, "");
+
+    // Tách thành các segment và loại bỏ triệt để các ký tự path traversal như '..' hoặc '.'
+    const rawSegments = (folder || "ERP/others")
+        .split("/")
+        .map(s => s.trim())
+        .filter(s => s && s !== "." && s !== "..");
+
+    const sanitizedSegments = rawSegments.map(s => sanitizeCloudinarySegment(s));
+    const cleanFolder = sanitizedSegments.join("/");
 
     if (!cleanFolder) {
         return `${companyFolder}/ERP/others`;
@@ -23,11 +31,6 @@ export const getCloudinaryFolder = (folder?: string) => {
 
     if (cleanFolder === companyFolder || cleanFolder.startsWith(`${companyFolder}/`)) {
         return cleanFolder;
-    }
-
-    const [, ...pathWithoutLegacyCompany] = cleanFolder.split("/");
-    if (cleanFolder === DEFAULT_COMPANY_FOLDER || cleanFolder.startsWith(`${DEFAULT_COMPANY_FOLDER}/`)) {
-        return [companyFolder, ...pathWithoutLegacyCompany].join("/");
     }
 
     return `${companyFolder}/${cleanFolder}`;

@@ -987,8 +987,18 @@ export class ContractService {
         return result;
     }
 
-    async delete(id: string) {
-        const contract = await this.getOne(id);
+    async delete(id: string, userInfo?: any) {
+        const contract = await this.getOne(id, userInfo);
+        if (userInfo && !["BOD", "ADMIN"].includes(userInfo.role)) {
+            const err: any = new Error("Bạn không có quyền xóa hợp đồng này");
+            err.statusCode = 403;
+            throw err;
+        }
+        if (contract.status === ContractStatus.SIGNED || contract.status === ContractStatus.COMPLETED) {
+            const err: any = new Error("Không thể xóa hợp đồng đã ký hoặc đã hoàn thành");
+            err.statusCode = 400;
+            throw err;
+        }
         await this.contractRepository.remove(contract);
 
         // Invalidate caches

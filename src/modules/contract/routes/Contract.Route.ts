@@ -11,7 +11,7 @@ router.get("/", contractController.getAll);
 router.patch("/services/:id/nickname", validationMiddleware(UpdateContractServiceNicknameDTO), contractController.updateServiceNickname);
 router.get("/:id", contractController.getOne);
 router.post("/", validationMiddleware(CreateContractDTO), contractController.create);
-router.delete("/:id", contractController.delete);
+router.delete("/:id", roleMiddleware(["ADMIN", "BOD"]), contractController.delete);
 
 // Proposal Workflow
 router.post("/:id/proposal", contractController.uploadProposal);

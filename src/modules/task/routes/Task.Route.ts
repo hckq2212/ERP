@@ -6,6 +6,8 @@ import multer from "multer";
 const router = Router();
 const taskController = new TaskController();
 
+const DANGEROUS_EXTENSIONS = /\.(exe|bat|cmd|sh|php|js|mjs|cjs|vbs|msi|bin|scr|jar|apk|com|pif|reg|dll|sys|html|htm)$/i;
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, require("os").tmpdir()),
     filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${file.originalname}`)
@@ -13,8 +15,14 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 500 * 1024 * 1024,
+        fileSize: 50 * 1024 * 1024, // 50MB (thay vì 500MB chống cạn kiệt đĩa máy chủ)
         files: 1
+    },
+    fileFilter: (_req, file, cb) => {
+        if (DANGEROUS_EXTENSIONS.test(file.originalname)) {
+            return cb(new Error("Định dạng tệp thực thi hoặc mã độc bị cấm tải lên"));
+        }
+        cb(null, true);
     }
 });
 

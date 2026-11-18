@@ -81,10 +81,11 @@ export class ContractController {
 
     delete = async (req: Request, res: Response) => {
         try {
-            const result = await this.contractService.delete(req.params.id as string);
+            const userInfo = (req as any).user;
+            const result = await this.contractService.delete(req.params.id as string, userInfo);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 

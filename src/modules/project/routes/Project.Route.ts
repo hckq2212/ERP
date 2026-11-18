@@ -116,7 +116,14 @@ const extractUpload = multer({
         destination: (_req, _file, cb) => cb(null, os.tmpdir()),
         filename: (_req, _file, cb) => cb(null, `${EXTRACT_TMP_PREFIX}${Date.now()}-${Math.round(Math.random() * 1e9)}`)
     }),
-    limits: { fileSize: 500 * 1024 * 1024, files: 1 }
+    limits: { fileSize: 30 * 1024 * 1024, files: 1 },
+    fileFilter: (_req, file, cb) => {
+        const ext = path.extname(file.originalname || "").toLowerCase();
+        if (![".pdf", ".docx"].includes(ext)) {
+            return cb(new Error("Chỉ chấp nhận file định dạng .pdf hoặc .docx để trích xuất văn bản"));
+        }
+        cb(null, true);
+    }
 });
 
 // Lưới an toàn: controller đã xoá file trong `finally`, nhưng nếu process bị crash/restart

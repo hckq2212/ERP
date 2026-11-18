@@ -663,8 +663,14 @@ export class QuotationService {
     }
 
     // 4. Reject Quotation
-    async reject(id: string, description?: string) {
+    async reject(id: string, description?: string, userInfo?: any) {
         const quotation = await this.getOne(id);
+
+        if (userInfo && !["BOD", "ADMIN"].includes(userInfo.role)) {
+            const err: any = new Error("Chỉ BOD hoặc ADMIN mới có quyền từ chối báo giá");
+            err.statusCode = 403;
+            throw err;
+        }
 
         if (quotation.status === QuotationStatus.APPROVED) {
             throw new Error("Không thể từ chối báo giá đã được duyệt");
@@ -681,11 +687,28 @@ export class QuotationService {
         return { message: "Đã từ chối báo giá", quotation: saved };
     }
 
-    async delete(id: string) {
-        const quotation = await this.getOne(id);
+    async delete(id: string, userInfo?: any) {
+        const quotation = await this.quotationRepository.findOne({
+            where: { id },
+            relations: ["createdBy", "opportunity", "opportunity.createdBy"]
+        });
+        if (!quotation) throw new Error("Không tìm thấy báo giá");
+
         if (quotation.status === QuotationStatus.APPROVED) {
             throw new Error("Không thể xóa báo giá đã duyệt");
         }
+
+        if (userInfo) {
+            const isManager = ["BOD", "ADMIN"].includes(userInfo.role);
+            const isCreator = quotation.createdBy?.id === (userInfo.userId || userInfo.id) ||
+                              quotation.opportunity?.createdBy?.id === (userInfo.userId || userInfo.id);
+            if (!isManager && !isCreator) {
+                const err: any = new Error("Bạn không có quyền xóa báo giá này");
+                err.statusCode = 403;
+                throw err;
+            }
+        }
+
         await this.quotationRepository.remove(quotation);
         quotationEmitter.emit(QUOTATION_EVENTS.DELETED, { id });
         return { message: "Xóa báo giá thành công" };

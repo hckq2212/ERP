@@ -62,19 +62,21 @@ export class QuotationController {
         try {
             const id = req.params.id as string;
             const description = req.body.description as string;
-            const result = await this.quotationService.reject(id, description);
+            const userInfo = (req as any).user;
+            const result = await this.quotationService.reject(id, description, userInfo);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
     delete = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.delete(req.params.id as string);
+            const userInfo = (req as any).user;
+            const result = await this.quotationService.delete(req.params.id as string, userInfo);
             res.status(200).json(result);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ message: error.message });
         }
     }
 
