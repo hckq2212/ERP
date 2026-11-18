@@ -72,7 +72,11 @@ router.post(
 
 router.post("/:id/settlement-files", controller.addSettlementFiles);
 
-router.post("/:id/payment-proofs", controller.uploadPaymentProof);
+router.post(
+    "/:id/payment-proofs",
+    roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]),
+    controller.uploadPaymentProof
+);
 
 router.post("/:id/cancel", controller.cancel);
 router.get("/:id/doc-preview", controller.getDocPreview);

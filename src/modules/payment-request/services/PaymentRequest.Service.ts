@@ -1291,8 +1291,16 @@ export class PaymentRequestService {
         return saved;
     }
 
-    async addInvoicePdf(id: string, file: PaymentRequestFile) {
+    async addInvoicePdf(id: string, file: PaymentRequestFile, actorId?: string, actorRole?: string) {
         const request = await this.getOne(id);
+
+        if (actorId) {
+            const isBodOrAdmin = [UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE].includes(actorRole as UserRole);
+            if (request.requesterId !== actorId && !isBodOrAdmin) {
+                throw new Error("Bạn không có quyền thêm hóa đơn cho yêu cầu thanh toán này");
+            }
+        }
+
         request.invoicePdfs = [...(request.invoicePdfs || []), { ...file, uploadedAt: new Date().toISOString() }];
         return await this.repo.save(request);
     }
@@ -1750,6 +1758,11 @@ export class PaymentRequestService {
                 throw new Error("Chỉ áp dụng bổ sung chứng từ quyết toán cho yêu cầu Tạm ứng");
             }
 
+            const isBodOrAdmin = [UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE].includes(actorRole as UserRole);
+            if (request.requesterId !== actorId && !isBodOrAdmin) {
+                throw new Error("Bạn không có quyền bổ sung chứng từ quyết toán cho yêu cầu này");
+            }
+
             const fileList = Array.isArray(files) ? files : [files];
             if (!fileList.length) throw new Error("Danh sách file trống");
 
@@ -1841,8 +1854,20 @@ export class PaymentRequestService {
         );
     }
 
-    async uploadPaymentProof(id: string, file: PaymentRequestFile) {
+    async uploadPaymentProof(id: string, file: PaymentRequestFile, actorId?: string, actorRole?: string) {
         const request = await this.getOne(id);
+
+        if (actorRole) {
+            const isAuthorized = [UserRole.BOD, UserRole.ADMIN, UserRole.ADMIN_SALE].includes(actorRole as UserRole);
+            if (!isAuthorized) {
+                throw new Error("Chỉ kế toán hoặc ban giám đốc mới có quyền nạp ủy nhiệm chi");
+            }
+        }
+
+        if (request.approvalStatus === PaymentRequestApprovalStatus.CANCELLED || request.approvalStatus === PaymentRequestApprovalStatus.REJECTED) {
+            throw new Error("Không thể nạp ủy nhiệm chi cho yêu cầu thanh toán đã bị hủy hoặc từ chối");
+        }
+
         request.paymentProofs = [...(request.paymentProofs || []), { ...file, uploadedAt: new Date().toISOString() }];
         return await this.repo.save(request);
     }

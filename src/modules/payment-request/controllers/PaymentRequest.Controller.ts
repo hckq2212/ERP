@@ -148,9 +148,11 @@ export class PaymentRequestController {
         }
     }
 
-    addInvoicePdf = async (req: Request, res: Response) => {
+    addInvoicePdf = async (req: AuthRequest, res: Response) => {
         try {
-            const result = await this.service.addInvoicePdf(req.params.id as string, req.body);
+            const actorId = req.user?.userId || req.user?.id as string;
+            const actorRole = req.user?.role as string;
+            const result = await this.service.addInvoicePdf(req.params.id as string, req.body, actorId, actorRole);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });
@@ -249,9 +251,11 @@ export class PaymentRequestController {
         }
     }
 
-    uploadPaymentProof = async (req: Request, res: Response) => {
+    uploadPaymentProof = async (req: AuthRequest, res: Response) => {
         try {
-            const result = await this.service.uploadPaymentProof(req.params.id as string, req.body);
+            const actorId = req.user?.userId || req.user?.id as string;
+            const actorRole = req.user?.role as string;
+            const result = await this.service.uploadPaymentProof(req.params.id as string, req.body, actorId, actorRole);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });
