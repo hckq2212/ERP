@@ -34,10 +34,33 @@ export class UserService {
 
     private sanitizeUser(user: any, viewer?: UserViewer) {
         const canView = this.canViewSensitiveData(user, viewer);
+        const account = user.accounts?.[0] || user.account;
+
+        let sanitizedAccount = account;
+        if (account) {
+            sanitizedAccount = { ...account };
+            if (!canView) {
+                delete sanitizedAccount.vinicoin;
+                delete sanitizedAccount.vinicoinTotal;
+                delete sanitizedAccount.vinicoinWithdrawn;
+            }
+        }
+
+        const sanitizedAccounts = Array.isArray(user.accounts)
+            ? user.accounts.map((acc: any) => {
+                if (canView) return acc;
+                const clone = { ...acc };
+                delete clone.vinicoin;
+                delete clone.vinicoinTotal;
+                delete clone.vinicoinWithdrawn;
+                return clone;
+            })
+            : user.accounts;
 
         return {
             ...user,
-            account: user.accounts?.[0] || user.account,
+            account: sanitizedAccount,
+            accounts: sanitizedAccounts,
             laborContract: canView ? (user.laborContract || []) : [],
         };
     }

@@ -1,6 +1,7 @@
 import { Server as HttpServer } from "http";
 import jwt from "jsonwebtoken";
 import { Server, Socket } from "socket.io";
+import { corsOptions } from "./shared/config/cors";
 import { AppDataSource } from "./data-source";
 import { Accounts } from "./modules/account/entities/Account.entity";
 import { ChatParticipants } from "./modules/chat-room/entities/ChatParticipant.entity";
@@ -84,36 +85,8 @@ export function broadcastToUser(userId: string, event: string, payload: any) {
 }
 
 export function initSocket(httpServer: HttpServer) {
-    const rawAllowedOrigins = process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim().replace(/\/$/, ""))
-        : [];
-
     const io = new Server(httpServer, {
-        cors: {
-            origin: (origin, callback) => {
-                console.log(`🌐 [Socket.io CORS Check] Incoming origin: ${origin ? `"${origin}"` : "<no origin / undefined>"}`);
-                if (!origin) {
-                    console.log(`✅ [Socket.io CORS Allowed] No origin (Mobile native / Server / cURL)`);
-                    return callback(null, true);
-                }
-                const normalized = origin.trim().replace(/\/$/, "");
-                if (
-                    rawAllowedOrigins.includes(normalized) ||
-                    normalized.endsWith(".vercel.app") ||
-                    normalized.endsWith(".workers.dev") ||
-                    normalized.endsWith(".onrender.com") ||
-                    /^http:\/\/localhost:\d+$/.test(normalized) ||
-                    /^http:\/\/(192\.168\.\d+\.\d+|10\.0\.2\.2|127\.0\.0\.1)(:\d+)?$/.test(normalized)
-                ) {
-                    console.log(`✅ [Socket.io CORS Allowed] Origin: "${origin}"`);
-                    callback(null, true);
-                } else {
-                    console.warn(`❌ [Socket.io CORS Blocked] Origin: "${origin}"`);
-                    callback(new Error("Not allowed by CORS"));
-                }
-            },
-            credentials: true
-        }
+        cors: corsOptions
     });
 
     ioInstance = io;
@@ -261,7 +234,7 @@ export function initSocket(httpServer: HttpServer) {
                 }
             } catch (error: any) {
                 console.error("Error in send_message socket event:", error);
-                socket.emit("error", { message: "Không thể gửi tin nhắn" });
+                socket.emit("error", { message: error.message || "Không thể gửi tin nhắn" });
                 ack?.({ ok: false, error: error.message || "Không thể gửi tin nhắn" });
             }
         });

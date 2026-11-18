@@ -114,12 +114,15 @@ export class PaymentRequestController {
         }
     }
 
-    update = async (req: Request, res: Response) => {
+    update = async (req: AuthRequest, res: Response) => {
         try {
-            const result = await this.service.update(req.params.id as string, req.body);
+            const viewerId = req.user?.userId || req.user?.id;
+            const viewer = viewerId ? { userId: viewerId, role: req.user?.role as string } : undefined;
+            const result = await this.service.update(req.params.id as string, req.body, viewer);
             res.status(200).json(result);
         } catch (error: any) {
-            res.status(400).json({ message: error.message });
+            const statusCode = error.message.includes("không có quyền") ? 403 : error.message.includes("Không tìm thấy") ? 404 : 400;
+            res.status(statusCode).json({ message: error.message });
         }
     }
 
@@ -266,12 +269,15 @@ export class PaymentRequestController {
         }
     }
 
-    delete = async (req: Request, res: Response) => {
+    delete = async (req: AuthRequest, res: Response) => {
         try {
-            const result = await this.service.delete(req.params.id as string);
+            const viewerId = req.user?.userId || req.user?.id;
+            const viewer = viewerId ? { userId: viewerId, role: req.user?.role as string } : undefined;
+            const result = await this.service.delete(req.params.id as string, viewer);
             res.status(200).json(result);
         } catch (error: any) {
-            res.status(400).json({ message: error.message });
+            const statusCode = error.message.includes("không có quyền") ? 403 : error.message.includes("Không tìm thấy") ? 404 : 400;
+            res.status(statusCode).json({ message: error.message });
         }
     }
 

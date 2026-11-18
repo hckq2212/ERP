@@ -6,7 +6,7 @@ import { createHash } from "crypto";
 
 dotenv.config();
 const ACCESS_TOKEN_SECRET = process.env.JWT_SECRET || "";
-const REFRESH_TOKEN_SECRET = process.env.JWT_SECRET || "";
+const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "";
 
 export interface RefreshTokenPayload extends jwt.JwtPayload {
     id: string;
@@ -41,8 +41,8 @@ export class encrypt {
     }
 }
 
-const ENCRYPTION_SECRET = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || "getvini-erp-aes-key-secret-32b!";
-const AES_KEY = createHash("sha256").update(ENCRYPTION_SECRET).digest();
+const ENCRYPTION_SECRET = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || "";
+const AES_KEY = createHash("sha256").update(ENCRYPTION_SECRET || "getvini-erp-aes-dev-key").digest();
 
 export class CryptoHelper {
     static encryptAES(text: string | null | undefined): string | null {

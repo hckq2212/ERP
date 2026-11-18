@@ -83,10 +83,8 @@ export interface ApproveSettlementDTO {
 const FULL_VISIBILITY_ROLES: UserRole[] = [UserRole.ADMIN_SALE, UserRole.BOD, UserRole.ADMIN];
 
 const canViewRequest = (request: PaymentRequests, viewer?: PaymentRequestViewer) => {
-    if (!viewer) return true;
+    if (!viewer || !viewer.userId) return false;
     if (FULL_VISIBILITY_ROLES.includes(viewer.role as UserRole)) return true;
-    // Chi phí phát sinh do vendor: requesterId chính là người phân công task cho vendor
-    // (xem createVendorExpense), nên chỉ cần so sánh requesterId là đủ để người phân công thấy.
     return request.requesterId === viewer.userId;
 };
 
@@ -1022,10 +1020,20 @@ export class PaymentRequestService {
         return request;
     }
 
-    async update(id: string, dto: any) {
-        const request = await this.getOne(id);
+    async update(id: string, dto: any, viewer?: PaymentRequestViewer) {
+        const request = await this.getOne(id, viewer);
+
+        const isManager = Boolean(viewer?.role && [UserRole.ADMIN, UserRole.BOD].includes(viewer.role as UserRole));
+        const isCreator = Boolean(viewer?.userId && request.requesterId === viewer.userId);
+
+        if (!isCreator && !isManager) {
+            throw new Error("Bạn không có quyền chỉnh sửa yêu cầu thanh toán của người khác");
+        }
 
         if (dto.cashVoucherInfo !== undefined || dto.paymentMethod !== undefined) {
+            if (request.approvalStatus !== PaymentRequestApprovalStatus.DRAFT && !isManager) {
+                throw new Error("Chỉ quản trị viên mới có quyền cập nhật thông tin phiếu chi sau khi phiếu đã duyệt");
+            }
             if (dto.cashVoucherInfo !== undefined) request.cashVoucherInfo = dto.cashVoucherInfo;
             if (dto.paymentMethod !== undefined) request.paymentMethod = dto.paymentMethod;
             if (Object.keys(dto).every((k) => ["cashVoucherInfo", "paymentMethod"].includes(k))) {
@@ -1950,8 +1958,16 @@ export class PaymentRequestService {
         return task;
     }
 
-    async delete(id: string) {
-        const request = await this.getOne(id);
+    async delete(id: string, viewer?: PaymentRequestViewer) {
+        const request = await this.getOne(id, viewer);
+
+        const isManager = Boolean(viewer?.role && [UserRole.ADMIN, UserRole.BOD].includes(viewer.role as UserRole));
+        const isCreator = Boolean(viewer?.userId && request.requesterId === viewer.userId);
+
+        if (!isCreator && !isManager) {
+            throw new Error("Bạn không có quyền xóa yêu cầu thanh toán của người khác");
+        }
+
         if (request.approvalStatus !== PaymentRequestApprovalStatus.DRAFT) {
             throw new Error("Chỉ xóa được yêu cầu thanh toán ở trạng thái nháp");
         }

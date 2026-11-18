@@ -50,13 +50,9 @@ export class ProfileService {
             account.password = await encrypt.encryptPassword(password);
         }
 
-        // 2. Update Account fields
-        if (email) {
-            const existing = await this.accountRepository.findOne({ where: { email } });
-            if (existing && existing.id !== account.id) {
-                throw new Error("Email đã được sử dụng bởi tài khoản khác");
-            }
-            account.email = email;
+        // 2. Tuân thủ Rule 29: Khóa quyền tự đổi email qua Profile, chỉ ADMIN mới có quyền đổi email
+        if (email && email !== account.email) {
+            throw new Error("Chỉ quản trị viên hệ thống (ADMIN) mới có quyền thay đổi Email tài khoản");
         }
 
         // 3. Update User fields

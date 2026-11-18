@@ -9,6 +9,7 @@ import { broadcastToRoom, broadcastToUser, userJoinRoom, userLeaveRoom } from ".
 import { PushNotificationService } from "../../notification/services/PushNotification.Service";
 import { formatChatPushContent } from "../helpers/ChatPushContent.helper";
 import { parseCloudinaryAssetInfo, tagCloudinaryAsset } from "../../../shared/helpers/cloudinary.helper";
+import { validateChatAttachments } from "../helpers/ChatAttachmentValidation.helper";
 
 export class ChatRoomService {
     private static pushNotificationService = new PushNotificationService();
@@ -368,6 +369,9 @@ export class ChatRoomService {
             error.statusCode = 403;
             throw error;
         }
+
+        // Kiểm tra an toàn tệp đính kèm theo Rule 29
+        validateChatAttachments(attachments);
 
         const messageRepo = AppDataSource.getRepository(ChatMessages);
         const newMessage = messageRepo.create({

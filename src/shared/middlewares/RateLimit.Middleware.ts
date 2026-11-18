@@ -83,6 +83,20 @@ export const authLimiter = createLimiter({
     keyGenerator: getAuthKey
 });
 
+export const loginLimiter = createLimiter({
+    identifier: "auth-login",
+    windowMs: 60 * 1000,
+    limit: 10,
+    keyGenerator: getAuthKey
+});
+
+export const refreshLimiter = createLimiter({
+    identifier: "auth-refresh",
+    windowMs: 60 * 1000,
+    limit: 30,
+    keyGenerator: getAuthKey
+});
+
 export const writeLimiter = createLimiter({
     identifier: "write-api",
     windowMs: 15 * 60 * 1000,
