@@ -26,7 +26,7 @@ export class OpportunityServiceController {
 
     create = async (req: Request, res: Response) => {
         try {
-            const result = await this.service.create(req.body);
+            const result = await this.service.create(req.body, (req as any).user);
             res.status(201).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });
@@ -36,7 +36,7 @@ export class OpportunityServiceController {
     update = async (req: Request, res: Response) => {
         try {
             const id = req.params.id as string;
-            const result = await this.service.update(id, req.body);
+            const result = await this.service.update(id, req.body, (req as any).user);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });
@@ -46,7 +46,7 @@ export class OpportunityServiceController {
     delete = async (req: Request, res: Response) => {
         try {
             const id = req.params.id as string;
-            const result = await this.service.delete(id);
+            const result = await this.service.delete(id, (req as any).user);
             res.status(200).json(result);
         } catch (error: any) {
             res.status(400).json({ message: error.message });

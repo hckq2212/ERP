@@ -59,8 +59,15 @@ export class NotificationService {
         });
     }
 
-    async markAsRead(id: string) {
-        const notification = await this.notificationRepository.findOne({ where: SecurityService.withTenant({ id }) });
+    async markAsRead(id: string, userId?: string) {
+        const whereClause: any = { id };
+        if (userId) {
+            whereClause.recipient = { id: userId };
+        }
+        const notification = await this.notificationRepository.findOne({
+            where: SecurityService.withTenant(whereClause),
+            relations: ["recipient"]
+        });
         if (notification) {
             notification.isRead = true;
             notification.readAt = new Date();

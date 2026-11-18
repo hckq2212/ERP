@@ -13,6 +13,7 @@ import { NotificationService } from "../../notification/services/Notification.Se
 import { quotationEmitter, QUOTATION_EVENTS } from "../events/QuotationEmitter";
 import { opportunityEmitter, OPPORTUNITY_EVENTS } from "../../opportunity/events/OpportunityEmitter";
 import { ContractService } from "../../contract/services/Contract.Service";
+import { ContractStatus } from "../../contract/entities/Contract.entity";
 import Decimal from "decimal.js";
 import { calculatePricingTotals, calculatePricingTotalsDecimal, calculateLinePricingDecimal, roundUnitSellingPrice } from "../../../shared/helpers/PricingTax.helper";
 import { validateQuotationBudgets } from "../helpers/QuotationBudgetValidation.helper";
@@ -437,11 +438,27 @@ export class QuotationService {
     }
 
     // 2. Update Quotation Details (Price, Qty)
-    async update(id: string, data: { status?: QuotationStatus, note?: string, details?: any[] }, userInfo?: { id: string, userId?: string }) {
+    async update(id: string, data: { status?: QuotationStatus, note?: string, details?: any[] }, userInfo?: { id: string, userId?: string, role?: string }) {
         const quotation = await this.getOne(id);
 
         if (quotation.status === QuotationStatus.APPROVED) {
             throw new Error("Không thể chỉnh sửa báo giá đã được duyệt");
+        }
+
+        const userRole = (userInfo as any)?.role;
+        const currentUserId = (userInfo as any)?.userId || userInfo?.id;
+        const isManager = ["BOD", "ADMIN"].includes(userRole);
+        const isOwner = quotation.opportunity?.createdBy?.id === currentUserId || (quotation as any)?.createdBy?.id === currentUserId;
+
+        if (userInfo && !isManager && !isOwner) {
+            throw new Error("Bạn không có quyền chỉnh sửa báo giá này");
+        }
+
+        const signedContracts = (quotation.opportunity?.contracts || []).filter(
+            (c: any) => c.status === ContractStatus.SIGNED || c.status === ContractStatus.COMPLETED
+        );
+        if (signedContracts.length > 0) {
+            throw new Error("Không thể chỉnh sửa báo giá của cơ hội kinh doanh đã có hợp đồng đã ký");
         }
 
         if (data.note !== undefined) quotation.note = data.note;

@@ -1,6 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
 import { AiElementController } from "../controllers/AiElement.Controller";
+import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
+import { sensitiveLimiter } from "../../../shared/middlewares/RateLimit.Middleware";
 
 const router = Router();
 
@@ -22,8 +24,12 @@ const upload = multer({
 
 const aiElementController = new AiElementController();
 
+const aiElementRoles = roleMiddleware(["ADMIN", "BOD", "PM", "DESIGNER", "EDITOR_V"]);
+
 router.post(
     "/create",
+    aiElementRoles,
+    sensitiveLimiter,
     upload.fields([
         { name: "frontalImage", maxCount: 1 },
         { name: "referImages", maxCount: 3 },
@@ -34,7 +40,7 @@ router.post(
 router.get("/history", aiElementController.getHistory);
 router.get("/task/:taskId/status", aiElementController.getKlingTaskStatus);
 router.get("/:id/status", aiElementController.getStatus);
-router.delete("/:id", aiElementController.remove);
-router.patch("/:id/favorite", aiElementController.setFavorite);
+router.delete("/:id", aiElementRoles, aiElementController.remove);
+router.patch("/:id/favorite", aiElementRoles, aiElementController.setFavorite);
 
 export default router;

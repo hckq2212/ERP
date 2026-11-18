@@ -42,7 +42,7 @@ export class QuotationController {
 
     update = async (req: Request, res: Response) => {
         try {
-            const result = await this.quotationService.update(req.params.id as string, req.body);
+            const result = await this.quotationService.update(req.params.id as string, req.body, (req as any).user);
             res.status(200).json(result);
         } catch (error) {
             res.status(500).json({ message: error.message });

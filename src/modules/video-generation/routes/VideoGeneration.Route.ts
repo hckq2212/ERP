@@ -2,6 +2,8 @@ import { Router } from "express";
 import multer from "multer";
 import { VideoGenerationController } from "../controllers/VideoGeneration.Controller";
 import { MotionGenerationController } from "../controllers/MotionGeneration.Controller";
+import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
+import { sensitiveLimiter } from "../../../shared/middlewares/RateLimit.Middleware";
 
 const router = Router();
 
@@ -24,9 +26,13 @@ const upload = multer({
 const videoGenerationController = new VideoGenerationController();
 const motionGenerationController = new MotionGenerationController();
 
+const aiVideoRoles = roleMiddleware(["ADMIN", "BOD", "PM", "EDITOR_V", "DESIGNER"]);
+
 // ── Video generation (image-to-video, Kling/BytePlus) ─────────────────────
 router.post(
     "/create",
+    aiVideoRoles,
+    sensitiveLimiter,
     upload.fields([
         { name: "startImage", maxCount: 1 },
         { name: "endImage", maxCount: 1 },
@@ -40,6 +46,8 @@ router.get("/:id/status", videoGenerationController.getStatus);
 // ── Motion control (Kling only) ────────────────────────────────────────────
 router.post(
     "/create-motion-control",
+    aiVideoRoles,
+    sensitiveLimiter,
     upload.fields([
         { name: "characterImage", maxCount: 1 },
         { name: "referenceVideo", maxCount: 1 },

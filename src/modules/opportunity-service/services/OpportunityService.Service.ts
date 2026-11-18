@@ -2,6 +2,8 @@ import { AppDataSource } from "../../../data-source";
 import { OpportunityServices } from "../entities/OpportunityService.entity";
 import { Opportunities } from "../../opportunity/entities/Opportunity.entity";
 import { Services } from "../../service/entities/Service.entity";
+import { Contracts } from "../../contract/entities/Contract.entity";
+import { UserRole } from "../../account/entities/Account.entity";
 import { SecurityService } from "../../../shared/services/Security.Service";
 import { OpportunityServiceJobs } from "../entities/OpportunityServiceJob.entity";
 import { RedisService } from "../../../shared/services/Redis.Service";
@@ -30,9 +32,16 @@ export class OpportunityServiceService {
         return item;
     }
 
-    async create(data: { opportunityId: string, serviceId: string, quantity: number, costAtSale?: number, budget?: number }) {
+    async create(data: { opportunityId: string, serviceId: string, quantity: number, costAtSale?: number, budget?: number }, userInfo?: any) {
         const opportunity = await this.opportunityRepository.findOne({ where: SecurityService.withTenant({ id: data.opportunityId }) });
         if (!opportunity) throw new Error("Không tìm thấy cơ hội kinh doanh");
+
+        const contractCount = await AppDataSource.getRepository(Contracts).count({
+            where: SecurityService.withTenant({ opportunity: { id: data.opportunityId } })
+        });
+        if (contractCount > 0) {
+            throw new Error("Không thể thêm dịch vụ vào cơ hội kinh doanh đã có hợp đồng liên kết");
+        }
 
         const service = await this.serviceRepository.findOne({ where: SecurityService.withTenant({ id: data.serviceId }) });
         if (!service) throw new Error("Không tìm thấy dịch vụ gốc");
@@ -59,8 +68,17 @@ export class OpportunityServiceService {
         costAtSale?: number,
         budget?: number,
         jobs?: { id: string, costAtSale?: number, briefVideo?: string }[]
-    }) {
+    }, userInfo?: any) {
         const item = await this.getOne(id);
+        const opportunityId = item.opportunity.id;
+
+        const contractCount = await AppDataSource.getRepository(Contracts).count({
+            where: SecurityService.withTenant({ opportunity: { id: opportunityId } })
+        });
+        if (contractCount > 0) {
+            throw new Error("Không thể chỉnh sửa dịch vụ của cơ hội kinh doanh đã có hợp đồng liên kết");
+        }
+
         const budget = resolveServiceBudget(item.service, data.budget, item.budget);
         const updatesCost = data.costAtSale !== undefined || data.jobs?.some(job => job.costAtSale !== undefined);
 
@@ -122,9 +140,18 @@ export class OpportunityServiceService {
         return await this.getOne(id);
     }
 
-    async delete(id: string) {
+    async delete(id: string, userInfo?: any) {
         const item = await this.getOne(id);
         const opportunityId = item.opportunity.id;
+
+        // Chặn xóa dịch vụ nếu cơ hội kinh doanh đã chuyển đổi thành hợp đồng
+        const contractCount = await AppDataSource.getRepository(Contracts).count({
+            where: SecurityService.withTenant({ opportunity: { id: opportunityId } })
+        });
+        if (contractCount > 0) {
+            throw new Error("Không thể xóa dịch vụ của cơ hội kinh doanh đã có hợp đồng liên kết");
+        }
+
         await this.oppServiceRepository.remove(item);
         await this.recalculateRevenue(opportunityId);
         await RedisService.deleteCache(`opportunities:*:detail:${opportunityId}*`);

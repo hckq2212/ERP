@@ -52,8 +52,12 @@ streamNotifications = async (req: AuthRequest, res: Response) => {
 
     markAsRead = async (req: AuthRequest, res: Response) => {
         try {
+            const userId = req.user?.userId || req.user?.id;
+            if (!userId) {
+                return res.status(401).json({ message: "Unauthorized" });
+            }
             const notificationId = req.params.id as string;
-            const notification = await this.notificationService.markAsRead(notificationId);
+            const notification = await this.notificationService.markAsRead(notificationId, userId);
             res.status(200).json(notification);
         } catch (error) {
             res.status(500).json({ message: error.message });
