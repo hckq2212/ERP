@@ -8,12 +8,30 @@ import multer from "multer";
 const router = Router();
 const userController = new UserController();
 
+const ALLOWED_MIME_TYPES = new Set([
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/jpeg",
+    "image/png",
+    "image/webp"
+]);
+
 const storage = multer.memoryStorage();
 const upload = multer({
     storage: storage,
     limits: {
         fileSize: 10 * 1024 * 1024, // 10MB
         files: 3
+    },
+    fileFilter: (_req, file, cb) => {
+        const ext = file.originalname.split(".").pop()?.toLowerCase() || "";
+        const allowedExts = new Set(["pdf", "doc", "docx", "jpg", "jpeg", "png", "webp"]);
+        if (allowedExts.has(ext) && (ALLOWED_MIME_TYPES.has(file.mimetype) || file.mimetype.startsWith("image/"))) {
+            cb(null, true);
+        } else {
+            cb(new Error("Chỉ chấp nhận tệp hợp đồng lao động dạng PDF, Word (doc, docx) hoặc hình ảnh (jpg, png, webp)"));
+        }
     }
 });
 

@@ -13,6 +13,15 @@ export class DebtPaymentService {
     private milestoneRepository = AppDataSource.getRepository(PaymentMilestones);
 
     async create(data: { debtId: string, amount: number, paymentDate: Date, note?: string, attachments?: any[] }) {
+        if (!data.debtId) {
+            throw new Error("Mã khoản nợ không được để trống");
+        }
+
+        const paymentAmount = Number(data.amount);
+        if (isNaN(paymentAmount) || paymentAmount <= 0) {
+            throw new Error("Số tiền thanh toán phải lớn hơn 0");
+        }
+
         const debt = await this.debtRepository.findOne({
             where: { id: data.debtId },
             relations: ["milestone", "payments"]
@@ -25,11 +34,19 @@ export class DebtPaymentService {
         // nợ chưa thu. Chặn ở đây để không phát sinh giao dịch trên khoản đã chốt.
         assertDebtNotLocked(debt);
 
+        const currentPaid = (debt.payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const debtAmount = Number(debt.amount || 0);
+        const unpaidAmount = Math.max(0, debtAmount - currentPaid);
+
+        if (paymentAmount > unpaidAmount) {
+            throw new Error(`Số tiền thanh toán (${paymentAmount.toLocaleString("vi-VN")} đ) không được vượt quá số nợ còn lại (${unpaidAmount.toLocaleString("vi-VN")} đ)`);
+        }
+
         // 1. Create the payment
         const payment = this.paymentRepository.create({
             debt,
-            amount: data.amount,
-            paymentDate: data.paymentDate,
+            amount: paymentAmount,
+            paymentDate: data.paymentDate || new Date(),
             note: data.note,
             attachments: data.attachments || null
         });
