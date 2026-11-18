@@ -5,6 +5,7 @@ import { RefreshSessions } from "../../auth/entities/RefreshSession.entity";
 import { encrypt } from "../../../shared/helpers/helpers";
 import { validatePasswordStrength } from "../../../shared/helpers/PasswordPolicy.helper";
 import { IsNull } from "typeorm";
+import { assertAccountIdentifiersAvailable } from "./AccountIdentifier";
 
 export class AccountService {
     private accountRepository = AppDataSource.getRepository(Accounts);
@@ -42,6 +43,11 @@ export class AccountService {
         }
 
         const { username, email, role, fullName, phoneNumber, birthday, isActive } = data;
+        const identifiers = {
+            id: account.id,
+            username: username === account.username ? undefined : username,
+            email: email === account.email ? undefined : email
+        };
 
         // Update Account fields
         if (username !== undefined) account.username = username;
@@ -51,6 +57,7 @@ export class AccountService {
 
         // Update linked User fields if they exist
         await AppDataSource.transaction(async (transactionalEntityManager) => {
+            await assertAccountIdentifiersAvailable(transactionalEntityManager, identifiers);
             if (account.user) {
                 if (fullName !== undefined) account.user.fullName = fullName;
                 if (phoneNumber !== undefined) account.user.phoneNumber = phoneNumber;

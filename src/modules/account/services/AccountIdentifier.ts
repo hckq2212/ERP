@@ -1,8 +1,8 @@
 import { EntityManager, FindOptionsWhere, Not, Raw } from "typeorm";
 import { Accounts } from "../entities/Account.entity";
 
-export function identifierMatches(identifier: string) {
-    return Raw<string>(column => `LOWER(${column}) = LOWER(:identifier)`, { identifier });
+export function identifierMatches(identifier: string, parameter = "identifier") {
+    return Raw<string>(column => `LOWER(${column}) = LOWER(:${parameter})`, { [parameter]: identifier });
 }
 
 export async function assertAccountIdentifiersAvailable(
@@ -10,11 +10,11 @@ export async function assertAccountIdentifiersAvailable(
     { id, username, email }: { id?: string; username?: string; email?: string | null }
 ) {
     const where: FindOptionsWhere<Accounts>[] = [];
-    for (const identifier of [username, email]) {
+    for (const [identifier, parameter] of [[username, "username"], [email, "email"]] as const) {
         if (typeof identifier !== "string") continue;
         const otherAccount = id === undefined ? {} : { id: Not(id) };
-        where.push({ ...otherAccount, username: identifierMatches(identifier) });
-        where.push({ ...otherAccount, email: identifierMatches(identifier) });
+        where.push({ ...otherAccount, username: identifierMatches(identifier, parameter) });
+        where.push({ ...otherAccount, email: identifierMatches(identifier, parameter) });
     }
     if (!where.length) return;
 

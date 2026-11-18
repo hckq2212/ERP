@@ -6,6 +6,7 @@ import { AppDataSource } from "../../../data-source";
 import { RedisService } from "../../../shared/services/Redis.Service";
 import { WorkloadService } from "../../../shared/services/Workload.Service";
 import { userEmitter, USER_EVENTS } from "../events/UserEmitter";
+import { assertAccountIdentifiersAvailable } from "../../account/services/AccountIdentifier";
 
 type UserViewer = { id?: string; userId?: string; role?: string };
 
@@ -13,7 +14,6 @@ const LABOR_CONTRACT_MANAGER_ROLES = [UserRole.BOD, UserRole.ADMIN, UserRole.ADM
 
 export class UserService {
     private userRepository = AppDataSource.getRepository(Users);
-    private accountRepository = AppDataSource.getRepository(Accounts);
     private workloadService = new WorkloadService();
 
     private getCacheKey(key: string) {
@@ -163,17 +163,6 @@ export class UserService {
         validateUserData(data);
         const { username, password, email, fullName, phoneNumber, birthday, role, userId, isLocked } = data;
 
-        const existingAccount = await this.accountRepository.findOne({
-            where: [
-                { username },
-                { email }
-            ]
-        });
-
-        if (existingAccount) {
-            throw new Error("Tên đăng nhập hoặc email đã tồn tại");
-        }
-
         const hashedPassword = await encrypt.encryptPassword(password || "123456");
 
         const account = new Accounts();
@@ -193,6 +182,7 @@ export class UserService {
 
         let savedUser: Users | null = null;
         await AppDataSource.transaction(async (transactionalEntityManager) => {
+            await assertAccountIdentifiersAvailable(transactionalEntityManager, account);
             savedUser = await transactionalEntityManager.save(user);
             account.user = savedUser;
             account.userId = savedUser.id;
@@ -221,17 +211,22 @@ export class UserService {
         if (portfolioUrl !== undefined) user.portfolioUrl = portfolioUrl || null;
         if (hobbies !== undefined) user.hobbies = Array.isArray(hobbies) ? hobbies : null;
 
-        const account = (user as any).account;
-        if (account) {
-            if (email !== undefined) account.email = email;
-            if (role !== undefined) account.role = role;
-            if (isActive !== undefined) account.isActive = isActive;
-            if (username !== undefined) account.username = username;
-
-            await this.accountRepository.save(account);
-        }
-
-        const savedUser = await this.userRepository.save(user);
+        const account = (user as Users & { account?: Accounts }).account;
+        const savedUser = await AppDataSource.transaction(async (manager) => {
+            if (account) {
+                await assertAccountIdentifiersAvailable(manager, {
+                    id: account.id,
+                    username: username === account.username ? undefined : username,
+                    email: email === account.email ? undefined : email
+                });
+                if (email !== undefined) account.email = email;
+                if (role !== undefined) account.role = role;
+                if (isActive !== undefined) account.isActive = isActive;
+                if (username !== undefined) account.username = username;
+                await manager.save(account);
+            }
+            return manager.save(user);
+        });
 
         // Xóa cache danh sách và cache chi tiết của user vừa update
         await RedisService.deleteCache(this.getCacheKey('users:all*'));
