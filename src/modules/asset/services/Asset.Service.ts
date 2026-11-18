@@ -32,6 +32,10 @@ export class AssetService {
      * tạo video-gen). Dùng cho asset picker / thư viện media.
      */
     async uploadToLibrary(userId: string, file: Express.Multer.File) {
+        if (file.mimetype === "image/svg+xml" || (file.originalname && file.originalname.toLowerCase().endsWith(".svg"))) {
+            throw new Error("Định dạng tệp .svg bị cấm tải lên vì lý do an toàn thông tin");
+        }
+
         const isVideo = file.mimetype.startsWith("video/");
         const isImage = file.mimetype.startsWith("image/");
         if (!isVideo && !isImage) {

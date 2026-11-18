@@ -73,7 +73,19 @@ export class ProfileService {
             throw new Error("Chỉ quản trị viên hệ thống (ADMIN) mới có quyền thay đổi Email tài khoản");
         }
 
-        // 3. Update User fields
+        // 3. Validate safe URLs for avatar and portfolio
+        if (avatarUrl !== undefined && avatarUrl !== null && avatarUrl !== "") {
+            if (!/^https?:\/\//i.test(String(avatarUrl).trim())) {
+                throw new Error("Đường dẫn ảnh đại diện không hợp lệ, phải bắt đầu bằng http:// hoặc https://");
+            }
+        }
+        if (portfolioUrl !== undefined && portfolioUrl !== null && portfolioUrl !== "") {
+            if (!/^https?:\/\//i.test(String(portfolioUrl).trim())) {
+                throw new Error("Đường dẫn portfolio không hợp lệ, phải bắt đầu bằng http:// hoặc https://");
+            }
+        }
+
+        // 4. Update User fields
         await AppDataSource.transaction(async (transactionalEntityManager) => {
             if (account.user) {
                 if (fullName !== undefined) account.user.fullName = fullName;

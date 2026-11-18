@@ -126,10 +126,16 @@ export class PaymentMilestoneService {
             });
 
             // 3. Chuẩn hóa từng milestone theo đúng độ chính xác cột DB numeric(5, 2)
-            const normalizedMilestones = milestones.map(item => ({
-                ...item,
-                percentage: toDecimal(item.percentage || 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()
-            }));
+            const normalizedMilestones = milestones.map(item => {
+                const pct = toDecimal(item.percentage || 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
+                if (pct <= 0 || pct > 100) {
+                    throw new Error("Phần trăm thanh toán của từng giai đoạn phải lớn hơn 0% và không vượt quá 100%");
+                }
+                return {
+                    ...item,
+                    percentage: pct
+                };
+            });
 
             // Validate Total Percentage with locked, authoritative data
             const currentTotal = existingMilestones.reduce(
@@ -217,6 +223,9 @@ export class PaymentMilestoneService {
             // Re-validate if percentage changes
             if (data.percentage !== undefined && data.percentage !== null) {
                 const normalizedNewPercentage = toDecimal(data.percentage).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
+                if (normalizedNewPercentage <= 0 || normalizedNewPercentage > 100) {
+                    throw new Error("Phần trăm thanh toán phải lớn hơn 0% và không vượt quá 100%");
+                }
                 if (normalizedNewPercentage !== Number(milestone.percentage)) {
                     const existingMilestones = await milestoneRepo.find({
                         where: SecurityService.withTenant({ contract: { id: milestone.contract.id } })
@@ -286,10 +295,16 @@ export class PaymentMilestoneService {
         }
 
         // 1. Chuẩn hóa từng milestone theo đúng độ chính xác cột DB numeric(5, 2)
-        const normalizedMilestones = milestones.map(m => ({
-            ...m,
-            percentage: toDecimal(m.percentage || 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()
-        }));
+        const normalizedMilestones = milestones.map(m => {
+            const pct = toDecimal(m.percentage || 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
+            if (pct <= 0 || pct > 100) {
+                throw new Error("Phần trăm thanh toán của từng giai đoạn phải lớn hơn 0% và không vượt quá 100%");
+            }
+            return {
+                ...m,
+                percentage: pct
+            };
+        });
 
         // Validate Total Percentage: Tuyệt đối không được vượt quá 100% sau khi làm tròn
         const totalDecimal = normalizedMilestones.reduce((sum, m) => sum.add(toDecimal(m.percentage)), new Decimal(0));
