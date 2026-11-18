@@ -39,7 +39,9 @@ export class AnnouncementController {
 
     update = async (req: AuthRequest, res: Response) => {
         try {
-            const result = await this.announcementService.update(req.params.id as string, req.body)
+            const userId = req.user?.userId || req.user?.id
+            const role = req.user?.role as string
+            const result = await this.announcementService.update(req.params.id as string, req.body, { userId: userId as string, role })
             res.status(200).json(result)
         } catch (error: any) {
             res.status(400).json({ message: error.message })
@@ -48,7 +50,9 @@ export class AnnouncementController {
 
     delete = async (req: AuthRequest, res: Response) => {
         try {
-            const result = await this.announcementService.delete(req.params.id as string)
+            const userId = req.user?.userId || req.user?.id
+            const role = req.user?.role as string
+            const result = await this.announcementService.delete(req.params.id as string, { userId: userId as string, role })
             res.status(200).json(result)
         } catch (error: any) {
             res.status(400).json({ message: error.message })

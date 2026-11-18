@@ -3,7 +3,7 @@ import { ContractAddendumController } from "../controllers/ContractAddendum.Cont
 import multer from "multer";
 import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
 
-const DANGEROUS_EXTENSIONS = /\.(exe|bat|cmd|sh|php|js|mjs|cjs|vbs|msi|bin|scr|jar|apk|com|pif|reg|dll|sys|html|htm)$/i;
+const DANGEROUS_EXTENSIONS = /\.(exe|bat|cmd|sh|php|js|mjs|cjs|vbs|msi|bin|scr|jar|apk|com|pif|reg|dll|sys|html|htm|svg)$/i;
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -13,8 +13,8 @@ const upload = multer({
         files: 1
     },
     fileFilter: (_req, file, cb) => {
-        if (DANGEROUS_EXTENSIONS.test(file.originalname || "")) {
-            return cb(new Error("Định dạng tệp thực thi hoặc mã độc bị cấm tải lên"));
+        if (DANGEROUS_EXTENSIONS.test(file.originalname || "") || file.mimetype === "image/svg+xml") {
+            return cb(new Error("Định dạng tệp thực thi, script hoặc .svg bị cấm tải lên"));
         }
         cb(null, true);
     }

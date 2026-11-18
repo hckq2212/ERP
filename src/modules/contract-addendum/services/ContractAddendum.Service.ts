@@ -168,6 +168,9 @@ export class ContractAddendumService {
             relations: ["contract", "quotation"]
         });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
+        if (addendum.status !== AddendumStatus.DRAFT) {
+            throw new Error("Chỉ có thể thêm hạng mục vào phụ lục ở trạng thái nháp");
+        }
 
         let totalSellingPrice = 0;
         let totalCost = 0;
@@ -258,7 +261,16 @@ export class ContractAddendumService {
         });
         if (!addendum) throw new Error("Không tìm thấy phụ lục");
 
-        addendum.signed_contract = fileData.url;
+        if (addendum.status === AddendumStatus.SIGNED) {
+            throw new Error("Phụ lục hợp đồng này đã được upload bản ký trước đó");
+        }
+
+        const signedUrl = typeof fileData?.url === "string" ? fileData.url.trim() : "";
+        if (!signedUrl || !/^https?:\/\//i.test(signedUrl)) {
+            throw new Error("Đường dẫn file hợp đồng đã ký không hợp lệ hoặc thiếu giao thức http/https");
+        }
+
+        addendum.signed_contract = signedUrl;
         addendum.status = AddendumStatus.SIGNED;
 
         // Update Contract Totals (Revenue and Cost)

@@ -271,9 +271,20 @@ export class AnnouncementService {
         })
     }
 
-    async update(id: string, data: any) {
-        const announcement = await this.announcementRepository.findOne({ where: { id } })
+    async update(id: string, data: any, requester?: { userId?: string, role?: string }) {
+        const announcement = await this.announcementRepository.findOne({
+            where: { id },
+            relations: ["createdBy"]
+        })
         if (!announcement) throw new Error("Không tìm thấy thông báo")
+
+        if (requester) {
+            const isManager = ["BOD", "ADMIN"].includes(requester.role || "")
+            const isCreator = announcement.createdBy?.id === requester.userId
+            if (!isManager && !isCreator) {
+                throw new Error("Bạn không có quyền chỉnh sửa thông báo này")
+            }
+        }
 
         if (announcement.status === AnnouncementStatus.SENT) {
             throw new Error("Không thể chỉnh sửa thông báo đã gửi")
@@ -296,9 +307,20 @@ export class AnnouncementService {
         return await this.announcementRepository.save(announcement)
     }
 
-    async delete(id: string) {
-        const announcement = await this.announcementRepository.findOne({ where: { id } })
+    async delete(id: string, requester?: { userId?: string, role?: string }) {
+        const announcement = await this.announcementRepository.findOne({
+            where: { id },
+            relations: ["createdBy"]
+        })
         if (!announcement) throw new Error("Không tìm thấy thông báo")
+
+        if (requester) {
+            const isManager = ["BOD", "ADMIN"].includes(requester.role || "")
+            const isCreator = announcement.createdBy?.id === requester.userId
+            if (!isManager && !isCreator) {
+                throw new Error("Bạn không có quyền xoá thông báo này")
+            }
+        }
 
         if (announcement.status === AnnouncementStatus.SENT) {
             announcement.status = AnnouncementStatus.CANCELLED

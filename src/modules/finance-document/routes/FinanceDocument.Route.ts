@@ -7,7 +7,7 @@ const controller = new FinanceDocumentController();
 
 const financeDocRoles = roleMiddleware(["ADMIN", "BOD", "ADMIN_SALE", "ACCOUNTANT", "PM"]);
 
-router.get("/contracts/:contractId", controller.getByContract);
+router.get("/contracts/:contractId", financeDocRoles, controller.getByContract);
 router.post("/acceptance-minutes", financeDocRoles, controller.createAcceptanceMinute);
 router.post("/vat-invoices", financeDocRoles, controller.createVatInvoice);
 
