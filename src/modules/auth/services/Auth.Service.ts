@@ -62,13 +62,54 @@ export class AuthService {
             relations: ["user"]
         });
 
+        // Chống timing attack: Nếu tài khoản không tồn tại, vẫn chạy phép so sánh bcrypt giả
         if (!account || !account.isActive) {
+            encrypt.comparePassword(password || "", "$2b$12$e8p.n2d1a3f4a5k6e7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y");
             throw new Error("Tên đăng nhập hoặc mật khẩu không chính xác");
+        }
+
+        // Kiểm tra xem tài khoản có đang trong thời gian bị tạm khóa hay không (5 lần sai -> khóa 15 phút)
+        if (account.lockedUntil && new Date(account.lockedUntil) > new Date()) {
+            const remainingSeconds = Math.ceil((new Date(account.lockedUntil).getTime() - Date.now()) / 1000);
+            const remainingMinutes = Math.ceil(remainingSeconds / 60);
+            const err: any = new Error(`Tài khoản tạm thời bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau ${remainingMinutes} phút hoặc liên hệ quản trị viên.`);
+            err.statusCode = 429;
+            err.retryAfter = remainingSeconds;
+            throw err;
         }
 
         const isPasswordValid = encrypt.comparePassword(password, account.password);
         if (!isPasswordValid) {
+            // Tăng số lần đăng nhập sai bằng câu lệnh nguyên tử (Atomic Update) chống race-condition
+            await this.accountRepository.createQueryBuilder()
+                .update(Accounts)
+                .set({ failedLoginAttempts: () => '"failedLoginAttempts" + 1' })
+                .where("id = :id", { id: account.id })
+                .execute();
+
+            const refreshed = await this.accountRepository.findOne({
+                where: { id: account.id },
+                select: ["id", "failedLoginAttempts"]
+            });
+
+            const currentAttempts = refreshed?.failedLoginAttempts ?? (account.failedLoginAttempts + 1);
+            if (currentAttempts >= 5) {
+                const lockoutTime = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
+                await this.accountRepository.update(account.id, {
+                    lockedUntil: lockoutTime,
+                    failedLoginAttempts: 5
+                });
+            }
+
             throw new Error("Tên đăng nhập hoặc mật khẩu không chính xác");
+        }
+
+        // Đăng nhập thành công: Reset lại bộ đếm failedLoginAttempts và gỡ lockedUntil nếu có
+        if (account.failedLoginAttempts > 0 || account.lockedUntil) {
+            await this.accountRepository.update(account.id, {
+                failedLoginAttempts: 0,
+                lockedUntil: null
+            });
         }
 
         const user = account.user;
@@ -172,7 +213,8 @@ export class AuthService {
                 accessToken,
                 refreshToken,
                 accessMaxAge: ACCESS_TOKEN_TTL_SECONDS * 1000,
-                refreshMaxAge: remainingSeconds * 1000
+                refreshMaxAge: remainingSeconds * 1000,
+                userId: user.id
             };
         });
 

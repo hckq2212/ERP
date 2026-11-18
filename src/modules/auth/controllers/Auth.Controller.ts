@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { AuthService, SESSION_EXPIRED_CODE } from "../services/Auth.Service";
+import { DeviceKeyService } from "../../../shared/services/DeviceKey.service";
 
 export class AuthController {
     private authService = new AuthService();
@@ -49,16 +50,30 @@ export class AuthController {
 
             this.setAuthCookies(res, result, req);
 
+            let signingKey: { keyId: string; secret: string } | undefined;
+            if (req.header("X-App-Platform")) {
+                signingKey = await DeviceKeyService.issue(result.user.id);
+            }
+
             res.status(200).json({
                 message: "Đăng nhập thành công",
-                user: result.user
+                user: result.user,
+                ...(signingKey ? { signingKey } : {})
             });
         } catch (error: any) {
-            res.status(401).json({ message: error.message });
+            const status = error.statusCode || (error.message.includes("bị khóa") ? 429 : 401);
+            if (status === 429 && error.retryAfter) {
+                res.setHeader("Retry-After", error.retryAfter.toString());
+            }
+            res.status(status).json({ message: error.message });
         }
     }
 
     logout = async (req: Request, res: Response) => {
+        const keyId = req.header("X-App-Key-Id");
+        if (keyId) {
+            await DeviceKeyService.revoke(keyId);
+        }
         await this.authService.logout(req.cookies?.refreshToken);
         this.clearAuthCookies(res, req);
         res.status(200).json({ message: "Đăng xuất thành công" });
@@ -68,7 +83,21 @@ export class AuthController {
         try {
             const result = await this.authService.refresh(req.cookies?.refreshToken);
             this.setAuthCookies(res, result, req);
-            res.status(204).send();
+
+            let signingKey: { keyId: string; secret: string } | undefined;
+            if (req.header("X-App-Platform")) {
+                const oldKeyId = req.header("X-App-Key-Id");
+                if (oldKeyId) {
+                    await DeviceKeyService.revoke(oldKeyId);
+                }
+                signingKey = await DeviceKeyService.issue(result.userId);
+            }
+
+            if (signingKey) {
+                res.status(200).json({ signingKey });
+            } else {
+                res.status(204).send();
+            }
         } catch {
             this.clearAuthCookies(res, req);
             res.status(401).json({

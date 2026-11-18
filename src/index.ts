@@ -5,7 +5,9 @@ import { AppDataSource } from "./data-source"
 import express from "express"
 import cors from "cors"
 import cookieParser from "cookie-parser"
+import helmet from "helmet"
 import passport from "./shared/config/passport"
+import { corsOptions } from "./shared/config/cors"
 
 import authRoute from "./modules/auth/routes/Auth.Route"
 import opportunityRoute from "./modules/opportunity/routes/Opportunity.Route"
@@ -55,6 +57,7 @@ import aiElementRoute from "./modules/ai-element/routes/AiElement.Route"
 import documentLibraryRoute from "./modules/document-library/routes/DocumentLibrary.Route"
 import chatRoomRoute from "./modules/chat-room/routes/ChatRoom.Route"
 import { createServer } from "http"
+import { clientIntegrityMiddleware } from "./shared/middlewares/ClientIntegrity.Middleware"
 import { initSocket } from "./socket"
 import aiDashboardRoute from "./modules/ai-dashboard/routes/AiDashboard.Route"
 import paymentDashboardRoute from "./modules/payment-dashboard/routes/PaymentDashboard.Route"
@@ -64,35 +67,27 @@ import { DashboardCacheCoordinator } from "./modules/dashboard/services/Dashboar
 const app = express()
 app.set('trust proxy', 1)
 app.set('etag', false)
+app.disable('x-powered-by')
+
+app.use(helmet({
+    frameguard: { action: "sameorigin" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    contentSecurityPolicy: false,
+    hsts: process.env.NODE_ENV === "production" ? { maxAge: 31536000, includeSubDomains: true } : false
+}))
 const port = 3000
 const httpServer = createServer(app)
 
 // Mặc định 100kb là quá nhỏ cho nội dung trích xuất/AI format của tài liệu dài
-app.use(express.json({ limit: "10mb" }))
+app.use(express.json({
+    limit: "10mb",
+    verify: (req, _res, buf) => {
+        (req as any).rawBody = buf;
+    }
+}))
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
-const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : [];
-
-app.use(cors({
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-
-        if (
-            allowedOrigins.includes(origin) ||
-            origin.includes("/gdt-api/tax-payer") ||
-            origin.endsWith(".vercel.app") ||
-            origin.endsWith(".workers.dev") ||
-            origin.endsWith(".onrender.com") ||
-            /^http:\/\/localhost:\d+$/.test(origin)
-        ) {
-            callback(null, true);
-        } else {
-            callback(new Error("Not allowed by CORS"));
-        }
-    },
-    credentials: true
-}))
+app.use(cors(corsOptions))
 app.use(passport.initialize())
 
 // Apply logging middleware globally
@@ -104,6 +99,7 @@ app.use("/api", (req, res, next) => {
 });
 
 app.use("/api", globalApiLimiter)
+app.use("/api", clientIntegrityMiddleware)
 
 const protectedPipeline = [authMiddleware, writeRateLimitMiddleware, idempotencyMiddleware];
 
@@ -164,6 +160,33 @@ app.head("/health", (req, res) => {
 
 
 AppDataSource.initialize().then(async () => {
+    // Kiểm tra cấu hình bảo mật biến môi trường thiết yếu
+    const isProduction = process.env.NODE_ENV === "production";
+    if (isProduction) {
+        const requiredSecrets = ["JWT_SECRET", "JWT_REFRESH_SECRET", "ENCRYPTION_KEY"];
+        for (const secretKey of requiredSecrets) {
+            const val = process.env[secretKey]?.trim();
+            if (!val || val.length < 32) {
+                throw new Error(`[SECURITY FATAL] Biến môi trường ${secretKey} chưa được cấu hình hoặc độ dài < 32 ký tự trên môi trường Production.`);
+            }
+        }
+        if (new Set(requiredSecrets.map(k => process.env[k])).size !== requiredSecrets.length) {
+            throw new Error("[SECURITY FATAL] Các khóa bí mật JWT_SECRET, JWT_REFRESH_SECRET, ENCRYPTION_KEY không được trùng nhau.");
+        }
+        if (!process.env.ALLOWED_ORIGINS) {
+            throw new Error("[SECURITY FATAL] ALLOWED_ORIGINS chưa được cấu hình trên môi trường Production.");
+        }
+        if (process.env.BYPASS_CLIENT_INTEGRITY === "true") {
+            throw new Error("[SECURITY FATAL] Cấm bật BYPASS_CLIENT_INTEGRITY=true ở môi trường Production.");
+        }
+    } else {
+        if (!process.env.JWT_SECRET) {
+            console.warn("⚠️ [SECURITY WARNING] Biến môi trường JWT_SECRET chưa được cấu hình!");
+        } else if (process.env.JWT_SECRET.length < 32) {
+            console.warn("⚠️ [SECURITY WARNING] JWT_SECRET hiện tại ngắn hơn 32 ký tự. Hãy sử dụng chuỗi 256-bit an toàn trên Production.");
+        }
+    }
+
     // Initialize Event Subscribers
     initSubscribers();
 
