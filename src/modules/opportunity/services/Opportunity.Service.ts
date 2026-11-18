@@ -1,6 +1,7 @@
 import { resolveServiceBudget } from "../../../shared/helpers/ServiceBudget.helper";
 import { AppDataSource } from "../../../data-source";
 import { Opportunities, CustomerType, OpportunityStatus } from "../entities/Opportunity.entity";
+import { ContractStatus } from "../../contract/entities/Contract.entity";
 import { Customers } from "../../customer/entities/Customer.entity";
 import { OpportunityServices } from "../../opportunity-service/entities/OpportunityService.entity";
 import { Services } from "../../service/entities/Service.entity";
@@ -432,6 +433,31 @@ export class OpportunityService {
         } = data;
 
         validateLeadData(data);
+
+        const existing = await this.opportunityRepository.findOne({
+            where: { id },
+            relations: ["createdBy", "contracts"]
+        });
+        if (!existing) {
+            throw new Error("Không tìm thấy cơ hội kinh doanh");
+        }
+
+        if (userInfo) {
+            const isManager = ["BOD", "ADMIN"].includes(userInfo.role);
+            const isCreator = existing.createdBy?.id === (userInfo.userId || userInfo.id);
+            if (!isManager && !isCreator) {
+                const err: any = new Error("Bạn không có quyền chỉnh sửa cơ hội kinh doanh này");
+                err.statusCode = 403;
+                throw err;
+            }
+        }
+
+        const signedContracts = (existing.contracts || []).filter(c => c.status === ContractStatus.SIGNED || c.status === ContractStatus.COMPLETED);
+        if (signedContracts.length > 0) {
+            const err: any = new Error("Cơ hội đã có hợp đồng đã ký hoặc hoàn thành, không thể chỉnh sửa");
+            err.statusCode = 409;
+            throw err;
+        }
 
         // Prepare the updated object
         const updateObj: any = { id };

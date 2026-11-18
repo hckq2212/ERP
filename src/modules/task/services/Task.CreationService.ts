@@ -33,6 +33,13 @@ export class TaskCreationService extends TaskBaseService {
         plannedEndDate?: Date,
         attachments?: { type: string, name: string, url: string, size?: number, publicId?: string }[]
     }, currentUser?: { id: string; userId?: string; role?: string }) {
+        const actorUserId = await this.resolveActorUserId(currentUser);
+        if (!actorUserId) throw this.httpError("Bạn cần đăng nhập để tạo công việc nội bộ", 401);
+        const isManager = [UserRole.ADMIN, UserRole.BOD, UserRole.PM].includes(currentUser?.role as UserRole);
+        if (!isManager) {
+            throw this.httpError("Chỉ Quản lý (Admin, BOD, PM) mới có quyền tạo công việc nội bộ", 403);
+        }
+
         const assignee = await this.userRepository.findOneBy({ id: data.assigneeId });
         if (!assignee) throw new Error("Không tìm thấy người thực hiện");
 

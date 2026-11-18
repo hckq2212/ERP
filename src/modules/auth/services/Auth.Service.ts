@@ -5,6 +5,9 @@ import { encrypt } from "../../../shared/helpers/helpers";
 import { validatePasswordStrength } from "../../../shared/helpers/PasswordPolicy.helper";
 import { RefreshSessions } from "../entities/RefreshSession.entity";
 import { ulid } from "ulid";
+import { validateSync } from "class-validator";
+import { LoginDto } from "../validations/Login.dto";
+import { assertAccountIdentifiersAvailable, identifierMatches } from "../../account/services/AccountIdentifier";
 
 export const SESSION_EXPIRED_CODE = "SESSION_EXPIRED";
 const ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
@@ -18,17 +21,6 @@ export class AuthService {
 
     async register(data: any) {
         const { username, password, email, fullName, phoneNumber, birthday } = data;
-
-        const existingAccount = await this.accountRepository.findOne({
-            where: [
-                { username },
-                { email }
-            ]
-        });
-
-        if (existingAccount) {
-            throw new Error("Tên đăng nhập hoặc email đã tồn tại");
-        }
 
         validatePasswordStrength(password);
         const hashedPassword = await encrypt.encryptPassword(password);
@@ -44,6 +36,7 @@ export class AuthService {
         user.birthday = birthday || null;
 
         await AppDataSource.transaction(async (transactionalEntityManager) => {
+            await assertAccountIdentifiersAvailable(transactionalEntityManager, account);
             const savedUser = await transactionalEntityManager.save(user);
             account.user = savedUser;
             account.userId = savedUser.id;
@@ -53,16 +46,28 @@ export class AuthService {
         return { message: "Đăng ký thành công" };
     }
 
-    async login(data: any) {
-        const { username, password } = data;
+    async login(data: Partial<LoginDto> | null | undefined) {
+        const credentials = Object.assign(new LoginDto(), {
+            username: data?.username,
+            password: data?.password,
+            rememberMe: data?.rememberMe
+        });
+        if (validateSync(credentials).length) {
+            throw Object.assign(new Error("Thông tin đăng nhập không hợp lệ"), { statusCode: 400 });
+        }
+        const { username, password, rememberMe } = credentials;
 
-        const account = await this.accountRepository.findOne({
+        const matchingAccounts = await this.accountRepository.find({
             where: [
-                { username },
-                { email: username }
+                { username: identifierMatches(username) },
+                { email: identifierMatches(username) }
             ],
             relations: ["user"]
         });
+        // Preserve an unambiguous exact match for legacy accounts that differ only in case.
+        const exactMatches = matchingAccounts.filter(account => account.username === username || account.email === username);
+        const candidates = exactMatches.length ? exactMatches : matchingAccounts;
+        const account = candidates.length === 1 ? candidates[0] : undefined;
 
         // Chống timing attack: Nếu tài khoản không tồn tại, vẫn chạy phép so sánh bcrypt giả
         if (!account || !account.isActive) {
@@ -116,7 +121,6 @@ export class AuthService {
 
         const user = account.user;
 
-        const { rememberMe } = data;
         const refreshTtlSeconds = rememberMe ? REMEMBER_REFRESH_TTL_SECONDS : DEFAULT_REFRESH_TTL_SECONDS;
         const sessionId = ulid();
         const accessToken = encrypt.generateAccessToken({

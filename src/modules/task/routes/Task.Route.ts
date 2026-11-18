@@ -35,8 +35,8 @@ router.get("/assignee/:userId/daily-workload", taskController.getDailyWorkloadBy
 // Đặt trước "/:id" vì đây là route 2 segment, tránh nhầm với việc thêm route "/:id/..." khác sau này.
 router.get("/project/:projectId", taskController.getByProject);
 router.get("/:id", taskController.getOne);
-router.post("/", validationMiddleware(CreateTaskDTO), taskController.create);
-router.post("/internal", taskController.createInternal);
+router.post("/", roleMiddleware(["ADMIN", "BOD", "PM", "BD", "ADMIN_SALE"]), validationMiddleware(CreateTaskDTO), taskController.create);
+router.post("/internal", roleMiddleware(["ADMIN", "BOD", "PM"]), taskController.createInternal);
 router.put("/bulk-assign", validationMiddleware(BulkTaskAssignmentDTO), taskController.bulkAssign);
 router.patch("/bulk-unassign", validationMiddleware(BulkUnassignTasksDTO), taskController.bulkUnassign);
 router.patch("/bulk-start", validationMiddleware(BulkStartTasksDTO), taskController.bulkStart);

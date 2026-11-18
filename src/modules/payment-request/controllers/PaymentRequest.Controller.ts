@@ -17,6 +17,11 @@ export class PaymentRequestController {
                 return res.status(400).json({ message: "Vui lòng chọn file hóa đơn" });
             }
 
+            const isSvg = file.mimetype === "image/svg+xml" || (file.originalname && file.originalname.toLowerCase().endsWith(".svg"));
+            if (isSvg) {
+                return res.status(400).json({ message: "Định dạng tệp .svg bị cấm vì lý do an toàn thông tin" });
+            }
+
             const isImage = file.mimetype.startsWith("image/");
             const isPdf = file.mimetype === "application/pdf" || (file.originalname && file.originalname.toLowerCase().endsWith(".pdf"));
             const isDoc = file.mimetype === "application/msword" ||

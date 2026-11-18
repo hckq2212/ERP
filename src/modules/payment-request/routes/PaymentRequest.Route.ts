@@ -6,9 +6,17 @@ import { roleMiddleware } from "../../../shared/middlewares/Role.Middleware";
 const router = Router();
 const controller = new PaymentRequestController();
 
+const DANGEROUS_EXTENSIONS = /\.(exe|bat|cmd|sh|php|js|mjs|cjs|vbs|msi|bin|scr|jar|apk|com|pif|reg|dll|sys|html|htm|svg)$/i;
+
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 15 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        if (DANGEROUS_EXTENSIONS.test(file.originalname || "") || file.mimetype === "image/svg+xml") {
+            return cb(new Error("Định dạng tệp thực thi, script hoặc .svg bị cấm tải lên"));
+        }
+        cb(null, true);
+    }
 });
 
 router.get("/", controller.getAll);
@@ -18,7 +26,7 @@ router.get("/project-budget-summary/:projectId", controller.getProjectBudgetSumm
 router.get("/task/:taskId/spent", controller.getTaskSpent);
 router.get("/next-stt", controller.getNextStt);
 router.get("/download-template-word", controller.downloadTemplateWord);
-router.post("/generate-word-and-upload", controller.generateWordAndUpload);
+router.post("/generate-word-and-upload", roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]), controller.generateWordAndUpload);
 router.get("/:id", controller.getOne);
 router.post("/upload-invoice", upload.single("file"), controller.uploadInvoice);
 router.post("/", controller.create);
@@ -81,7 +89,7 @@ router.post(
 router.post("/:id/cancel", controller.cancel);
 router.get("/:id/doc-preview", controller.getDocPreview);
 router.get("/:id/download-word", controller.downloadWord);
-router.post("/:id/sync-google-sheet", controller.syncGoogleSheet);
+router.post("/:id/sync-google-sheet", roleMiddleware(["BOD", "ADMIN", "ADMIN_SALE"]), controller.syncGoogleSheet);
 
 export default router;
 
