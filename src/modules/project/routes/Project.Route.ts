@@ -96,16 +96,16 @@ router.post(
 );
 
 
-router.post("/assign", validationMiddleware(AssignTeamDTO), projectController.assign);
-router.post("/:id/confirm", projectController.confirm);
+router.post("/assign", roleMiddleware(["ADMIN", "BOD", "PM"]), validationMiddleware(AssignTeamDTO), projectController.assign);
+router.post("/:id/confirm", roleMiddleware(["ADMIN", "BOD", "PM"]), projectController.confirm);
 router.put(
     "/:id",
     roleMiddleware(["ADMIN", "PM"]),
     validationMiddleware(UpdateProjectDTO),
     projectController.update
 );
-router.post("/:id/monthly-work-addendums", projectController.createMonthlyWorkAddendum);
-router.post("/:id/service-addendums", projectController.createServiceAddendum);
+router.post("/:id/monthly-work-addendums", roleMiddleware(["ADMIN", "BOD", "PM", "BD"]), projectController.createMonthlyWorkAddendum);
+router.post("/:id/service-addendums", roleMiddleware(["ADMIN", "BOD", "PM", "BD"]), projectController.createServiceAddendum);
 // Chỉ để trích xuất text: nhận file thẳng từ trình duyệt, ghi tạm ra đĩa, xong là xoá.
 const EXTRACT_TMP_PREFIX = "pd-extract-";
 const EXTRACT_TMP_MAX_AGE_MS = 60 * 60 * 1000;

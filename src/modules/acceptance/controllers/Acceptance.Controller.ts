@@ -6,16 +6,18 @@ export class AcceptanceController {
 
   createRequest = async (req: Request, res: Response) => {
     try {
-      const userId = (req as any).user?.userId || req.body.userId; // Prefer profile userId
-      if (!userId) throw new Error("Unauthorized: Missing user information");
+      const userId = (req as any).user?.userId || (req as any).user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Bạn cần đăng nhập để tạo yêu cầu nghiệm thu" });
+      }
 
       const result = await this.acceptanceService.createRequest({
         ...req.body,
         userId,
       });
       res.status(201).json(result);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ message: error.message });
     }
   };
 
